@@ -1,0 +1,30 @@
+/* ============================================================
+   SPACING — Aperture Risk
+   4px base grid. Dense terminal layouts skew toward the small end.
+   ============================================================ */
+:root {
+  --space-0:  0px;
+  --space-1:  2px;
+  --space-2:  4px;
+  --space-3:  6px;
+  --space-4:  8px;
+  --space-5:  10px;
+  --space-6:  12px;
+  --space-8:  16px;
+  --space-10: 20px;
+  --space-12: 24px;
+  --space-16: 32px;
+  --space-20: 40px;
+  --space-24: 48px;
+  --space-32: 64px;
+  --space-40: 80px;
+
+  /* component rhythm */
+  --gutter:       var(--space-8);   /* default gap between panels */
+  --pad-cell:     var(--space-6);    /* table cell padding */
+  --pad-panel:    var(--space-12);   /* card / panel inner padding */
+  --row-height:   28px;              /* dense data-row height */
+  --control-height: 30px;            /* default input/button height */
+  --control-height-sm: 24px;
+  --control-height-lg: 38px;
+}

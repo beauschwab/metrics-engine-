@@ -1,0 +1,50 @@
+/* ============================================================
+   BASE — Aperture Risk
+   Minimal resets + global element defaults for the dark terminal.
+   ============================================================ */
+* { box-sizing: border-box; }
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  letter-spacing: -0.006em;
+  font-feature-settings: 'cv01' 1, 'cv02' 1, 'cv11' 1, 'calt' 1;
+}
+
+::selection {
+  background: var(--yellow-soft);
+  color: var(--text-heading);
+}
+
+/* Custom scrollbars — slim, terminal-style */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--gray-700);
+  border-radius: var(--radius-sm);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--gray-600); background-clip: content-box; }
+
+/* ---- Utilities ---- */
+.tnum { font-feature-settings: var(--fontfeat-tabular); font-variant-numeric: tabular-nums; }
+.eyebrow {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.text-up   { color: var(--up-500); }
+.text-down { color: var(--down-500); }
+.mono { font-family: var(--font-mono); font-feature-settings: var(--fontfeat-tabular); }

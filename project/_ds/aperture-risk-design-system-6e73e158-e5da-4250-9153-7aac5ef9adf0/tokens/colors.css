@@ -1,0 +1,92 @@
+/* ============================================================
+   COLORS — Aperture Risk
+   Dark-first terminal palette. Near-black greys, a single deep
+   golden-yellow accent, and finance-semantic up/down hues.
+   ============================================================ */
+:root {
+  /* ---- Neutral grey scale (dark → light) — lifted one notch for a softer dark ---- */
+  --gray-1000: #131417;   /* deepest — app canvas void */
+  --gray-950:  #17191D;   /* app background */
+  --gray-900:  #1C1F23;   /* base surface */
+  --gray-850:  #22252A;   /* card / panel */
+  --gray-800:  #2A2D33;   /* raised / hover surface */
+  --gray-780:  #31343B;   /* elevated viz surface (3rd level) */
+  --gray-750:  #353941;   /* active / pressed surface */
+  --gray-700:  #3C4047;   /* hairline-strong / input border */
+  --gray-600:  #474C54;   /* strong border / divider */
+  --gray-500:  #5C616A;   /* disabled fill */
+  --gray-400:  #757A82;   /* tertiary text / icons-muted */
+  --gray-300:  #939AA2;   /* secondary text */
+  --gray-200:  #AFB4BC;   /* secondary-strong text */
+  --gray-100:  #CDD1D7;   /* body-on-dark */
+  --gray-50:   #E8EAED;   /* primary text */
+  --gray-0:    #F6F7F8;   /* high-emphasis / headings */
+
+  /* ---- Brand: deep golden yellow ---- */
+  --yellow-700: #A87A00;
+  --yellow-600: #C99400;
+  --yellow-500: #F2B300;  /* PRIMARY brand accent */
+  --yellow-400: #FFC629;  /* hover / hilite */
+  --yellow-300: #FFD75E;
+  --yellow-soft:   rgba(242, 179, 0, 0.14);  /* tinted fills */
+  --yellow-softer: rgba(242, 179, 0, 0.08);  /* faint wash */
+  --yellow-glow:   rgba(242, 179, 0, 0.28);  /* focus ring / shadow */
+
+  /* ---- Finance semantics ---- */
+  --up-500:    #2ED389;   /* gains / long / positive */
+  --up-soft:   rgba(46, 211, 137, 0.14);
+  --down-500:  #FF5C6C;   /* losses / short / negative */
+  --down-soft: rgba(255, 92, 108, 0.14);
+
+  /* ---- Status ---- */
+  --warning-500: #F58A3C;  /* caution (distinct from brand yellow) */
+  --warning-soft: rgba(245, 138, 60, 0.14);
+  --danger-500:  #F5454F;  /* breaches / errors */
+  --danger-soft: rgba(245, 69, 79, 0.14);
+  --info-500:    #5B9BD5;  /* neutral info / links */
+  --info-soft:   rgba(91, 155, 213, 0.14);
+  --ai-500:      #9B8CFF;  /* embedded-AI surfaces / Copilot accent */
+  --ai-soft:     rgba(155, 140, 255, 0.14);
+
+  /* ---- Visualization hues (charts / overlays / 2nd series) ---- */
+  --sky-500:   #45B6F0;   /* sky blue — line overlays, secondary series, targets */
+  --sky-400:   #6FC8F6;
+  --sky-600:   #2C93CC;
+  --sky-soft:  rgba(69, 182, 240, 0.16);
+
+  /* ============================================================
+     SEMANTIC ALIASES — reference these in components.
+     ============================================================ */
+  --bg-canvas:      var(--gray-950);
+  --bg-base:        var(--gray-900);
+  --surface-1:      var(--gray-850);
+  --surface-2:      var(--gray-800);
+  --surface-3:      var(--gray-780);   /* 3rd, lighter level — viz plot areas, flow nodes, popovers */
+  --surface-raised: var(--gray-800);
+  --surface-active: var(--gray-750);
+  --surface-overlay: #262A30;
+
+  --border-subtle:  #2B2E34;
+  --border-default: var(--gray-700);
+  --border-strong:  var(--gray-600);
+  --border-focus:   var(--yellow-500);
+
+  --text-primary:   var(--gray-50);
+  --text-heading:   var(--gray-0);
+  --text-secondary: var(--gray-300);
+  --text-tertiary:  var(--gray-400);
+  --text-disabled:  var(--gray-500);
+  --text-on-accent: #1A1400;   /* dark text on yellow buttons */
+  --text-link:      var(--yellow-400);
+
+  --accent:         var(--yellow-500);
+  --accent-hover:   var(--yellow-400);
+  --accent-press:   var(--yellow-600);
+  --accent-text:    var(--yellow-400);
+
+  --viz-1: var(--yellow-500);   /* primary series */
+  --viz-2: var(--sky-500);      /* secondary series / overlay */
+  --viz-3: var(--ai-500);       /* tertiary series */
+
+  --focus-ring:     var(--yellow-glow);
+}
