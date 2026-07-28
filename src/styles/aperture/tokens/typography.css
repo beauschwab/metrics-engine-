@@ -1,0 +1,44 @@
+/* ============================================================
+   TYPOGRAPHY — Aperture Risk
+   Inter for everything. Tight, dense, data-terminal scale.
+   Tabular figures are mandatory for all numeric data.
+   ============================================================ */
+:root {
+  /* ---- Families ---- */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Numeric / monospaced-feel via Inter tabular figures.
+     Use --font-mono on any cell that must column-align. */
+  --font-mono: 'Inter', ui-monospace, monospace;
+  --fontfeat-tabular: 'tnum' 1, 'cv01' 1, 'cv02' 1;  /* @kind other */  /* tabular nums + alt 1/digits */
+
+  /* ---- Type scale (px → rem at 16px root) ---- */
+  --text-2xs:  10px;   /* micro labels, axis ticks */
+  --text-xs:   11px;   /* dense table cells, captions */
+  --text-sm:   12px;   /* secondary UI, metadata */
+  --text-base: 13px;   /* DEFAULT body / UI */
+  --text-md:   14px;   /* emphasized body */
+  --text-lg:   16px;   /* card titles */
+  --text-xl:   20px;   /* section headings */
+  --text-2xl:  26px;   /* page titles */
+  --text-3xl:  34px;   /* display / hero metric */
+  --text-4xl:  46px;   /* big KPI numbers */
+
+  /* ---- Weights ---- */
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semibold: 600;
+  --weight-bold:    700;
+
+  /* ---- Line heights ---- */
+  --leading-tight:  1.15;
+  --leading-snug:   1.3;
+  --leading-normal: 1.5;
+
+  /* ---- Letter spacing ---- */
+  --tracking-display: -0.028em;  /* large display numerals & hero metrics */
+  --tracking-tight:  -0.014em;   /* headings & titles */
+  --tracking-snug:   -0.006em;   /* default body refinement */
+  --tracking-normal: 0;
+  --tracking-wide:   0.04em;   /* uppercase eyebrows / labels */
+  --tracking-caps:   0.09em;   /* all-caps micro labels */
+}
