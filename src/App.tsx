@@ -122,6 +122,38 @@ export default function App() {
     editor.current?.goToMeasure(name);
   }, []);
 
+  /**
+   * Open a measure that lives in a different document.
+   *
+   * The editor remounts when the file changes, so the jump cannot happen in
+   * the same tick — the handle still points at the outgoing view. The name is
+   * parked and the effect below runs it once the new editor is mounted.
+   */
+  const pendingJump = useRef<string | null>(null);
+
+  const openIn = useCallback(
+    (target: ViewFile, name: string) => {
+      if (target === file) {
+        openMeasure(name);
+        return;
+      }
+      pendingJump.current = name;
+      setFile(target);
+      setActive(name);
+      setCard(null);
+      setPeek(null);
+      setCollapsed({});
+    },
+    [file, openMeasure],
+  );
+
+  useEffect(() => {
+    const name = pendingJump.current;
+    if (!name) return;
+    pendingJump.current = null;
+    editor.current?.goToMeasure(name);
+  }, [file]);
+
   const showCard = useCallback((target: CardTarget) => {
     setCard(target);
   }, []);
@@ -225,6 +257,7 @@ export default function App() {
           setCollapsed({});
         }}
         onPickMeasure={openMeasure}
+        onPickForeign={openIn}
       />
 
       <Resizer panel="registry" layout={layout} onChange={setLayout} label="Resize measures panel" />

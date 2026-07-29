@@ -6,6 +6,6 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["src"],
+  "include": ["src", "e2e", "playwright.config.ts"],
   "exclude": []
 }

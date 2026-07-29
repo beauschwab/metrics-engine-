@@ -8,6 +8,8 @@ npm install
 npm run dev        # http://localhost:5173
 npm run test       # 192 engine + conformance tests
 npm run conformance  # just the executed backends (needs python3 + polars)
+npm run e2e        # 32 browser checks against the built bundle
+npm run verify     # all of the above, plus both typecheck projects
 npm run build      # typecheck + production bundle
 ```
 
@@ -66,6 +68,11 @@ src/
   styles/
     app.css                  surface tokens + layout
     aperture/                Aperture Risk token files, copied from the bundle
+public/
+  fonts/                     Inter, self-hosted — the surface makes no network call
+e2e/
+  surface.spec.ts            the three columns, the loop, fixes, plans, layout
+  editor.spec.ts             pills, keyboard, completion, gutters
 ```
 
 The split that matters: **`engine/` knows nothing about the editor or React.**
@@ -354,11 +361,45 @@ insured and the rule reading for exactly that combination matched nothing
 first rule set shipped with blind catch-alls, which made unmapped records
 structurally impossible to detect.
 
-The UI was driven end-to-end in headless Chromium — 38 checks over pill
-lifecycle, atomic delete and undo, quick fixes from both the strip and `⌘.`,
-`⌘N` templates, `⌘↑/↓` navigation, extract and inline, `where:` completion
-against real data, ⌥-click peek, ⌘-click navigation, drag-insert, fixture
-switching, all seven pill states, both trace modes, the query tab, column
-resizing with persistence, and the digit roll. Those scripts are not committed:
-they hard-code this environment's Chromium path, so they would fail anywhere
-else. A committed Playwright suite is the obvious next step.
+## End to end
+
+`npm run e2e` drives the built bundle in headless Chromium — 32 checks in
+`e2e/`, split between the surface and the editor. It runs against `vite
+preview` rather than the dev server, because a production-only failure in
+chunking or CSS ordering is exactly the kind a dev-server test cannot see.
+
+What it covers is deliberately the half the unit tests cannot reach: that the
+engine is wired to something. A quick fix has to reach the CodeMirror document
+rather than React's mirror of it; a pill has to be a replace-widget with an
+atomic range, so one ArrowRight clears the whole reference and one Backspace
+deletes it as a unit and one undo brings it back; ⌥-click has to open the peek
+pane *without* wiping the decoration set; switching a tab has to swap the
+validation column for the surface that document needs — coverage for a rule
+set, assumptions for a rate table, rows-to-file for a report. Every one of
+those has been a real defect in this build, and none is visible from `vitest`.
+
+An earlier version of these tests could not be committed because it hard-coded
+this environment's Chromium path. The config now reads `CHROMIUM_PATH` and
+falls back to Playwright's own browser resolution, so it behaves like a default
+config anywhere with a normal toolchain:
+
+```
+npm run e2e                                    # ordinary machines
+CHROMIUM_PATH=/path/to/chromium npm run e2e    # sandboxes, air-gapped CI
+```
+
+Three things it found. A report counted two filed measures in the tree header
+and showed none beneath, because those measures are defined in the report's
+*view* and the tree only ever listed blocks from the open document; they are
+now listed with the document that defines them, and clicking one opens it
+there. The registry tree nested `role="treeitem"` directly inside
+`role="treeitem"`, with no `role="group"` between them, so a document's
+accessible name was computed from its entire contents — every measure and every
+value announced as one string. And the surface fetched Inter from Google Fonts
+at first paint, which fails silently behind a proxy or offline and drops every
+dense numeric column back to a proportional stack; tabular figures are what
+make a column of currency scannable here, so the typeface is now self-hosted
+and the suite asserts the page makes no external request at all.
+
+`npm run verify` runs the typecheck, the unit and conformance suites, and the
+end-to-end suite in one pass.
