@@ -26,5 +26,5 @@
   // globals. Pulling those into the app project would make `process`, `Buffer`
   // and friends look available to code that ships to a browser, so that one
   // file is typechecked separately — see tsconfig.harness.json.
-  "exclude": ["src/engine/conformance-python.test.ts"]
+  "exclude": ["src/engine/conformance-python.test.ts", "src/engine/conformance-iceberg.test.ts"]
 }

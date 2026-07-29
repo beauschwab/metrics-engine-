@@ -11,7 +11,7 @@ editor.
 ```
 npm install
 npm run dev        # http://localhost:5173
-npm run verify     # typecheck, 192 unit tests, 33 browser checks
+npm run verify     # typecheck, 203 unit tests, 33 browser checks
 npm run build      # typecheck + production bundle
 ```
 
@@ -51,11 +51,18 @@ is testable without a DOM.
 **One definition, several execution targets.** The compiler walks the rules,
 rates, derivations and measures once and emits SQL, Polars and PySpark. The
 claim that the pipeline runs the same definition the author verified is not
-asserted: `npm run conformance` seeds a real DuckDB, executes the compiled
-plan, and compares the filed table row for row against the in-browser
-evaluator. It runs the Polars plan through a real Python process for the same
-comparison. That harness found three bugs the day it was written, and they are
-written up in `IMPLEMENTATION.md`.
+asserted — it's executed. `npm run conformance` seeds a real DuckDB, runs the
+compiled plan, and compares the filed table row for row against the in-browser
+evaluator; runs the Polars plan through a real Python process for the same
+comparison; and stands up a real Iceberg catalogue to run the plan *whole*,
+including the write, then reads the sink table back and reconciles it. That last
+leg also proves the two things only a catalogue can answer: filing one day
+leaves every other day untouched, and a pinned snapshot still reproduces a filed
+number after the source has been corrected underneath it.
+
+Six bugs have come out of that harness so far, every one of them in code that
+had been emitted and read but never run. They are written up in
+`IMPLEMENTATION.md`.
 
 ## Where to read next
 
@@ -67,8 +74,8 @@ and PySpark is parsed rather than executed.
 ## Testing
 
 ```
-npm run test         # 192 unit + conformance tests
-npm run conformance  # just the executed backends (needs python3 + polars)
+npm run test         # 203 unit + conformance tests
+npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e          # 33 browser checks against the built bundle
 ```
 

@@ -149,21 +149,66 @@ describe('compiled plans', () => {
     expect(caseBlock).not.toMatch(/ELSE\s+'O\./);
   });
 
-  it('group and aggregate at the declared grain', () => {
+  it('group and aggregate at the declared grain, plus what the sink partitions by', () => {
     const sql = compiled('sql');
-    expect(sql).toContain('GROUP BY 1, 2, 3, 4');
+    // Four declared keys and `as_of_date`, which the result has to carry or the
+    // partitioned write has nothing to partition on.
+    expect(sql).toContain('GROUP BY 1, 2, 3, 4, 5');
     expect(sql).toContain('SUM(balance_usd)');
     expect(sql).toContain('FILTER (WHERE');
-    expect(compiled('polars')).toContain('.group_by(["product_id", "maturity_bucket", "currency", "entity_id"])');
-    expect(compiled('pyspark')).toContain('.groupBy("product_id", "maturity_bucket", "currency", "entity_id")');
+    expect(compiled('polars'))
+      .toContain('.group_by(["product_id", "maturity_bucket", "currency", "entity_id", "as_of_date"])');
+    expect(compiled('pyspark'))
+      .toContain('.groupBy("product_id", "maturity_bucket", "currency", "entity_id", "as_of_date")');
   });
 
-  it('write to Iceberg, partitioned', () => {
+  it('does not group by a partition column twice', () => {
+    const docs = workspace({
+      fr2052a_submission: REPORT.replace(
+        'grouping: [product_id, maturity_bucket, currency, entity_id]',
+        'grouping: [product_id, as_of_date]',
+      ),
+    });
+    expect(compiled('polars', docs)).toContain('.group_by(["product_id", "as_of_date"])');
+  });
+
+  it('reads a named catalogue at a pinned snapshot', () => {
+    // A bare table identifier is ambiguous — Polars also accepts a metadata
+    // path there — and an unpinned read cannot reproduce a filed number.
+    expect(compiled('polars'))
+      .toContain('pl.scan_iceberg("alm.fct_2052a_positions", catalog=CATALOG, snapshot_id=SNAPSHOT)');
+    expect(compiled('polars')).toContain('CATALOG');
+    expect(compiled('polars')).toContain('SNAPSHOT');
+  });
+
+  it('writes to Iceberg with an operation that means overwrite_partitions', () => {
     expect(compiled('sql')).toContain('INSERT OVERWRITE reg.fr2052a_daily');
     expect(compiled('pyspark')).toContain('.writeTo("reg.fr2052a_daily")');
-    expect(compiled('pyspark')).toContain('.partitionedBy("as_of_date")');
     expect(compiled('pyspark')).toContain('.overwritePartitions()');
-    expect(compiled('polars')).toContain('write_iceberg("reg.fr2052a_daily"');
+    // `partitionedBy` belongs to table creation; Spark rejects it beside
+    // `overwritePartitions()`, where the table's own spec already decides.
+    expect(compiled('pyspark')).not.toContain('.partitionedBy(');
+
+    // Polars has no partition-overwrite mode. `mode="overwrite_partitions"`
+    // raises and `mode="overwrite"` would delete every prior day, so the
+    // operation has to come from PyIceberg.
+    const polars = compiled('polars');
+    expect(polars).toContain('dynamic_partition_overwrite');
+    expect(polars).toContain('CATALOG.load_table("reg.fr2052a_daily")');
+    expect(polars).not.toContain('mode="overwrite_partitions"');
+    expect(polars).not.toContain('mode="overwrite"');
+  });
+
+  it('streams to the sink when the mode is not partition-scoped', () => {
+    const docs = workspace({
+      fr2052a_submission: REPORT.replace('mode: overwrite_partitions', 'mode: append'),
+    });
+    const polars = compiled('polars', docs);
+    expect(polars).toContain('df.sink_iceberg(');
+    expect(polars).toContain('mode="append"');
+    expect(polars).toContain('catalog=CATALOG');
+    expect(polars).not.toContain('dynamic_partition_overwrite');
+    expect(compiled('pyspark', docs)).toContain('.append()');
   });
 
   it('pin the as-of date rather than reading whatever is latest', () => {
@@ -286,6 +331,23 @@ describe('report diagnostics', () => {
   it('KEEL082 a grouping column nothing produces', () => {
     const d = analyse(workspace({ fr2052a_submission: REPORT.replace('currency,', 'nonesuch,') }));
     expect(withCode(d, 'KEEL082')[0].message).toContain('nonesuch');
+  });
+
+  it('KEEL087 a partition column nothing produces', () => {
+    // A partition column becomes a grouping key in the compiled plan, so it has
+    // to be as real as any other. Left unchecked this compiled to a plan that
+    // failed at the write, in the pipeline rather than in the editor.
+    const d = analyse(workspace({
+      fr2052a_submission: REPORT.replace('partition_by: [as_of_date]', 'partition_by: [book_date]'),
+    }));
+    expect(withCode(d, 'KEEL087')[0].message).toContain('book_date');
+  });
+
+  it('KEEL087 stays quiet when there is nothing to write', () => {
+    const d = analyse(workspace({
+      fr2052a_submission: REPORT.replace(/materialize:[\s\S]*?mode: overwrite_partitions\n/, ''),
+    }));
+    expect(withCode(d, 'KEEL087')).toHaveLength(0);
   });
 
   it('KEEL083 a measure the view does not define', () => {

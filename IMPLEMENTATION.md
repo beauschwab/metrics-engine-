@@ -6,8 +6,8 @@ React + TypeScript app with a real CodeMirror 6 editor.
 ```
 npm install
 npm run dev        # http://localhost:5173
-npm run test       # 192 engine + conformance tests
-npm run conformance  # just the executed backends (needs python3 + polars)
+npm run test       # 203 engine + conformance tests
+npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e        # 33 browser checks against the built bundle
 npm run verify     # all of the above, plus both typecheck projects
 npm run build      # typecheck + production bundle
@@ -51,6 +51,7 @@ src/
     compile.test.ts          plan emission, report grain, reconciliation
     conformance.test.ts      the compiled SQL, executed on DuckDB
     conformance-python.test.ts  the compiled Polars, executed; PySpark, parsed
+    conformance-iceberg.test.ts the whole plan, against a real Iceberg catalogue
   editor/                    CodeMirror 6 extensions
     context.ts               app state in editor state; live re-parse of the doc
     pills.ts                 replace-widgets, atomic ranges, edit-reveal
@@ -342,9 +343,59 @@ proved to be *valid, chained Python* and nothing more. The two defects above
 that it shared with Polars are gone, but a Spark-specific arithmetic difference
 would not be caught here.
 
+### The Iceberg seam
+
+The Polars leg proves the logic and nothing about either end of the plan: it
+rewrites `scan_iceberg` to `scan_csv` and throws the materialize step away.
+Those two lines are exactly where the definition layer touches a data platform,
+and "registered here, executed in your pipeline, sinking to Iceberg" is the
+claim the architecture rests on.
+
+`conformance-iceberg.test.ts` runs the plan whole. It stands up a real
+catalogue — a SQLite metastore over a local warehouse, `as_of_date`-partitioned
+— writes the fixture in, binds `CATALOG` and `SNAPSHOT`, executes the
+compiler's unmodified output *including the write*, then reads the sink table
+back and reconciles it against the evaluator. It also checks the two things
+only a catalogue can answer: that filing one day leaves every other day
+untouched, and that a pinned snapshot still reproduces a filed number after the
+source has been corrected underneath it.
+
+Three more defects, all in code that had been emitted and read but never run:
+
+- **The Polars write could not have worked.** It emitted
+  `write_iceberg(table, mode="overwrite_partitions")`, and Polars has no such
+  mode — `append` and `overwrite` are the only two. That call raises. Worse was
+  the obvious "fix": `overwrite` replaces the *whole table*, so filing Tuesday
+  would have deleted Monday. Partition-scoped overwrite is PyIceberg's
+  `dynamic_partition_overwrite`, and that is what the compiler now emits for
+  that mode; `append` and `overwrite` go through `sink_iceberg`, which streams
+  instead of materialising the result first.
+- **The result carried no partition column.** The report groups at the grain it
+  is *read* at — product ID by bucket by currency by entity — and materialises
+  into a table partitioned by `as_of_date`, which is none of those. Both
+  `INSERT OVERWRITE … PARTITION (as_of_date)` and
+  `dynamic_partition_overwrite` were being handed a result with no `as_of_date`
+  in it. Partition columns are now appended to the grouping keys, which is
+  sound rather than a patch: the plan is already filtered to one as-of date, so
+  it adds no rows, and if that filter ever widens each day partitions correctly
+  instead of every row being stamped with one literal. `KEEL087` now catches a
+  partition column nothing produces, at the `partition_by` line.
+- **The read named no catalogue and pinned no snapshot.**
+  `pl.scan_iceberg("alm.fct_2052a_positions")` is ambiguous — Polars also
+  accepts a metadata path in that position — and an unpinned read cannot
+  reproduce a number that has already been filed, which is the first question
+  anyone asks about a submission. Both arrive as parameters the pipeline binds
+  rather than connection details the registry invents.
+
+One thing the harness has to provide that the compiler does not:
+`dynamic_partition_overwrite` needs a sink that already exists and is
+partitioned. The plan writes; it does not provision. The test bootstraps the
+sink from the plan's own output schema via a zero-row collect, which is what a
+pipeline would do — but emitting a create-if-absent step is an open question.
+
 ## Testing
 
-`npm run test` runs 192 engine tests covering the calibrated figures, the
+`npm run test` runs 203 engine tests covering the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius
 (including termination on a cyclic graph), completion scoping, and the parser's

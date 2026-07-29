@@ -143,12 +143,25 @@ export function seedStatements(source: string, rows: Row[], chunk = 500): string
  * with its own failure modes.
  */
 export function executableQuery(compiled: string): string {
+  return splitPlan(compiled).query;
+}
+
+/**
+ * A compiled plan in its two halves.
+ *
+ * The read and the write have different prerequisites — the write needs a sink
+ * that already exists, with a partition spec — so a harness that wants to
+ * exercise both has to be able to put something between them. Splitting on the
+ * marker is what makes that possible without editing either half.
+ */
+export function splitPlan(compiled: string): { query: string; materialize: string } {
   let cut = -1;
   ['\n\n-- materialize', '\n\n# materialize'].forEach((marker) => {
     const at = compiled.indexOf(marker);
     if (at >= 0 && (cut < 0 || at < cut)) cut = at;
   });
-  return (cut < 0 ? compiled : compiled.slice(0, cut)).trim();
+  if (cut < 0) return { query: compiled.trim(), materialize: '' };
+  return { query: compiled.slice(0, cut).trim(), materialize: compiled.slice(cut).trim() };
 }
 
 // ---------------------------------------------------------------------------
@@ -179,7 +192,7 @@ export function retargetPolars(plan: string, csvPath: string, schema: Column[]):
   const body = executableQuery(plan);
   const overrides = schema.map((c) => `"${c.name}": ${POLARS_DTYPE[c.type]}`).join(', ');
   const reader = `pl.scan_csv(r"${csvPath}", schema_overrides={${overrides}})`;
-  const out = body.replace(/pl\.scan_iceberg\("[^"]*"\)/, reader);
+  const out = body.replace(/pl\.scan_iceberg\([^)]*\)/, reader);
   if (out === body) throw new Error('no pl.scan_iceberg reader found in the compiled plan');
   return `${out}\n\nimport sys\nsys.stdout.write(df.collect().write_ndjson())\n`;
 }

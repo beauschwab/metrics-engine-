@@ -441,10 +441,11 @@ function compileSql(
     stage(d.expr, d.name);
   });
 
-  const select = report.grouping
+  const keys = groupingKeys(report);
+  const select = keys
     .concat(measures.map((m) => emitMeasure(m, 'sql') || `NULL AS ${m.name}`))
     .join(',\n  ');
-  const groupBy = report.grouping.map((_, i) => i + 1).join(', ');
+  const groupBy = keys.map((_, i) => i + 1).join(', ');
 
   const query =
     `WITH ${ctes.join(',\n')}\nSELECT\n  ${select}\nFROM ${prev}\n` +
@@ -468,8 +469,14 @@ function compilePython(
   const derived = emitDerivations(view, registry, backend, '    ');
   const polars = backend === 'polars';
 
+  // Reading a governed table needs to say *which* catalogue and *which*
+  // snapshot. A bare `namespace.table` string is ambiguous — Polars also
+  // accepts a metadata path there — and an unpinned read cannot reproduce a
+  // number that was already filed, which is the first thing anyone asks about
+  // a regulatory submission. Both arrive as parameters rather than as baked-in
+  // connection details the registry has no business knowing.
   const head = polars
-    ? `df = (\n  pl.scan_iceberg("${source}")\n` +
+    ? `df = (\n  pl.scan_iceberg("${source}", catalog=CATALOG, snapshot_id=SNAPSHOT)\n` +
       `  .filter(pl.col("as_of_date") == date.fromisoformat("${AS_OF}"))`
     : `df = (\n  spark.table("${source}")\n` +
       `  .where(F.col("as_of_date") == F.lit("${AS_OF}"))`;
@@ -489,8 +496,8 @@ function compilePython(
   });
 
   const group = polars
-    ? `  .group_by([${report.grouping.map((g) => `"${g}"`).join(', ')}])`
-    : `  .groupBy(${report.grouping.map((g) => `"${g}"`).join(', ')})`;
+    ? `  .group_by([${groupingKeys(report).map((g) => `"${g}"`).join(', ')}])`
+    : `  .groupBy(${groupingKeys(report).map((g) => `"${g}"`).join(', ')})`;
 
   const aggs = measures
     .map((m) => emitMeasure(m, backend))
@@ -499,20 +506,77 @@ function compilePython(
 
   const agg = `  .agg(\n${aggs.join('\n')}\n  )`;
 
-  const write = report.table
-    ? polars
-      ? `\n\n# materialize\ndf.collect().write_iceberg("${report.table}", mode="${report.mode}")`
-      : `\n\n# materialize\n(\n  df.writeTo("${report.table}")\n` +
-        `    .partitionedBy(${report.partitionBy.map((p) => `"${p}"`).join(', ')})\n` +
-        `    .${report.mode === 'append' ? 'append()' : 'overwritePartitions()'}\n)`
-    : '';
+  const write = report.table ? emitWrite(report, backend) : '';
 
   const imports = polars
     ? 'import polars as pl\nfrom datetime import date'
     : 'from pyspark.sql import functions as F';
 
-  return `# ${report.name} · compiled for ${BACKEND_LABEL[backend]}\n${imports}\n\n` +
+  // Named holes rather than defaults. A plan that ships with `CATALOG = None`
+  // looks runnable and is not; a plan that references a name the pipeline must
+  // bind fails loudly at the point the binding is missing.
+  const params = polars
+    ? '\n# Bound by the pipeline before this runs:\n' +
+      '#   CATALOG   a pyiceberg Catalog\n' +
+      '#   SNAPSHOT  snapshot id to read, or None for the table’s current snapshot\n'
+    : '';
+
+  return `# ${report.name} · compiled for ${BACKEND_LABEL[backend]}\n${imports}\n${params}\n` +
          `${head}\n${steps.join('\n')}\n${group}\n${agg}\n)${write}`;
+}
+
+/**
+ * The keys the plan actually groups by.
+ *
+ * A report declares the grain it is *read* at — for FR 2052a, product ID by
+ * maturity bucket by currency by entity. It materialises into a table
+ * partitioned by `as_of_date`, which is not one of those, so the result carried
+ * no column to partition on and the write failed: `INSERT OVERWRITE …
+ * PARTITION (as_of_date)` over a query without it, and a
+ * `dynamic_partition_overwrite` handed an Arrow table missing the partition
+ * field. Nothing caught it because nothing had ever run the materialize step.
+ *
+ * Appending the partition columns is sound rather than a patch: the plan is
+ * already filtered to one as-of date, so grouping by it adds no rows, and if
+ * the filter ever widens to a range each day partitions correctly instead of
+ * every row being stamped with one literal.
+ */
+function groupingKeys(report: ReportSpec): string[] {
+  return report.grouping.concat(
+    report.partitionBy.filter((c) => report.grouping.indexOf(c) < 0),
+  );
+}
+
+/**
+ * Where the result lands.
+ *
+ * `overwrite_partitions` is the mode a daily submission needs — replace today
+ * and leave every prior day alone — and it is the one mode Polars does not
+ * have. `write_iceberg`/`sink_iceberg` take `append` or `overwrite`, and
+ * `overwrite` replaces the *whole table*: filing Tuesday would delete Monday.
+ * Emitting `mode="overwrite_partitions"` (which is what this did) at least
+ * raises; emitting `overwrite` would quietly destroy history. So partition
+ * overwrite goes through PyIceberg, which has exactly this operation.
+ */
+function emitWrite(report: ReportSpec, backend: Backend): string {
+  if (backend === 'polars') {
+    if (report.mode === 'overwrite_partitions') {
+      return `\n\n# materialize\n` +
+        `# Polars writes whole tables; replacing only the partitions in this\n` +
+        `# result is PyIceberg's dynamic_partition_overwrite.\n` +
+        `CATALOG.load_table("${report.table}").dynamic_partition_overwrite(\n` +
+        `  df.collect().to_arrow()\n)`;
+    }
+    // Streaming sink — no need to hold the whole result in memory first.
+    return `\n\n# materialize\ndf.sink_iceberg(\n  "${report.table}",\n` +
+      `  mode="${report.mode === 'append' ? 'append' : 'overwrite'}",\n  catalog=CATALOG,\n)`;
+  }
+
+  // `partitionedBy` belongs to table creation. Spark rejects it alongside
+  // `append()` or `overwritePartitions()`, where the existing table's spec
+  // already decides the layout.
+  return `\n\n# materialize\n(\n  df.writeTo("${report.table}")\n` +
+    `    .${report.mode === 'append' ? 'append()' : 'overwritePartitions()'}\n)`;
 }
 
 /** Reports declared in a workspace, keyed by name. */
@@ -539,8 +603,31 @@ export function missingGrouping(
   sourceColumns: string[],
 ): string[] {
   if (!view) return report.grouping;
+  return unproducible(report.grouping, view, sourceColumns);
+}
+
+/**
+ * Partition columns the result cannot produce.
+ *
+ * A partition column becomes a grouping key in the compiled plan — that is what
+ * lets the write partition on something the read grain does not include — so it
+ * has to be as real as any other key. Partitioning by a name nothing produces
+ * used to compile to a plan that failed on the group-by, at the point of
+ * writing, in the pipeline rather than in the editor.
+ */
+export function missingPartition(
+  report: ReportSpec,
+  view: Graph | null,
+  sourceColumns: string[],
+): string[] {
+  if (!report.table) return [];
+  if (!view) return report.partitionBy;
+  return unproducible(report.partitionBy, view, sourceColumns);
+}
+
+function unproducible(cols: string[], view: Graph, sourceColumns: string[]): string[] {
   const derived = derivationsOf(view).map((d) => d.name);
-  return report.grouping.filter((c) => sourceColumns.indexOf(c) < 0 && derived.indexOf(c) < 0);
+  return cols.filter((c) => sourceColumns.indexOf(c) < 0 && derived.indexOf(c) < 0);
 }
 
 export { reqs, sectionBlocks };

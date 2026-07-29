@@ -25,7 +25,7 @@ import {
   type Registry,
 } from './registry';
 import { AS_OF } from './fixtures';
-import { missingGrouping, missingMeasures, readReport } from './compile';
+import { missingGrouping, missingMeasures, missingPartition, readReport } from './compile';
 import { grainRisky } from './report';
 import { COLUMNS, DERIVATION_OPS, DOMAINS, MATURITY_LADDERS } from './vocab';
 
@@ -467,6 +467,17 @@ export function diagnoseReport(g: Graph, registry: Registry): Diagnostic[] {
       sev: 'error',
       message: `${c} is neither a column on ${viewGraph.view.source} nor something a derivation makes`,
       line: lineOf('grouping'),
+      token: c,
+    });
+  });
+
+  missingPartition(report, viewGraph, sourceCols).forEach((c) => {
+    out.push({
+      code: 'KEEL087',
+      sev: 'error',
+      message:
+        `${c} is partitioned on but nothing produces it, so the write has no ${c} to partition by`,
+      line: lineOf('materialize.partition_by'),
       token: c,
     });
   });
