@@ -113,27 +113,67 @@ export function emitPredicate(node: PredNode, backend: Backend): string {
 // Derivations
 // ---------------------------------------------------------------------------
 
-/** An ordered rule set becomes a nested CASE, preserving first-match-wins. */
-function emitClassify(c: Classification, backend: Backend, indent: string): string {
-  const usable = c.rules.filter((r) => !compilePredicate(r.when).err);
+interface CaseArm {
+  cond: string;
+  value: string;
+  /** Provenance, emitted as a trailing comment so the plan carries its citation. */
+  note?: string;
+}
 
+/**
+ * An ordered set of conditions, in every backend's spelling.
+ *
+ * The three languages agree on the semantics and disagree on every detail of
+ * the syntax: SQL wants `WHEN … THEN …` inside one `CASE`, Polars wants
+ * `pl.when(c).then(v)` chained by `.when(…)`, PySpark wants `F.when(c, v)` with
+ * the value as a second argument. Emitting each arm independently — which is
+ * what this used to do — produces Python that is not even parseable, because
+ * two `pl.when(…)` expressions on consecutive lines are two statements rather
+ * than one chain. Nothing short of executing the plan catches that.
+ */
+function emitCaseChain(
+  arms: CaseArm[],
+  otherwise: string | null,
+  backend: Backend,
+  indent: string,
+): string {
   if (backend === 'sql') {
-    const arms = usable.map(
-      (r) => `${indent}  WHEN ${emitPredicate(compilePredicate(r.when).ast, 'sql')}\n` +
-             `${indent}    THEN ${lit(r.emit, 'sql')}  -- ${r.id} · ${r.citation}`,
+    const body = arms.map(
+      (a) => `${indent}  WHEN ${a.cond}\n${indent}    THEN ${a.value}${a.note ? `  -- ${a.note}` : ''}`,
     );
-    // No ELSE: an unmatched record must arrive as NULL and be caught, not be
-    // swept into a bucket the author never chose.
-    return `CASE\n${arms.join('\n')}\n${indent}END`;
+    const tail = otherwise === null ? '' : `\n${indent}  ELSE ${otherwise}`;
+    return `CASE\n${body.join('\n')}${tail}\n${indent}END`;
   }
 
-  const when = backend === 'polars' ? 'pl.when' : 'F.when';
-  const value = backend === 'polars' ? 'pl.lit' : 'F.lit';
-  const arms = usable.map(
-    (r) => `${indent}  ${when}(${emitPredicate(compilePredicate(r.when).ast, backend)})` +
-           `.then(${value}(${lit(r.emit, backend)}))  # ${r.id}`,
-  );
-  return `(\n${arms.join('\n')}\n${indent})`;
+  const body = arms.map((a, i) => {
+    const head = i === 0 ? (backend === 'polars' ? 'pl.when' : 'F.when') : '.when';
+    const call = backend === 'polars'
+      ? `${head}(${a.cond}).then(${a.value})`
+      : `${head}(${a.cond}, ${a.value})`;
+    return `${indent}  ${call}${a.note ? `  # ${a.note}` : ''}`;
+  });
+  const tail = otherwise === null ? '' : `\n${indent}  .otherwise(${otherwise})`;
+  return `(\n${body.join('\n')}${tail}\n${indent})`;
+}
+
+function litExpr(v: Scalar, backend: Backend): string {
+  if (backend === 'sql') return lit(v, 'sql');
+  return `${backend === 'polars' ? 'pl.lit' : 'F.lit'}(${lit(v, backend)})`;
+}
+
+/** An ordered rule set becomes a nested CASE, preserving first-match-wins. */
+function emitClassify(c: Classification, backend: Backend, indent: string): string {
+  const arms = c.rules
+    .filter((r) => !compilePredicate(r.when).err)
+    .map<CaseArm>((r) => ({
+      cond: emitPredicate(compilePredicate(r.when).ast, backend),
+      value: litExpr(r.emit, backend),
+      note: backend === 'sql' ? `${r.id} · ${r.citation}` : r.id,
+    }));
+
+  // No ELSE: an unmatched record must arrive as NULL and be caught, not be
+  // swept into a bucket the author never chose.
+  return emitCaseChain(arms, null, backend, indent);
 }
 
 /** A bounded rate table becomes a literal mapping — no join, no fan-out. */
@@ -149,56 +189,56 @@ function emitParamLookup(
     citation: (e.f.citation || '').trim(),
   }));
 
-  if (backend === 'sql') {
-    const arms = entries.map(
-      (e) => `${indent}  WHEN ${keys.map((k, i) => `${k} = ${lit(e.key[i], 'sql')}`).join(' AND ')}\n` +
-             `${indent}    THEN ${e.value}  -- ${e.citation}`,
-    );
-    return `CASE\n${arms.join('\n')}\n${indent}END`;
+  if (backend === 'polars') {
+    // A dict plus a strict replace keeps the rates legible as data rather than
+    // burying them in a hundred-branch expression. `default=None` matters: an
+    // unlisted key has no rate, and a missing rate is not a zero.
+    const pairs = entries.map((e) => `${indent}    ${lit(e.key.join('|'), backend)}: ${e.value},`);
+    const dict = `{\n${pairs.join('\n')}\n${indent}  }`;
+    const keyExpr = keys.length === 1
+      ? col(keys[0], backend)
+      : `pl.concat_str([${keys.map((k) => col(k, backend)).join(', ')}], separator="|")`;
+    return `${keyExpr}.replace_strict(${dict}, default=None)`;
   }
 
-  // A dict plus a map/replace keeps the rates legible as data rather than
-  // burying them in a hundred-branch expression.
-  const pairs = entries.map((e) => `${indent}    ${lit(e.key.join('|'), backend)}: ${e.value},`);
-  const dict = `{\n${pairs.join('\n')}\n${indent}  }`;
-  const keyExpr = keys.length === 1
-    ? col(keys[0], backend)
-    : backend === 'polars'
-      ? `pl.concat_str([${keys.map((k) => col(k, backend)).join(', ')}], separator="|")`
-      : `F.concat_ws("|", ${keys.map((k) => col(k, backend)).join(', ')})`;
-
-  return backend === 'polars'
-    ? `${keyExpr}.replace_strict(${dict}, default=None)`
-    : `${keyExpr}.cast("string").replace(${dict})`;
+  // SQL and Spark both get a condition chain. Spark has no column-level
+  // mapping operator — `Column.replace` does not exist, only the DataFrame one
+  // — so a dict here would compile to an AttributeError at run time.
+  const arms = entries.map<CaseArm>((e) => ({
+    cond: backend === 'sql'
+      ? keys.map((k, i) => `${k} = ${lit(e.key[i], 'sql')}`).join(' AND ')
+      : keys.map((k, i) => `(${col(k, backend)} == ${lit(e.key[i], backend)})`).join(' & '),
+    value: backend === 'sql' ? String(e.value) : `F.lit(${e.value})`,
+    note: backend === 'sql' ? e.citation : e.key.join('|'),
+  }));
+  return emitCaseChain(arms, null, backend, indent);
 }
 
 function emitBucket(spec: DerivationSpec, backend: Backend, indent: string): string {
   const ladder = MATURITY_LADDERS[spec.ladder] || [];
   const days = `${spec.name}__days`;
 
-  if (backend === 'sql') {
-    const arms = ladder
-      .filter((b) => Number.isFinite(b.maxDays))
-      .map((b) => `${indent}  WHEN ${days} <= ${b.maxDays} THEN ${lit(b.name, 'sql')}`);
-    const last = ladder[ladder.length - 1];
-    return `CASE\n${indent}  WHEN ${spec.field} IS NULL THEN ${lit(OPEN_BUCKET, 'sql')}\n` +
-           `${arms.join('\n')}\n${indent}  ELSE ${lit(last.name, 'sql')}\n${indent}END`;
-  }
+  // A position with no stated maturity is open, not zero-days. That arm has to
+  // come first, before any day-count comparison can claim it.
+  const isNull = backend === 'sql'
+    ? `${spec.field} IS NULL`
+    : backend === 'polars'
+      ? `${col(spec.field, backend)}.is_null()`
+      : `${col(spec.field, backend)}.isNull()`;
 
-  const when = backend === 'polars' ? 'pl.when' : 'F.when';
-  const value = backend === 'polars' ? 'pl.lit' : 'F.lit';
-  const isNull = backend === 'polars'
-    ? `${col(spec.field, backend)}.is_null()`
-    : `${col(spec.field, backend)}.isNull()`;
-  const arms = [`${indent}  ${when}(${isNull}).then(${value}(${lit(OPEN_BUCKET, backend)}))`]
-    .concat(
-      ladder
-        .filter((b) => Number.isFinite(b.maxDays))
-        .map((b) => `${indent}  ${when}(${col(days, backend)} <= ${b.maxDays})` +
-                    `.then(${value}(${lit(b.name, backend)}))`),
-    );
+  const arms: CaseArm[] = [{ cond: isNull, value: litExpr(OPEN_BUCKET, backend) }].concat(
+    ladder
+      .filter((b) => Number.isFinite(b.maxDays))
+      .map((b) => ({
+        cond: backend === 'sql'
+          ? `${days} <= ${b.maxDays}`
+          : `(${col(days, backend)} <= ${b.maxDays})`,
+        value: litExpr(b.name, backend),
+      })),
+  );
+
   const last = ladder[ladder.length - 1];
-  return `(\n${arms.join('\n')}\n${indent}  .otherwise(${value}(${lit(last.name, backend)}))\n${indent})`;
+  return emitCaseChain(arms, litExpr(last.name, backend), backend, indent);
 }
 
 function emitDaysBetween(spec: DerivationSpec, backend: Backend): string {
@@ -287,25 +327,36 @@ function emitMeasure(m: Measure, backend: Backend): string | null {
   const pred = compilePredicate(m.f.where || '');
   const filtered = !pred.empty && !pred.err;
 
+  // A sum over no rows is zero; an average over no rows is not a number. Every
+  // engine has an opinion here and they do not agree — SQL and Spark return
+  // NULL from an empty SUM, Polars returns 0 — so the emitter states the
+  // convention rather than inheriting whichever one the backend happens to
+  // hold. A filed row reading "0" where another engine files a blank is a
+  // reconciliation break, and the conformance suite catches it as one.
+  const zeroWhenEmpty = agg === 'sum';
+
   if (backend === 'sql') {
     const fn = SQL_AGG[agg] || 'SUM';
     // FILTER (WHERE …) rather than a CASE, so a row excluded by the predicate
     // does not become a zero inside an average.
     const where = filtered ? ` FILTER (WHERE ${emitPredicate(pred.ast, 'sql')})` : '';
-    return `${fn}(${field})${where} AS ${m.name}`;
+    const expr = `${fn}(${field})${where}`;
+    return `${zeroWhenEmpty ? `COALESCE(${expr}, 0)` : expr} AS ${m.name}`;
   }
 
   if (backend === 'polars') {
     const base = filtered
       ? `pl.col("${field}").filter(${emitPredicate(pred.ast, 'polars')})`
       : `pl.col("${field}")`;
-    return `${base}.${agg === 'count' ? 'len' : agg}().alias("${m.name}")`;
+    const expr = `${base}.${agg === 'count' ? 'len' : agg}()`;
+    return `${zeroWhenEmpty ? `${expr}.fill_null(0)` : expr}.alias("${m.name}")`;
   }
 
   const inner = filtered
     ? `F.when(${emitPredicate(pred.ast, 'pyspark')}, F.col("${field}"))`
     : `F.col("${field}")`;
-  return `F.${agg}(${inner}).alias("${m.name}")`;
+  const expr = `F.${agg}(${inner})`;
+  return `${zeroWhenEmpty ? `F.coalesce(${expr}, F.lit(0))` : expr}.alias("${m.name}")`;
 }
 
 // ---------------------------------------------------------------------------

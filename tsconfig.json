@@ -20,5 +20,11 @@
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false
   },
-  "include": ["src"]
+  "include": ["src"],
+
+  // The Polars leg shells out to Python and writes temp files, so it needs Node
+  // globals. Pulling those into the app project would make `process`, `Buffer`
+  // and friends look available to code that ships to a browser, so that one
+  // file is typechecked separately — see tsconfig.harness.json.
+  "exclude": ["src/engine/conformance-python.test.ts"]
 }

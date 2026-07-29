@@ -7,8 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc -b --noEmit && tsc -p tsconfig.harness.json --noEmit",
     "test": "vitest run",
+    "conformance": "vitest run src/engine/conformance.test.ts src/engine/conformance-python.test.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -21,6 +22,8 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@duckdb/node-api": "^1.5.5-r.2",
+    "@types/node": "^26.1.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^5.0.0",

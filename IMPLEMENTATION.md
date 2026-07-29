@@ -6,7 +6,8 @@ React + TypeScript app with a real CodeMirror 6 editor.
 ```
 npm install
 npm run dev        # http://localhost:5173
-npm run test       # 81 engine tests
+npm run test       # 192 engine + conformance tests
+npm run conformance  # just the executed backends (needs python3 + polars)
 npm run build      # typecheck + production bundle
 ```
 
@@ -42,9 +43,12 @@ src/
     trace.ts                 derivation trace + blast radius
     plan.ts                  generated query + backend conformance
     format.ts                number formatting
+    conformance.ts           fixture → DDL, plan retargeting, tolerance policy
     engine.test.ts           82 tests — measures, diagnostics, fixes
     classification.test.ts   rules, coverage, effective dating
     compile.test.ts          plan emission, report grain, reconciliation
+    conformance.test.ts      the compiled SQL, executed on DuckDB
+    conformance-python.test.ts  the compiled Polars, executed; PySpark, parsed
   editor/                    CodeMirror 6 extensions
     context.ts               app state in editor state; live re-parse of the doc
     pills.ts                 replace-widgets, atomic ranges, edit-reveal
@@ -278,9 +282,62 @@ single-row entities); `stress` applies a shock. Calibration is computed against
   unmapped instead of being silently absorbed. The `edge` fixture carries
   exactly such a segment.
 
+## Conformance
+
+The compiler's claim is that the nightly pipeline runs the same definition the
+author verified. Until this layer existed, that claim was checked by asserting
+the *shape* of the emitted plan — arms in declared order, rates inlined, each
+derivation in its own stage. Shape assertions catch typos. They do not catch a
+plan that is wrong in a way that reads correctly, and every defect below was
+exactly that.
+
+`npm run conformance` seeds an in-memory DuckDB with the same fixture the
+browser evaluates, runs the compiler's own SQL, and compares the filed table
+row for row against the in-browser evaluator. The Polars plan gets the same
+treatment through a real Python process. In both cases only the *reader* is
+substituted — `scan_iceberg` becomes `scan_csv`, and `retargetPolars` throws
+rather than silently passing a plan it could not retarget, because a harness
+allowed to touch the logic proves nothing.
+
+The tolerance policy is per-measure and read off the declared `format`:
+
+| kind | rule | why |
+| --- | --- | --- |
+| counts | exact | an identity, not a measurement |
+| currency | ±$0.005 | the unit a submission is reconciled in |
+| ratios | 1e-9 relative | two engines summing the same addends in different orders differ in the last bits |
+
+A null grouping key and an empty one are folded together — both mean "no rule
+fired" — and that is the only normalisation the comparison performs.
+
+Three real defects surfaced the moment the plans were executed rather than
+read:
+
+- **The Polars and PySpark rule sets were not valid code.** Each arm was
+  emitted as its own `pl.when(…).then(…)` on its own line, so what looked like
+  a thirteen-rule chain was thirteen separate expressions — twelve of them
+  evaluated and discarded. `emitCaseChain` now emits one chain per backend, and
+  the PySpark plan is parsed by CPython on every run to keep it that way.
+- **PySpark called `Column.replace`, which does not exist.** It is a `DataFrame`
+  method; on a column it raises at run time, and nothing about reading the plan
+  reveals that. Spark now gets a condition chain, the same as SQL.
+- **An empty group summed to zero in the browser and to NULL in SQL.** Sixty
+  filed rows differed — every group whose maturity bucket put it outside the
+  30-day window. The engines genuinely disagree here (Polars returns 0, SQL and
+  Spark return NULL), so the emitter now states the convention instead of
+  inheriting whichever one the backend happens to hold: `sum` over nothing is
+  zero, every other aggregate over nothing is absent.
+
+PySpark is checked for syntax and chaining, not for numbers — a JVM Spark
+session is not something a unit test should start, and `pip install pyspark`
+does not build in this environment. That is a real gap: the PySpark emitter is
+proved to be *valid, chained Python* and nothing more. The two defects above
+that it shared with Polars are gone, but a Spark-specific arithmetic difference
+would not be caught here.
+
 ## Testing
 
-`npm run test` runs 159 engine tests covering the calibrated figures, the
+`npm run test` runs 192 engine tests covering the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius
 (including termination on a cyclic graph), completion scoping, and the parser's
