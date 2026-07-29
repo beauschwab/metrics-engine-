@@ -8,7 +8,7 @@ npm install
 npm run dev        # http://localhost:5173
 npm run test       # 192 engine + conformance tests
 npm run conformance  # just the executed backends (needs python3 + polars)
-npm run e2e        # 32 browser checks against the built bundle
+npm run e2e        # 33 browser checks against the built bundle
 npm run verify     # all of the above, plus both typecheck projects
 npm run build      # typecheck + production bundle
 ```
@@ -363,7 +363,7 @@ structurally impossible to detect.
 
 ## End to end
 
-`npm run e2e` drives the built bundle in headless Chromium — 32 checks in
+`npm run e2e` drives the built bundle in headless Chromium — 33 checks in
 `e2e/`, split between the surface and the editor. It runs against `vite
 preview` rather than the dev server, because a production-only failure in
 chunking or CSS ordering is exactly the kind a dev-server test cannot see.

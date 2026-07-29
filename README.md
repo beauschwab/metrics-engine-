@@ -11,7 +11,7 @@ editor.
 ```
 npm install
 npm run dev        # http://localhost:5173
-npm run verify     # typecheck, 192 unit tests, 32 browser checks
+npm run verify     # typecheck, 192 unit tests, 33 browser checks
 npm run build      # typecheck + production bundle
 ```
 
@@ -69,7 +69,7 @@ and PySpark is parsed rather than executed.
 ```
 npm run test         # 192 unit + conformance tests
 npm run conformance  # just the executed backends (needs python3 + polars)
-npm run e2e          # 32 browser checks against the built bundle
+npm run e2e          # 33 browser checks against the built bundle
 ```
 
 The browser suite resolves Chromium the ordinary way. On a machine that already

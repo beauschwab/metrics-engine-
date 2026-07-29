@@ -299,6 +299,35 @@ test.describe('classification', () => {
 
 // ---------------------------------------------------------------------------
 
+test.describe('every combination', () => {
+  test('each document survives each fixture', async ({ page }) => {
+    const errors = await watchConsole(page);
+    const files = [
+      'liquidity_pit', 'irrbb_eve', 'fr2052a_product_id',
+      'lcr_outflow_rates', 'fr2052a_outflows', 'fr2052a_submission',
+    ];
+
+    // Eighteen combinations, and the ones that break are never the ones you
+    // check by hand — `edge` carries zeros, nulls and a segment no rule maps,
+    // which is exactly what a division or a lookup falls over on.
+    for (const f of files) {
+      await openFile(page, f);
+      for (const fixture of ['nominal', 'edge', 'stress']) {
+        await page.locator('#mdl-fixture').selectOption(fixture);
+        await expect(page.locator('.mdl-col-validation')).toBeVisible();
+        await expect(page.locator(EDITOR)).toBeVisible();
+        // A surface that renders nothing is not a surface that survived.
+        expect(
+          (await page.locator('.mdl-col-validation').innerText()).length,
+          `${f} on ${fixture}`,
+        ).toBeGreaterThan(40);
+      }
+    }
+
+    expect(errors).toEqual([]);
+  });
+});
+
 test.describe('layout', () => {
   test('remembers a resized column across a reload', async ({ page }) => {
     const registry = page.locator('.mdl-col-registry');
