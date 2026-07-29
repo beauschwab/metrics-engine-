@@ -684,3 +684,58 @@ input:focus-visible,
   display: block;
   height: 100%;
 }
+
+/* ---- report --------------------------------------------------------------
+   The filed table: grouping keys on the left, measures right-aligned so
+   decimal points line up down the column. */
+
+.mdl-report-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 4px 0;
+  border-bottom: 1px solid var(--mdl-border);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mdl-text-faint);
+}
+
+.mdl-report-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.mdl-report-row:hover {
+  background: var(--mdl-raised-2);
+}
+
+.mdl-report-num {
+  min-width: 74px;
+  text-align: right;
+  font-size: 11px;
+}
+
+.mdl-plan {
+  margin: 0;
+  padding: 14px 16px;
+  font-family: var(--mdl-mono);
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--mdl-text);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* The grouping key stays on one line — a wrapped key doubles every row's
+   height and the table stops being scannable. */
+.mdl-report-key {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+  flex: none;
+}

@@ -19,6 +19,9 @@ import { dependents, traceNodes, type TraceMode } from '../engine/trace';
 import { HUE, type FixtureName } from '../engine/vocab';
 import { CoveragePanel } from './CoveragePanel';
 import { ParameterPanel } from './ParameterPanel';
+import { ReportPanel } from './ReportPanel';
+import { readReport } from '../engine/compile';
+import type { Registry } from '../engine/registry';
 import type { Migration } from '../engine/rows';
 import { Pill } from './Pill';
 import { RollingNumber } from './RollingNumber';
@@ -44,6 +47,8 @@ interface Props {
   /** Notional that would change classification versus the filed version. */
   migration: Migration[];
   onPickRule(id: string): void;
+  /** Every document in the workspace — a report reaches across to its view. */
+  registry: Registry;
 }
 
 const SPARK_POINTS = 42;
@@ -52,8 +57,16 @@ export function ValidationColumn(props: Props) {
   const {
     graph, evaluator, diagnostics, fixture, active, baseline, lastGood, traceMode, collapsed,
     vtab, onVtab, onTraceMode, onToggleNode, onPickMeasure, onHoverPill, onLeavePill,
-    migration, onPickRule,
+    migration, onPickRule, registry,
   } = props;
+
+  if (graph.kind === 'report') {
+    const spec = readReport(graph);
+    const viewGraph = Object.values(registry.graphs).find(
+      (x) => x.kind === 'metrics_view' && (x.view.view || '').trim() === spec.view,
+    ) || null;
+    return <ReportPanel spec={spec} view={viewGraph} registry={registry} fixture={fixture} />;
+  }
 
   // A rule set and a rate table are verified by coverage, not by a value.
   if (graph.kind === 'classification') {

@@ -27,6 +27,8 @@ src/
     fixtures.ts              seeded 60-day test data, calibrated to the spec's numbers
     documents.ts             the five documents the surface opens with
     registry.ts              cross-document resolution + effective dating
+    compile.ts               one AST → SQL · Polars · PySpark
+    report.ts                the grouped table that gets filed
     rows.ts                  Tier E row-level derivations, coverage, migration
     classification-diagnostics.ts  the KEEL06x/07x families
     parse.ts                 position-preserving YAML read
@@ -41,7 +43,8 @@ src/
     plan.ts                  generated query + backend conformance
     format.ts                number formatting
     engine.test.ts           82 tests — measures, diagnostics, fixes
-    classification.test.ts   45 tests — rules, coverage, effective dating
+    classification.test.ts   rules, coverage, effective dating
+    compile.test.ts          plan emission, report grain, reconciliation
   editor/                    CodeMirror 6 extensions
     context.ts               app state in editor state; live re-parse of the doc
     pills.ts                 replace-widgets, atomic ranges, edit-reveal
@@ -129,6 +132,7 @@ Three document kinds share one parser, discriminated by `kind:`:
 | `metrics_view` | derivations + measures | value, trace, blast radius |
 | `classification` | an ordered rule set | coverage, precedence, migration |
 | `parameter_set` | governed assumptions | in-force window, keys, citations |
+| `report` | a grain + a destination | the rows that would be filed |
 
 **Row-level operators are the safest tier in the algebra, not an extension of
 its riskiest part.** Every one is stateless and row-wise, so a rule chain maps
@@ -178,6 +182,64 @@ Subsumption is evaluated *empirically against the test data*, not proved. That
 is a deliberate limit: it catches the rule that is dead on real data, and the
 message says so in those terms rather than claiming a proof it does not have.
 
+## The compiler
+
+`predicate.ts` parses to an AST and *derives* the row-level closure from it.
+That is the architectural point rather than a refactor: the same tree that
+decides a row in the browser is what `compile.ts` walks to emit SQL, Polars and
+PySpark. One definition, one parse, several targets, and no second
+implementation to drift against.
+
+```
+where: direction = 'OUTFLOW' and insured_flag = true
+
+SQL      (direction = 'OUTFLOW' AND insured_flag = TRUE)
+Polars   ((pl.col("direction") == 'OUTFLOW') & (pl.col("insured_flag") == True))
+PySpark  ((F.col("direction") == 'OUTFLOW') & (F.col("insured_flag") == True))
+```
+
+Rule sets compile to a nested `CASE` **in declared order**, so first-match-wins
+is preserved by construction rather than depending on each engine evaluating
+branches alike. There is deliberately no `ELSE` arm: an unmatched record
+arrives as NULL and gets caught, instead of being swept into a bucket nobody
+chose.
+
+Parameter sets are **inlined as literal mappings**, so the compiled plan
+carries the regulatory rates *and their citations* where an auditor reading the
+query can see them.
+
+Derivations become chained CTEs, one stage each. SQL resolves a `SELECT`'s
+aliases only in later stages, so a helper column has to be defined before the
+expression that reads it — emitting them side by side produces a query that
+fails on every engine. A test asserts no stage references an alias declared
+beside it.
+
+A `report` declares a grain and a destination:
+
+```yaml
+kind: report
+view: fr2052a_outflows
+grouping: [product_id, maturity_bucket, currency, entity_id]
+measures: [gross_outflow_balance, weighted_outflows_30d]
+materialize:
+  target: iceberg
+  table: reg.fr2052a_daily
+  partition_by: [as_of_date]
+  mode: overwrite_partitions
+```
+
+Its panel shows the rows that would be filed, and the compiled plan per
+backend beside them — because "the pipeline runs the same definition you
+verified" is a claim, and a claim should be inspectable. The suite asserts the
+filed totals reconcile to the view's own measure values, which is the property
+that stops the submission and the dashboard disagreeing.
+
+Report diagnostics: KEEL080 unknown view, KEEL081 no grouping, KEEL082 a
+grouping column nothing produces, KEEL083 a measure the view does not define,
+KEEL084 a portfolio-level cap being evaluated per group (the 75% inflow cap is
+not 75% per product ID), KEEL085 no materialize target, KEEL086 a target with
+no partition column.
+
 ## Data
 
 `fixtures.ts` generates 60 days × 4 entities × 40 instruments per source model
@@ -218,7 +280,7 @@ single-row entities); `stress` applies a shock. Calibration is computed against
 
 ## Testing
 
-`npm run test` runs 127 engine tests covering the calibrated figures, the
+`npm run test` runs 159 engine tests covering the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius
 (including termination on a cyclic graph), completion scoping, and the parser's

@@ -69,7 +69,7 @@ export default function App() {
   // about *change*, so they need something to compare against.
   const shipped = useMemo(() => parseDoc(INITIAL_DOCS[file]), [file]);
 
-  const { graph, evaluator, diagnostics, hints, loopMs } = useMemo(() => {
+  const { graph, evaluator, diagnostics, hints, registry, loopMs } = useMemo(() => {
     const t0 = performance.now();
     // Classifications and parameter sets are cross-document references, so the
     // whole workspace is resolved before the active file is evaluated.
@@ -80,7 +80,7 @@ export default function App() {
     const h = g.kind === 'metrics_view' ? refactorHints(g) : [];
     if (g.kind === 'metrics_view') ev.snapshot();
     return {
-      graph: g, evaluator: ev, diagnostics: d, hints: h,
+      graph: g, evaluator: ev, diagnostics: d, hints: h, registry,
       loopMs: Math.round(performance.now() - t0),
     };
   }, [docs, file, fixture, shipped]);
@@ -330,6 +330,7 @@ export default function App() {
         onLeavePill={leaveCard}
         migration={migration}
         onPickRule={(id) => editor.current?.goToMeasure(id)}
+        registry={registry}
       />
 
       {card ? (

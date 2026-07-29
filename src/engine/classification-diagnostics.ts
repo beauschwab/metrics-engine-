@@ -25,12 +25,15 @@ import {
   type Registry,
 } from './registry';
 import { AS_OF } from './fixtures';
+import { missingGrouping, missingMeasures, readReport } from './compile';
+import { grainRisky } from './report';
 import { COLUMNS, DERIVATION_OPS, DOMAINS, MATURITY_LADDERS } from './vocab';
 
 /** Codes here that mean the definition cannot produce a trustworthy number. */
 export const CLASSIFICATION_BLOCKING: Record<string, true> = {
   KEEL060: true, KEEL064: true, KEEL065: true, KEEL066: true,
   KEEL068: true, KEEL069: true, KEEL070: true, KEEL071: true, KEEL076: true,
+  KEEL080: true, KEEL081: true, KEEL082: true, KEEL083: true,
 };
 
 const EMPTY_REGISTRY = buildRegistry({});
@@ -419,6 +422,98 @@ export function diagnoseDerivations(
       token: miss.key,
     });
   });
+
+  return out.filter((d) => d.line >= 0);
+}
+
+/**
+ * A report is a grain declaration plus a destination. The checks are about
+ * whether it can actually be produced and written, and whether grouping it
+ * changes what its measures mean.
+ */
+export function diagnoseReport(g: Graph, registry: Registry): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  const report = readReport(g);
+  const viewGraph = Object.values(registry.graphs).find(
+    (x) => x.kind === 'metrics_view' && (x.view.view || '').trim() === report.view,
+  ) || null;
+
+  const lineOf = (key: string) => Math.max(0, g.info.findIndex((i) => i.key === key));
+
+  if (!report.view || !viewGraph) {
+    out.push({
+      code: 'KEEL080',
+      sev: 'error',
+      message: `There is no metrics view called ${report.view || '(none)'}`,
+      line: lineOf('view'),
+      token: report.view,
+    });
+    return out;
+  }
+
+  if (!report.grouping.length) {
+    out.push({
+      code: 'KEEL081',
+      sev: 'error',
+      message: 'A report needs a grouping — without one there is no grain to file at',
+      line: lineOf('grouping'),
+    });
+  }
+
+  const sourceCols = COLUMNS[viewGraph.view.source] || [];
+  missingGrouping(report, viewGraph, sourceCols).forEach((c) => {
+    out.push({
+      code: 'KEEL082',
+      sev: 'error',
+      message: `${c} is neither a column on ${viewGraph.view.source} nor something a derivation makes`,
+      line: lineOf('grouping'),
+      token: c,
+    });
+  });
+
+  missingMeasures(report, viewGraph).forEach((m) => {
+    out.push({
+      code: 'KEEL083',
+      sev: 'error',
+      message: `${report.view} does not define a measure called ${m}`,
+      line: lineOf('measures'),
+      token: m,
+    });
+  });
+
+  // Grouping a measure that carries a portfolio-level cap changes what it
+  // means. The 75% inflow cap is not 75% per product ID.
+  grainRisky(report, viewGraph).forEach((m) => {
+    out.push({
+      code: 'KEEL084',
+      sev: 'warn',
+      message:
+        `${m} caps or floors against a total. Evaluated per group it means something ` +
+        'different from the portfolio figure — confirm that is what you intend to file.',
+      line: lineOf('measures'),
+      token: m,
+    });
+  });
+
+  if (!report.table) {
+    out.push({
+      code: 'KEEL085',
+      sev: 'warn',
+      message: 'No materialize target — this report can be read but never written',
+      line: lineOf('materialize'),
+    });
+  } else if (!report.partitionBy.length) {
+    out.push({
+      code: 'KEEL086',
+      sev: 'warn',
+      message:
+        `${report.table} has no partition column, so a rerun would rewrite every date ` +
+        'rather than the one being restated',
+      line: lineOf('table'),
+      fix: { kind: 'insertAfter', line: lineOf('table'), lines: ['  partition_by: [as_of_date]'] },
+      fixLabel: 'Partition by as_of_date',
+    });
+  }
 
   return out.filter((d) => d.line >= 0);
 }

@@ -19,6 +19,7 @@ import {
 } from './vocab';
 import {
   CLASSIFICATION_BLOCKING, diagnoseClassification, diagnoseDerivations, diagnoseParameterSet,
+  diagnoseReport,
 } from './classification-diagnostics';
 import { buildRegistry, type Registry } from './registry';
 import { derivationsOf } from './rows';
@@ -165,6 +166,7 @@ export function diagnose(
 ): Diagnostic[] {
   if (g.kind === 'classification') return diagnoseClassification(g, ev, registry, baseline);
   if (g.kind === 'parameter_set') return diagnoseParameterSet(g, registry, baseline);
+  if (g.kind === 'report') return diagnoseReport(g, registry);
   return diagnoseMetricsView(g, ev, baseline, registry);
 }
 

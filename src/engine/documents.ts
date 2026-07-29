@@ -6,6 +6,7 @@ export const VIEW_FILES = [
   'fr2052a_product_id',
   'lcr_outflow_rates',
   'fr2052a_outflows',
+  'fr2052a_submission',
 ] as const;
 export type ViewFile = (typeof VIEW_FILES)[number];
 
@@ -503,12 +504,40 @@ measures:
     format: currency_usd
     valid_range: [0, 900000000000]`;
 
+/**
+ * The filed artifact.
+ *
+ * A report is a declared grouping over a view's measures plus where the result
+ * lands. It is what the nightly pipeline pins and materialises — the grain of
+ * the submission, not a number on a screen.
+ */
+const FR2052A_SUBMISSION = `version: 1
+kind: report
+name: fr2052a_submission
+display_name: FR 2052a — daily submission
+view: fr2052a_outflows
+grouping: [product_id, maturity_bucket, currency, entity_id]
+measures: [gross_outflow_balance, weighted_outflows_30d]
+
+materialize:
+  target: iceberg
+  table: reg.fr2052a_daily
+  partition_by: [as_of_date]
+  mode: overwrite_partitions
+
+governance:
+  owner: Liquidity Regulatory Reporting
+  sr_11_7_tier: 1
+  citation: FR 2052a Instructions
+  validation_status: validated`;
+
 export const INITIAL_DOCS: Record<ViewFile, string> = {
   liquidity_pit: LIQUIDITY_PIT,
   irrbb_eve: IRRBB_EVE,
   fr2052a_product_id: FR2052A_PRODUCT_ID,
   lcr_outflow_rates: LCR_OUTFLOW_RATES,
   fr2052a_outflows: FR2052A_OUTFLOWS,
+  fr2052a_submission: FR2052A_SUBMISSION,
 };
 
 /** What each document opens on — a measure, or the artifact itself. */
@@ -518,4 +547,5 @@ export const DEFAULT_MEASURE: Record<ViewFile, string> = {
   fr2052a_product_id: 'OD-1',
   lcr_outflow_rates: 'O.D.1',
   fr2052a_outflows: 'net_outflows_30d',
+  fr2052a_submission: 'fr2052a_submission',
 };

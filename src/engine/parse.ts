@@ -35,7 +35,7 @@ export interface Measure {
 }
 
 /** What sort of document this is. Defaults to a metrics view. */
-export type DocKind = 'metrics_view' | 'classification' | 'parameter_set';
+export type DocKind = 'metrics_view' | 'classification' | 'parameter_set' | 'report';
 
 export interface ViewHeader {
   source: string;

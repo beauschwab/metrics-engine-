@@ -35,6 +35,7 @@ const LABEL: Record<string, string> = {
   metrics_view: 'measures',
   classification: 'rules',
   parameter_set: 'rates',
+  report: 'filed',
 };
 
 /** Blocks of any kind — measures, rules, or parameter entries. */
@@ -49,10 +50,19 @@ function primarySection(g: Graph): string {
   return 'measures';
 }
 
+/**
+ * A report has no blocks — its grain and measures are inline lists — so the
+ * count reflects what it files rather than a section that does not exist.
+ */
+function filedCount(g: Graph): number {
+  return (g.view.measures || '').replace(/[[\]]/g, '').split(',').filter((x) => x.trim()).length;
+}
+
 const FILE_GLYPH: Record<string, string> = {
   metrics_view: '⧉',
   classification: '⌗',
   parameter_set: '≡',
+  report: '▤',
 };
 
 export function RegistryPanel({
@@ -62,6 +72,7 @@ export function RegistryPanel({
   // A measure's block runs to the start of the next one — that span is what
   // its status dot aggregates.
   const items: Measure[] = sectionBlocks(graph, primarySection(graph));
+  const headerCount = graph.kind === 'report' ? filedCount(graph) : items.length;
   const coverage: Coverage | null =
     graph.kind === 'classification' ? evaluator.selfCoverage() : null;
 
@@ -99,7 +110,7 @@ export function RegistryPanel({
         <span className="mdl-eyebrow">Measures</span>
         <span style={{ flex: 1 }} />
         <span className="tnum" style={{ fontSize: 10, color: 'var(--mdl-text-faint)' }}>
-          {items.length} {LABEL[graph.kind]}
+          {headerCount} {LABEL[graph.kind]}
         </span>
       </div>
 
@@ -137,7 +148,7 @@ export function RegistryPanel({
                 <span>{f}.yaml</span>
                 <span style={{ flex: 1 }} />
                 <span className="tnum" style={{ fontSize: 10, color: 'var(--mdl-text-faint)' }}>
-                  {isCurrent ? items.length : countBlocks(docs[f])}
+                  {isCurrent ? headerCount : countBlocks(docs[f])}
                 </span>
               </button>
 
