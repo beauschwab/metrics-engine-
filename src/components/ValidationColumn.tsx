@@ -17,6 +17,9 @@ import { reqs, type Graph } from '../engine/parse';
 import { conformance as conformanceOf, planLines } from '../engine/plan';
 import { dependents, traceNodes, type TraceMode } from '../engine/trace';
 import { HUE, type FixtureName } from '../engine/vocab';
+import { CoveragePanel } from './CoveragePanel';
+import { ParameterPanel } from './ParameterPanel';
+import type { Migration } from '../engine/rows';
 import { Pill } from './Pill';
 import { RollingNumber } from './RollingNumber';
 
@@ -38,6 +41,9 @@ interface Props {
   onPickMeasure(name: string): void;
   onHoverPill(name: string, e: MouseEvent<HTMLElement>): void;
   onLeavePill(): void;
+  /** Notional that would change classification versus the filed version. */
+  migration: Migration[];
+  onPickRule(id: string): void;
 }
 
 const SPARK_POINTS = 42;
@@ -46,7 +52,39 @@ export function ValidationColumn(props: Props) {
   const {
     graph, evaluator, diagnostics, fixture, active, baseline, lastGood, traceMode, collapsed,
     vtab, onVtab, onTraceMode, onToggleNode, onPickMeasure, onHoverPill, onLeavePill,
+    migration, onPickRule,
   } = props;
+
+  // A rule set and a rate table are verified by coverage, not by a value.
+  if (graph.kind === 'classification') {
+    return (
+      <div className="mdl-col mdl-col-validation">
+        <div className="mdl-tabs">
+          <div className="mdl-tab" data-current="true">Coverage</div>
+        </div>
+        <div className="mdl-scroll" style={{ flex: 1 }}>
+          <CoveragePanel
+            coverage={evaluator.selfCoverage()}
+            migration={migration}
+            onPickRule={onPickRule}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (graph.kind === 'parameter_set') {
+    return (
+      <div className="mdl-col mdl-col-validation">
+        <div className="mdl-tabs">
+          <div className="mdl-tab" data-current="true">Assumptions</div>
+        </div>
+        <div className="mdl-scroll" style={{ flex: 1 }}>
+          <ParameterPanel graph={graph} />
+        </div>
+      </div>
+    );
+  }
 
   const value = evaluator.value(active);
   const measure = graph.byName[active] || null;

@@ -17,6 +17,11 @@ import {
   AGGREGATES, ALGEBRA_OPS, COLUMNS, DIMS, ENUMS, ENUM_LABEL, EXTERNAL, FUNCS,
   isReferenceName, KEYWORDS, spanPermitsMultipleDates, UNSUPPORTED, type Severity,
 } from './vocab';
+import {
+  CLASSIFICATION_BLOCKING, diagnoseClassification, diagnoseDerivations, diagnoseParameterSet,
+} from './classification-diagnostics';
+import { buildRegistry, type Registry } from './registry';
+import { derivationsOf } from './rows';
 
 export type Fix =
   | { kind: 'rename'; from: string; to: string; line: number }
@@ -49,6 +54,7 @@ export const COMPILE_BLOCKING: Record<string, true> = {
   KEEL001: true, KEEL002: true, KEEL003: true, KEEL004: true, KEEL005: true,
   KEEL007: true, KEEL010: true, KEEL012: true, KEEL020: true, KEEL022: true,
   KEEL024: true, KEEL044: true, KEEL052: true,
+  ...CLASSIFICATION_BLOCKING,
 };
 
 /** The line a field's text actually occupies — see `Measure.contentOf`. */
@@ -146,9 +152,32 @@ function shapeOf(m: Measure): string | null {
   return `${(m.f.agg || 'sum').trim()}(${m.f.field.trim()})|${(m.f.where || '').trim()}`;
 }
 
-export function diagnose(g: Graph, ev: Evaluator, baseline?: Graph): Diagnostic[] {
-  const out: Diagnostic[] = [];
-  const cols = COLUMNS[g.view.source] || [];
+/**
+ * Dispatch on document kind. A classification is not a metrics view with rules
+ * in it — the questions worth asking of each are different, so the rule sets
+ * are separate rather than one function branching internally.
+ */
+export function diagnose(
+  g: Graph,
+  ev: Evaluator,
+  baseline?: Graph,
+  registry: Registry = buildRegistry({}),
+): Diagnostic[] {
+  if (g.kind === 'classification') return diagnoseClassification(g, ev, registry, baseline);
+  if (g.kind === 'parameter_set') return diagnoseParameterSet(g, registry, baseline);
+  return diagnoseMetricsView(g, ev, baseline, registry);
+}
+
+function diagnoseMetricsView(
+  g: Graph,
+  ev: Evaluator,
+  baseline: Graph | undefined,
+  registry: Registry,
+): Diagnostic[] {
+  const out: Diagnostic[] = diagnoseDerivations(g, ev, registry);
+  // A derivation writes a column, so `field:` and `where:` may legitimately
+  // name it even though the source model does not.
+  const cols = (COLUMNS[g.view.source] || []).concat(derivationsOf(g).map((d) => d.name));
   const scope = Object.keys(g.byName).concat(Object.keys(EXTERNAL));
   const grainType = (g.view.type || '').trim();
   const span = (g.view.max_query_span || '').trim();

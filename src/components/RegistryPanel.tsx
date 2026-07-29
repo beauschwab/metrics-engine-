@@ -11,8 +11,9 @@ import type { Diagnostic } from '../engine/diagnostics';
 import type { Evaluator } from '../engine/evaluate';
 import { VIEW_FILES, type ViewFile } from '../engine/documents';
 import { fmt } from '../engine/format';
-import type { Graph } from '../engine/parse';
+import { sectionBlocks, type Graph, type Measure } from '../engine/parse';
 import { HUE } from '../engine/vocab';
+import type { Coverage } from '../engine/rows';
 
 interface Props {
   file: ViewFile;
@@ -30,9 +31,29 @@ interface Props {
 const IDLE_DOT = '#59636e';
 const OK_DOT = '#34c77b';
 
-function countMeasures(doc: string): number {
-  return (doc.match(/^\s*-\s*name:/gm) || []).length;
+const LABEL: Record<string, string> = {
+  metrics_view: 'measures',
+  classification: 'rules',
+  parameter_set: 'rates',
+};
+
+/** Blocks of any kind — measures, rules, or parameter entries. */
+function countBlocks(doc: string): number {
+  return (doc.match(/^\s*-\s+[a-z_0-9.]+:/gm) || []).length;
 }
+
+/** The list a document is really about. */
+function primarySection(g: Graph): string {
+  if (g.kind === 'classification') return 'rules';
+  if (g.kind === 'parameter_set') return 'entries';
+  return 'measures';
+}
+
+const FILE_GLYPH: Record<string, string> = {
+  metrics_view: '⧉',
+  classification: '⌗',
+  parameter_set: '≡',
+};
 
 export function RegistryPanel({
   file, docs, graph, evaluator, diagnostics, active, filter,
@@ -40,8 +61,23 @@ export function RegistryPanel({
 }: Props) {
   // A measure's block runs to the start of the next one — that span is what
   // its status dot aggregates.
+  const items: Measure[] = sectionBlocks(graph, primarySection(graph));
+  const coverage: Coverage | null =
+    graph.kind === 'classification' ? evaluator.selfCoverage() : null;
+
   const blockEnd = (index: number) =>
-    index + 1 < graph.measures.length ? graph.measures[index + 1].line : graph.lines.length;
+    index + 1 < items.length ? items[index + 1].line : graph.lines.length;
+
+  /** What sits on the right of a row: a value, an emitted code, or a rate. */
+  const metaFor = (m: Measure): string => {
+    if (graph.kind === 'classification') return (m.f.emit || '').trim();
+    if (graph.kind === 'parameter_set') {
+      const v = parseFloat((m.f[(graph.view.value || '').trim()] || '').trim());
+      return Number.isNaN(v) ? '—' : `${(v * 100).toFixed(1)}%`;
+    }
+    const r = evaluator.value(m.name);
+    return fmt(r.v, r.format);
+  };
 
   const worstIn = (from: number, to: number) => {
     const here = diagnostics.filter((d) => d.line >= from && d.line < to);
@@ -63,7 +99,7 @@ export function RegistryPanel({
         <span className="mdl-eyebrow">Measures</span>
         <span style={{ flex: 1 }} />
         <span className="tnum" style={{ fontSize: 10, color: 'var(--mdl-text-faint)' }}>
-          {graph.measures.length} measures
+          {items.length} {LABEL[graph.kind]}
         </span>
       </div>
 
@@ -95,21 +131,30 @@ export function RegistryPanel({
                   style={{ background: isCurrent ? fileDot : OK_DOT }}
                   aria-hidden="true"
                 />
-                <span aria-hidden="true" style={{ color: 'var(--mdl-measure)', fontSize: 11 }}>⧉</span>
+                <span aria-hidden="true" style={{ color: 'var(--mdl-measure)', fontSize: 11 }}>
+                  {isCurrent ? FILE_GLYPH[graph.kind] : '⧉'}
+                </span>
                 <span>{f}.yaml</span>
                 <span style={{ flex: 1 }} />
                 <span className="tnum" style={{ fontSize: 10, color: 'var(--mdl-text-faint)' }}>
-                  {isCurrent ? graph.measures.length : countMeasures(docs[f])}
+                  {isCurrent ? items.length : countBlocks(docs[f])}
                 </span>
               </button>
 
               {isCurrent
-                ? graph.measures
+                ? items
                     .map((m, i) => ({ m, i }))
                     .filter(({ m }) => !filter || m.name.indexOf(filter) >= 0)
                     .map(({ m, i }) => {
-                      const r = evaluator.value(m.name);
                       const tier = parseInt(m.f.sr_11_7_tier || '0', 10);
+                      // A rule that classifies nothing is the tree's equivalent
+                      // of a measure that will not compute.
+                      const ruleStat = coverage?.rules.find((x) => x.id === m.name);
+                      const dot = ruleStat
+                        ? ruleStat.records === 0
+                          ? HUE.warn
+                          : OK_DOT
+                        : worstIn(m.line, blockEnd(i));
                       return (
                         <div
                           key={m.name}
@@ -135,7 +180,7 @@ export function RegistryPanel({
                         >
                           <span
                             className="mdl-dot mdl-dot-sm"
-                            style={{ background: worstIn(m.line, blockEnd(i)) }}
+                            style={{ background: dot }}
                             aria-hidden="true"
                           />
                           <span
@@ -153,7 +198,7 @@ export function RegistryPanel({
                             className="tnum mono"
                             style={{ fontSize: 10, color: 'var(--mdl-text-faint)' }}
                           >
-                            {fmt(r.v, r.format)}
+                            {metaFor(m)}
                           </span>
                         </div>
                       );

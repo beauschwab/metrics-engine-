@@ -15,7 +15,9 @@ import { DATES, LAST, TABLES, type Row } from './fixtures';
 import { evalExpression } from './expression';
 import { compilePredicate } from './predicate';
 import { exprNames, reqs, type Graph, type Measure } from './parse';
-import { ENUMS, EXTERNAL, isReferenceName, type FixtureName } from './vocab';
+import { DOMAINS, ENUMS, EXTERNAL, isReferenceName, type FixtureName } from './vocab';
+import { deriveRows, runClassification, type Coverage, type RowResult } from './rows';
+import { buildRegistry, resolveClassification, type Registry } from './registry';
 
 export interface Series {
   /** One value per date in DATES. */
@@ -78,15 +80,73 @@ export function windowOp(op: string, s: number[], i: number, n: number): number 
   return op === 'variance' ? varc : Math.sqrt(varc);
 }
 
+/** sum(w·x) / sum(w) — NaN when no usable weight, never a silent plain mean. */
+export function weightedAvg(vals: number[], weights: number[]): number {
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < vals.length; i++) {
+    const w = weights[i];
+    if (!Number.isFinite(w)) continue;
+    num += w * vals[i];
+    den += w;
+  }
+  return den === 0 ? NaN : num / den;
+}
+
 const flat = (v: number) => DATES.map(() => v);
+
+/** An empty registry, for views that use no classifications or parameters. */
+const NO_REGISTRY: Registry = buildRegistry({});
 
 export class Evaluator {
   private memo: Record<string, Series> = {};
+  /** Derived rows per as-of date — computed once, read by every measure. */
+  private derived: Record<string, RowResult> = {};
 
   constructor(
     readonly graph: Graph,
     readonly fixture: FixtureName,
+    readonly registry: Registry = NO_REGISTRY,
   ) {}
+
+  /**
+   * Source rows for a date with every row-level derivation applied.
+   *
+   * Memoised per date because a view with a classification would otherwise
+   * re-run the whole rule set once per measure, and there are seven of them.
+   */
+  rowsFor(date: string): RowResult {
+    const hit = this.derived[date];
+    if (hit) return hit;
+    const table = (TABLES[this.fixture] || {})[this.graph.view.source] || {};
+    const r = deriveRows(this.graph, this.registry, table[date] || [], date, DOMAINS);
+    this.derived[date] = r;
+    return r;
+  }
+
+  /** Classification coverage at the as-of date — the answer for a rule set. */
+  coverage(): Record<string, Coverage> {
+    return this.rowsFor(DATES[LAST]).coverage;
+  }
+
+  /**
+   * Coverage for a classification document verified on its own source, so a
+   * rule set can be authored and checked without a metrics view around it.
+   */
+  selfCoverage(): Coverage | null {
+    if (this.graph.kind !== 'classification') return null;
+    const c = resolveClassification(this.registry, this.graph.docName, DATES[LAST]);
+    if (!c) return null;
+    const table = (TABLES[this.fixture] || {})[c.source] || {};
+    const rows = (table[DATES[LAST]] || []).map((r) => ({ ...r }));
+    return runClassification(c, rows, DOMAINS);
+  }
+
+  /** Everything the row stage could not resolve or look up. */
+  rowProblems(): Pick<RowResult, 'paramMisses' | 'unknownOps' | 'unresolved'> {
+    const r = this.rowsFor(DATES[LAST]);
+    return { paramMisses: r.paramMisses, unknownOps: r.unknownOps, unresolved: r.unresolved };
+  }
 
   series(name: string, seen?: Record<string, true>): Series {
     // Cycle detection has to bypass the cache: the same name means something
@@ -136,29 +196,36 @@ export class Evaluator {
 
   private computeSimple(m: Measure, fmt: string): Series {
     const pred = compilePredicate(m.f.where || '');
-    const table = (TABLES[this.fixture] || {})[this.graph.view.source] || {};
     const op = (m.f.agg || 'sum').trim();
     const field = (m.f.field || '').trim();
+    const weightField = (m.f.weight || '').trim();
 
     const s: number[] = [];
     let rows = 0;
     let scanned = 0;
 
     DATES.forEach((d, i) => {
-      const rs: Row[] = table[d] || [];
+      // Read the derived rows, so a measure can aggregate a classified column
+      // exactly as it aggregates a source column.
+      const rs: Row[] = this.rowsFor(d).rows;
       const vals: number[] = [];
+      const weights: number[] = [];
       let n = 0;
       for (let k = 0; k < rs.length; k++) {
         if (!pred.fn(rs[k])) continue;
         n++;
         const val = rs[k][field];
-        if (typeof val === 'number') vals.push(val);
+        if (typeof val === 'number' && !Number.isNaN(val)) {
+          vals.push(val);
+          const w = rs[k][weightField];
+          weights.push(typeof w === 'number' ? w : NaN);
+        }
       }
       if (i === LAST) {
         rows = n;
         scanned = rs.length;
       }
-      s.push(aggregate(op, vals));
+      s.push(op === 'weighted_avg' ? weightedAvg(vals, weights) : aggregate(op, vals));
     });
 
     return {

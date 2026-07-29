@@ -83,6 +83,89 @@ function buildTable(source: string, fx: FixtureName): Table {
   return byDate;
 }
 
+// ---------------------------------------------------------------------------
+// FR 2052a position data
+// ---------------------------------------------------------------------------
+
+const SEGMENTS = ['RETAIL', 'SMALL_BUSINESS', 'WHOLESALE'] as const;
+const ACCOUNT_TYPES = ['TRANSACTIONAL', 'SAVINGS', 'TIME', 'OPERATIONAL', 'NON_OPERATIONAL'] as const;
+const COUNTERPARTIES = ['RETAIL', 'SMB', 'NONFIN_CORP', 'FINANCIAL', 'SOVEREIGN'] as const;
+const COLLATERAL = ['L1', 'L2A', 'L2B', 'NON_HQLA', 'UNSECURED'] as const;
+
+/**
+ * Positions as a source system hands them over: no product ID, no maturity
+ * bucket, no rate. Those are exactly what the classification and parameter
+ * layers derive — which is the point of the fixture.
+ *
+ * `edge` deliberately includes a PUBLIC_SECTOR segment that no shipped rule
+ * matches, so unmapped-record detection has something real to find.
+ */
+function build2052a(fx: FixtureName): Table {
+  const r = seeded(31);
+  const byDate: Table = {};
+  const pick = <T,>(list: readonly T[], draw: number) => list[Math.floor(draw * list.length)];
+
+  DATES.forEach((d, di) => {
+    const rows: Row[] = [];
+    const drift = 1 + 0.0009 * di + 0.018 * Math.sin(di / 5.1);
+    const shock = fx === 'stress' ? 1.34 : 1;
+
+    ENTITIES.forEach((entity, ei) => {
+      for (let k = 0; k < (fx === 'edge' ? 24 : 48); k++) {
+        // Each attribute gets its own draw. Deriving several of them from one
+        // counter correlates them — with `segment` and `insured_flag` on the
+        // same modulus, no row can be both retail and insured, and the rule
+        // that reads for exactly that combination silently matches nothing.
+        const nSeg = r();
+        const nAcct = r();
+        const nCpty = r();
+        const nIns = r();
+        const nSec = r();
+        const nColl = r();
+        const nDir = r();
+        const nMat = r();
+        const nAmt = r();
+
+        const secured = nSec > 0.82;
+        const inflow = nDir > 0.74;
+
+        // Only the tricky data set carries a segment the rule set has never
+        // been told about — which is what makes the coverage gap findable.
+        const segment = fx === 'edge' && k % 11 === 0 ? 'PUBLIC_SECTOR' : pick(SEGMENTS, nSeg);
+
+        const openPosition = nMat > 0.88;
+        const daysToMaturity = Math.floor(nMat * 420);
+        const maturity = openPosition
+          ? ''
+          : new Date(Date.UTC(2026, 5, 30) + daysToMaturity * 86400000).toISOString().slice(0, 10);
+
+        rows.push({
+          as_of_date: d,
+          entity_id: entity,
+          scenario_code: 'base',
+          bucket_code: '',
+          is_encumbered: nSec < 0.11,
+          currency: nAmt > 0.78 ? 'EUR' : 'USD',
+          segment,
+          counterparty_type: pick(COUNTERPARTIES, nCpty),
+          account_type: pick(ACCOUNT_TYPES, nAcct),
+          insured_flag: nIns > 0.34,
+          affiliate_flag: nIns > 0.95,
+          collateral_class: secured ? pick(COLLATERAL.slice(0, 4), nColl) : 'UNSECURED',
+          is_secured: secured,
+          direction: inflow ? 'INFLOW' : 'OUTFLOW',
+          encumbered_flag: nSec < 0.11,
+          maturity_date: maturity,
+          balance_usd: (0.5 + nAmt) * (1 + ei * 0.15) * drift * 1.0e6 * (inflow ? 0.6 : shock),
+        });
+      }
+    });
+    byDate[d] = rows;
+  });
+
+  return byDate;
+}
+
 /** Column, the as-of total it must hit on `nominal`, and the filter that total is taken under. */
 const CALIB: Record<string, Array<[string, number, ((row: Row) => boolean) | null]>> = {
   'alm.fct_liquidity_position': [
@@ -127,6 +210,9 @@ export const TABLES: Record<FixtureName, Record<string, Table>> = (() => {
       });
       out[fx][src] = t;
     });
+    // Position data is not calibrated to a headline figure — the numbers that
+    // matter here are the classified totals, which the rules decide.
+    out[fx]['alm.fct_2052a_positions'] = build2052a(fx);
   });
   return out;
 })();

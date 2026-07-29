@@ -20,6 +20,10 @@ import { diagnose, type Fix } from './engine/diagnostics';
 import { DEFAULT_MEASURE, INITIAL_DOCS, type ViewFile } from './engine/documents';
 import { Evaluator } from './engine/evaluate';
 import { parseDoc } from './engine/parse';
+import { buildRegistry, resolveClassification } from './engine/registry';
+import { classificationMigration, runClassification, type Migration } from './engine/rows';
+import { AS_OF, TABLES } from './engine/fixtures';
+import { DOMAINS } from './engine/vocab';
 import { conformance as conformanceOf } from './engine/plan';
 import { plural } from './engine/format';
 import { refactorHints } from './engine/refactors';
@@ -67,11 +71,14 @@ export default function App() {
 
   const { graph, evaluator, diagnostics, hints, loopMs } = useMemo(() => {
     const t0 = performance.now();
+    // Classifications and parameter sets are cross-document references, so the
+    // whole workspace is resolved before the active file is evaluated.
+    const registry = buildRegistry(docs);
     const g = parseDoc(docs[file]);
-    const ev = new Evaluator(g, fixture);
-    const d = diagnose(g, ev, shipped);
-    const h = refactorHints(g);
-    ev.snapshot();
+    const ev = new Evaluator(g, fixture, registry);
+    const d = diagnose(g, ev, shipped, registry);
+    const h = g.kind === 'metrics_view' ? refactorHints(g) : [];
+    if (g.kind === 'metrics_view') ev.snapshot();
     return {
       graph: g, evaluator: ev, diagnostics: d, hints: h,
       loopMs: Math.round(performance.now() - t0),
@@ -83,17 +90,23 @@ export default function App() {
   // remember what the number was in order to judge what it becomes.
   const lastGood = useRef<Record<string, number>>({});
   useEffect(() => {
+    if (graph.kind !== 'metrics_view') return;
     const snap = evaluator.snapshot();
     Object.keys(snap).forEach((k) => {
       if (Number.isFinite(snap[k])) lastGood.current[k] = snap[k];
     });
-  }, [evaluator]);
+  }, [evaluator, graph]);
 
   // The baseline is what the numbers were before this editing session — it is
   // deliberately *not* refreshed on every keystroke, because "what did my
   // change do" is the question the delta answers.
   useEffect(() => {
-    setBaseline(new Evaluator(parseDoc(docs[file]), fixture).snapshot());
+    const g = parseDoc(docs[file]);
+    if (g.kind !== 'metrics_view') {
+      setBaseline({});
+      return;
+    }
+    setBaseline(new Evaluator(g, fixture, buildRegistry(docs)).snapshot());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file, fixture]);
 
@@ -168,6 +181,25 @@ export default function App() {
     () => conformanceOf(graph.byName[active] || null),
     [graph, active],
   );
+
+  /**
+   * How much notional this rule set would move relative to the version that
+   * was filed. Both versions run over the *same* rows, so the difference is
+   * attributable entirely to the rules.
+   */
+  const migration = useMemo<Migration[]>(() => {
+    if (graph.kind !== 'classification') return [];
+    const filed = resolveClassification(buildRegistry(INITIAL_DOCS), graph.docName, AS_OF);
+    const current = resolveClassification(buildRegistry(docs), graph.docName, AS_OF);
+    if (!filed || !current) return [];
+
+    const src = ((TABLES[fixture] || {})[current.source] || {})[AS_OF] || [];
+    const before = src.map((r) => ({ ...r }));
+    const after = src.map((r) => ({ ...r }));
+    const b = runClassification(filed, before, DOMAINS);
+    const a = runClassification(current, after, DOMAINS);
+    return classificationMigration(b, a, before, after, current.notional);
+  }, [graph, docs, fixture]);
 
   const errors = diagnostics.filter((d) => d.sev === 'error').length;
   const warns = diagnostics.filter((d) => d.sev === 'warn').length;
@@ -296,6 +328,8 @@ export default function App() {
         onPickMeasure={openMeasure}
         onHoverPill={hoverFromReact}
         onLeavePill={leaveCard}
+        migration={migration}
+        onPickRule={(id) => editor.current?.goToMeasure(id)}
       />
 
       {card ? (

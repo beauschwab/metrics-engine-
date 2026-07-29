@@ -25,7 +25,10 @@ src/
   engine/                    everything that computes — no DOM, no React
     vocab.ts                 pill taxonomy, closed-choice fields, source columns
     fixtures.ts              seeded 60-day test data, calibrated to the spec's numbers
-    documents.ts             the two views the surface opens with
+    documents.ts             the five documents the surface opens with
+    registry.ts              cross-document resolution + effective dating
+    rows.ts                  Tier E row-level derivations, coverage, migration
+    classification-diagnostics.ts  the KEEL06x/07x families
     parse.ts                 position-preserving YAML read
     predicate.ts             `where:` compiler
     expression.ts            arithmetic, comparisons, functions, `case … end`
@@ -37,7 +40,8 @@ src/
     trace.ts                 derivation trace + blast radius
     plan.ts                  generated query + backend conformance
     format.ts                number formatting
-    engine.test.ts           81 tests
+    engine.test.ts           82 tests — measures, diagnostics, fixes
+    classification.test.ts   45 tests — rules, coverage, effective dating
   editor/                    CodeMirror 6 extensions
     context.ts               app state in editor state; live re-parse of the doc
     pills.ts                 replace-widgets, atomic ranges, edit-reveal
@@ -105,6 +109,75 @@ measure raises `KEEL032` and shows an inline banner, but is never blocked. A
 lock would be routed around by copying the file; the diagnostic and the audit
 record are the control.
 
+## The classification layer
+
+A metrics view aggregates. FR 2052a first has to decide *which bucket each
+record belongs to*, and no single number reveals a record sent to the wrong
+one. That is a row-level stage upstream of every measure:
+
+```
+source rows
+  → derivations   (days_between · date_bucket · classify · param_lookup · expr)
+  → measures      (Tier A aggregates, reading the derived columns)
+  → derived · windowed
+```
+
+Three document kinds share one parser, discriminated by `kind:`:
+
+| Kind | Holds | Verified by |
+|---|---|---|
+| `metrics_view` | derivations + measures | value, trace, blast radius |
+| `classification` | an ordered rule set | coverage, precedence, migration |
+| `parameter_set` | governed assumptions | in-force window, keys, citations |
+
+**Row-level operators are the safest tier in the algebra, not an extension of
+its riskiest part.** Every one is stateless and row-wise, so a rule chain maps
+onto `ibis.cases`, a Polars `when/then`, a Spark `F.when` and a Deephaven
+`update()` formula without any of them needing incremental state. And because
+the emitted value is categorical, cross-backend conformance is exact string
+equality rather than a float tolerance — a stronger proof than anything the
+measure layer can offer.
+
+**Parameter sets are inlined, not joined.** The rate table is bounded, so it
+compiles to a literal mapping. Fan-out is impossible by construction, and the
+regulatory assumptions stay inside the governed artifact rather than in an
+upstream table nobody reviews. A missing rate resolves to NaN, never to zero —
+zero would quietly report no outflow for a product that has one.
+
+**Effective dating is bitemporal.** Git carries transaction time (when we
+changed our implementation); `effective.from` / `effective.to` carry valid time
+(when the regulation applied). Re-running a prior submission resolves the rule
+set in force on *that* as-of date. A gap raises KEEL066 rather than silently
+classifying nothing; an overlap raises KEEL067 rather than letting document
+order decide which regulation you filed under.
+
+### Verification, for a rule set
+
+The value panel is replaced by coverage, which answers the three questions in
+order: does every record land somewhere, where did the money go, and which rule
+decided each record.
+
+- **Coverage** — records and notional classified, unmapped called out in red.
+- **Notional by product ID** — the distribution, sorted by money.
+- **Rules** — records and notional per rule, each annotated with what
+  pre-empts it (`OD-1 takes 4 first`). Precedence is documentation, not a
+  defect, so it lives here rather than in the problems strip.
+- **Migration** — the blast radius for a rule change: *"O.D.2 → O.D.1, 8
+  records, $11,337,272"*, computed by running the filed and edited rule sets
+  over the same rows.
+
+New diagnostics: KEEL060 unmapped records (with notional at stake), KEEL061 a
+rule the data never exercises, KEEL062 a rule that can never win, KEEL064 an
+emitted value off the declared domain, KEEL065 a product ID with no rate,
+KEEL066/067 effective-date gap and overlap, KEEL068 duplicate rule id, KEEL069
+an unreadable condition, KEEL070/071 unknown operator or artifact, KEEL072 a
+condition or rate changed without touching its citation, KEEL074 an uncited
+tier-1 rule, KEEL075/076 duplicate or unreadable parameter entries.
+
+Subsumption is evaluated *empirically against the test data*, not proved. That
+is a deliberate limit: it catches the rule that is dead on real data, and the
+message says so in those terms rather than claiming a proof it does not have.
+
 ## Data
 
 `fixtures.ts` generates 60 days × 4 entities × 40 instruments per source model
@@ -137,14 +210,30 @@ single-row entities); `stress` applies a shock. Calibration is computed against
   so does this. Both actions live on `⌘.` and on ⌘-click.
 - **Loop timing is measured, not simulated.** The `updated in Nms` figure is the
   real elapsed parse + diagnose + evaluate time.
+- **The shipped rule set has no blind catch-all.** `OW-2` and `IO-1` scope to
+  the segments they know about rather than sweeping the remainder into
+  “other”, so a segment appearing upstream that nobody has mapped shows up as
+  unmapped instead of being silently absorbed. The `edge` fixture carries
+  exactly such a segment.
 
 ## Testing
 
-`npm run test` runs 81 engine tests covering the calibrated figures, the
+`npm run test` runs 127 engine tests covering the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius
 (including termination on a cyclic graph), completion scoping, and the parser's
-handling of folded scalars.
+handling of folded scalars — plus the classification layer: rule parsing,
+ordered first-match semantics, coverage reconciliation (notional per rule must
+equal notional per emitted value must equal classified notional), pre-emption
+tracking, effective-date resolution, every KEEL06x/07x diagnostic, parameter
+resolution, and notional migration.
+
+Two defects the tests caught in this layer: the fixture drove `segment` and
+`insured_flag` from the same counter, so no row could be both retail and
+insured and the rule reading for exactly that combination matched nothing
+— a correlated-fixture bug that would have made a real rule look dead; and the
+first rule set shipped with blind catch-alls, which made unmapped records
+structurally impossible to detect.
 
 The UI was driven end-to-end in headless Chromium — 38 checks over pill
 lifecycle, atomic delete and undo, quick fixes from both the strip and `⌘.`,

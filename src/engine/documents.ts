@@ -1,6 +1,12 @@
 /** The two metrics views the surface opens with. */
 
-export const VIEW_FILES = ['liquidity_pit', 'irrbb_eve'] as const;
+export const VIEW_FILES = [
+  'liquidity_pit',
+  'irrbb_eve',
+  'fr2052a_product_id',
+  'lcr_outflow_rates',
+  'fr2052a_outflows',
+] as const;
 export type ViewFile = (typeof VIEW_FILES)[number];
 
 const LIQUIDITY_PIT = `version: 1
@@ -205,13 +211,311 @@ measures:
       case when abs(eve_delta_up200) > 0.15 * eve_base then 1.0 else 0.0 end
     format: number`;
 
+/**
+ * FR 2052a product-ID mapping.
+ *
+ * An ordered rule set: the first rule whose condition holds assigns the
+ * product ID. Order is load-bearing and declared, not incidental — `O.D.1`
+ * must be tested before `O.D.3` or every insured retail balance falls through
+ * to the less-stable bucket at more than three times the outflow rate.
+ *
+ * Every rule cites the paragraph it implements, because the rule set *is* the
+ * regulatory interpretation and that is what model risk reviews.
+ */
+const FR2052A_PRODUCT_ID = `version: 1
+kind: classification
+name: fr2052a_product_id
+display_name: FR 2052a — product ID assignment
+source: alm.fct_2052a_positions
+
+emits:
+  column: product_id
+  domain: fr2052a_product_ids
+  notional: balance_usd
+  on_no_match: error
+  on_multi_match: first
+
+effective:
+  from: 2025-10-01
+
+governance:
+  owner: Liquidity Regulatory Reporting
+  sr_11_7_tier: 1
+  citation: FR 2052a Instructions
+  validation_status: validated
+
+rules:
+  - id: OD-1
+    emit: O.D.1
+    label: Retail — insured, transactional
+    when: direction = 'OUTFLOW' and segment = 'RETAIL' and insured_flag = true and account_type = 'TRANSACTIONAL'
+    citation: 12 CFR 249.32(a)(1)
+
+  - id: OD-2
+    emit: O.D.2
+    label: Retail — insured, non-transactional
+    when: direction = 'OUTFLOW' and segment = 'RETAIL' and insured_flag = true
+    citation: 12 CFR 249.32(a)(1)
+
+  - id: OD-3
+    emit: O.D.3
+    label: Retail — uninsured
+    when: direction = 'OUTFLOW' and segment = 'RETAIL'
+    citation: 12 CFR 249.32(a)(2)
+
+  - id: OD-5
+    emit: O.D.5
+    label: Small business — insured
+    when: direction = 'OUTFLOW' and segment = 'SMALL_BUSINESS' and insured_flag = true
+    citation: 12 CFR 249.32(a)(3)
+
+  - id: OD-6
+    emit: O.D.6
+    label: Small business — uninsured
+    when: direction = 'OUTFLOW' and segment = 'SMALL_BUSINESS'
+    citation: 12 CFR 249.32(a)(3)
+
+  - id: OS-1
+    emit: O.S.1
+    label: Secured funding — level 1 collateral
+    when: direction = 'OUTFLOW' and is_secured = true and collateral_class = 'L1'
+    citation: 12 CFR 249.32(j)
+
+  - id: OS-2
+    emit: O.S.2
+    label: Secured funding — level 2A collateral
+    when: direction = 'OUTFLOW' and is_secured = true and collateral_class = 'L2A'
+    citation: 12 CFR 249.32(j)
+
+  - id: OW-1
+    emit: O.W.1
+    label: Wholesale — operational, non-financial
+    when: direction = 'OUTFLOW' and account_type = 'OPERATIONAL' and counterparty_type in ('NONFIN_CORP', 'SOVEREIGN')
+    citation: 12 CFR 249.32(h)
+
+  - id: OW-3
+    emit: O.W.3
+    label: Wholesale — financial institution
+    when: direction = 'OUTFLOW' and counterparty_type = 'FINANCIAL'
+    citation: 12 CFR 249.32(h)(5)
+
+  - id: OW-2
+    emit: O.W.2
+    label: Wholesale — non-operational, non-financial
+    when: direction = 'OUTFLOW' and segment in ('WHOLESALE', 'RETAIL', 'SMALL_BUSINESS')
+    citation: 12 CFR 249.32(h)(2)
+
+  - id: IS-1
+    emit: I.S.1
+    label: Secured lending — level 1 collateral
+    when: direction = 'INFLOW' and is_secured = true and collateral_class = 'L1'
+    citation: 12 CFR 249.33(f)
+
+  - id: IU-1
+    emit: I.U.1
+    label: Unsecured inflow — financial counterparty
+    when: direction = 'INFLOW' and counterparty_type = 'FINANCIAL'
+    citation: 12 CFR 249.33(c)
+
+  - id: IO-1
+    emit: I.O.1
+    label: Other inflows
+    when: direction = 'INFLOW' and segment in ('WHOLESALE', 'RETAIL', 'SMALL_BUSINESS')
+    citation: 12 CFR 249.33(g)`;
+
+/**
+ * LCR inflow and outflow rates.
+ *
+ * These are the regulatory assumptions, so they live inside the governed
+ * artifact rather than in an upstream table. The set is bounded, so the
+ * compiler inlines it as a literal mapping — there is no join, and therefore
+ * no fan-out to reason about.
+ */
+const LCR_OUTFLOW_RATES = `version: 1
+kind: parameter_set
+name: lcr_outflow_rates
+display_name: LCR inflow / outflow rates
+keys: [product_id]
+value: outflow_rate
+
+effective:
+  from: 2025-10-01
+
+governance:
+  owner: Liquidity Regulatory Reporting
+  sr_11_7_tier: 1
+  citation: 12 CFR 249 Subpart D
+  validation_status: validated
+
+entries:
+  - product_id: O.D.1
+    outflow_rate: 0.03
+    citation: 12 CFR 249.32(a)(1)
+
+  - product_id: O.D.2
+    outflow_rate: 0.03
+    citation: 12 CFR 249.32(a)(1)
+
+  - product_id: O.D.3
+    outflow_rate: 0.10
+    citation: 12 CFR 249.32(a)(2)
+
+  - product_id: O.D.5
+    outflow_rate: 0.03
+    citation: 12 CFR 249.32(a)(3)
+
+  - product_id: O.D.6
+    outflow_rate: 0.10
+    citation: 12 CFR 249.32(a)(3)
+
+  - product_id: O.S.1
+    outflow_rate: 0.00
+    citation: 12 CFR 249.32(j)(1)
+
+  - product_id: O.S.2
+    outflow_rate: 0.15
+    citation: 12 CFR 249.32(j)(2)
+
+  - product_id: O.W.1
+    outflow_rate: 0.25
+    citation: 12 CFR 249.32(h)(1)
+
+  - product_id: O.W.2
+    outflow_rate: 0.40
+    citation: 12 CFR 249.32(h)(2)
+
+  - product_id: O.W.3
+    outflow_rate: 1.00
+    citation: 12 CFR 249.32(h)(5)
+
+  - product_id: I.S.1
+    outflow_rate: 0.00
+    citation: 12 CFR 249.33(f)(1)
+
+  - product_id: I.U.1
+    outflow_rate: 1.00
+    citation: 12 CFR 249.33(c)
+
+  - product_id: I.O.1
+    outflow_rate: 0.50
+    citation: 12 CFR 249.33(g)`;
+
+/**
+ * The view that composes them.
+ *
+ * `derivations` run per row, in order, before any measure aggregates: bucket
+ * the maturity, assign the product ID, look up the rate, apply it. Measures
+ * then aggregate the derived columns exactly as they aggregate source columns.
+ */
+const FR2052A_OUTFLOWS = `version: 1
+kind: metrics_view
+view: fr2052a_outflows
+source: alm.fct_2052a_positions
+targets: [duckdb, snowflake, databricks, bigquery, dremio]
+grain:
+  type: stock
+  as_of_field: as_of_date
+  max_query_span: P1D
+
+derivations:
+  - name: days_to_maturity
+    op: days_between
+    field: maturity_date
+    anchor: as_of_date
+
+  - name: maturity_bucket
+    op: date_bucket
+    field: maturity_date
+    anchor: as_of_date
+    ladder: fr2052a_maturity
+
+  - name: product_id
+    op: classify
+    using: fr2052a_product_id
+
+  - name: outflow_rate
+    op: param_lookup
+    using: lcr_outflow_rates
+    keys: [product_id]
+
+  - name: weighted_amount
+    op: expr
+    expression: balance_usd * outflow_rate
+
+measures:
+  - name: gross_outflow_balance
+    description: Unweighted balance of all outflow positions maturing within 30 days.
+    type: simple
+    agg: sum
+    field: balance_usd
+    where: direction = 'OUTFLOW' and days_to_maturity <= 30
+    format: currency_usd
+    valid_range: [0, 900000000000]
+
+  - name: weighted_outflows_30d
+    description: Outflow balances after applying the regulatory run-off rate.
+    type: simple
+    agg: sum
+    field: weighted_amount
+    where: direction = 'OUTFLOW' and days_to_maturity <= 30
+    format: currency_usd
+    valid_range: [0, 900000000000]
+    sr_11_7_tier: 1
+    citation: 12 CFR 249.32
+    validation_status: validated
+
+  - name: weighted_inflows_30d
+    description: Inflow balances after applying the regulatory inflow rate.
+    type: simple
+    agg: sum
+    field: weighted_amount
+    where: direction = 'INFLOW' and days_to_maturity <= 30
+    format: currency_usd
+    valid_range: [0, 900000000000]
+
+  - name: capped_inflows_30d
+    description: Inflows are recognised only up to 75% of outflows.
+    type: derived
+    requires: [weighted_inflows_30d, weighted_outflows_30d]
+    expression: >
+      least(weighted_inflows_30d, 0.75 * weighted_outflows_30d)
+    format: currency_usd
+    valid_range: [0, 900000000000]
+
+  - name: net_outflows_30d
+    description: Total net cash outflows, floored at zero.
+    type: derived
+    requires: [weighted_outflows_30d, capped_inflows_30d]
+    expression: >
+      greatest(weighted_outflows_30d - capped_inflows_30d, 0)
+    format: currency_usd
+    valid_range: [0, 900000000000]
+    sr_11_7_tier: 1
+    citation: 12 CFR 249.30
+    validation_status: validated
+
+  - name: retail_outflows_30d
+    description: Run-off from retail deposit product IDs only.
+    type: simple
+    agg: sum
+    field: weighted_amount
+    where: product_id in ('O.D.1', 'O.D.2', 'O.D.3') and days_to_maturity <= 30
+    format: currency_usd
+    valid_range: [0, 900000000000]`;
+
 export const INITIAL_DOCS: Record<ViewFile, string> = {
   liquidity_pit: LIQUIDITY_PIT,
   irrbb_eve: IRRBB_EVE,
+  fr2052a_product_id: FR2052A_PRODUCT_ID,
+  lcr_outflow_rates: LCR_OUTFLOW_RATES,
+  fr2052a_outflows: FR2052A_OUTFLOWS,
 };
 
-/** The measure each view opens on. */
+/** What each document opens on — a measure, or the artifact itself. */
 export const DEFAULT_MEASURE: Record<ViewFile, string> = {
   liquidity_pit: 'lcr_pct',
   irrbb_eve: 'eve_delta_up200',
+  fr2052a_product_id: 'OD-1',
+  lcr_outflow_rates: 'O.D.1',
+  fr2052a_outflows: 'net_outflows_30d',
 };

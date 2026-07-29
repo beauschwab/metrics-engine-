@@ -649,3 +649,38 @@ input:focus-visible,
   white-space: nowrap;
   border: 0;
 }
+
+/* ---- coverage ------------------------------------------------------------
+   A classification has no single number, so its verification surface is a
+   distribution: where the money went, and which rule sent it there. */
+
+.mdl-cov-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
+.mdl-cov-row:hover {
+  background: var(--mdl-raised-2);
+}
+
+.mdl-cov-note {
+  font-size: 10px;
+  color: var(--mdl-text-faint);
+  padding: 0 0 4px 52px;
+}
+
+.mdl-share {
+  flex: 1;
+  min-width: 24px;
+  height: 6px;
+  background: var(--mdl-border-soft);
+  display: block;
+}
+
+.mdl-share span {
+  display: block;
+  height: 100%;
+}

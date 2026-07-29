@@ -188,7 +188,55 @@ export function isReferenceName(n: string): boolean {
   return !(n in FUNCS) && !(n in LITERALS) && !(n.toLowerCase() in KEYWORDS) && !/^\d/.test(n);
 }
 
+/**
+ * Maturity ladders. FR 2052a reports every position in a maturity bucket, and
+ * the bucket is a row-level derivation from maturity date against the as-of
+ * date — not something the source system carries.
+ */
+export const MATURITY_LADDERS: Record<string, Array<{ name: string; maxDays: number }>> = {
+  fr2052a_maturity: [
+    { name: 'overnight', maxDays: 1 },
+    { name: 'd2_7', maxDays: 7 },
+    { name: 'd8_14', maxDays: 14 },
+    { name: 'd15_30', maxDays: 30 },
+    { name: 'd31_90', maxDays: 90 },
+    { name: 'd91_180', maxDays: 180 },
+    { name: 'd181_365', maxDays: 365 },
+    { name: 'gt365', maxDays: Infinity },
+  ],
+};
+
+/** Bucket name for a position with no stated maturity. */
+export const OPEN_BUCKET = 'open';
+
+/**
+ * Closed value domains a classification may emit into. Declaring the domain is
+ * what lets the linter catch a product ID that is not on the form.
+ */
+export const DOMAINS: Record<string, string[]> = {
+  fr2052a_product_ids: [
+    'O.D.1', 'O.D.2', 'O.D.3', 'O.D.5', 'O.D.6',
+    'O.W.1', 'O.W.2', 'O.W.3',
+    'O.S.1', 'O.S.2',
+    'I.U.1', 'I.S.1', 'I.O.1',
+  ],
+};
+
+/** Row-level derivation operators — Tier E. All stateless, all portable. */
+export const DERIVATION_OPS: Record<string, string> = {
+  classify: 'assign a value from an ordered rule set',
+  date_bucket: 'place a date on a maturity ladder',
+  days_between: 'whole days from one date to another',
+  param_lookup: 'read a governed assumption by key',
+  expr: 'arithmetic over row columns',
+};
+
 export const COLUMNS: Record<string, string[]> = {
+  'alm.fct_2052a_positions': [
+    'as_of_date', 'entity_id', 'currency', 'segment', 'counterparty_type',
+    'account_type', 'insured_flag', 'affiliate_flag', 'collateral_class',
+    'is_secured', 'direction', 'encumbered_flag', 'balance_usd', 'maturity_date',
+  ],
   'alm.fct_liquidity_position': [
     'hqla_eligible_amount', 'is_encumbered', 'outflow_amount_30d',
     'inflow_amount_capped_30d', 'as_of_date', 'entity_id', 'scenario_code',
