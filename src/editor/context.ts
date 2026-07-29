@@ -12,6 +12,7 @@
 import { StateEffect, StateField } from '@codemirror/state';
 import type { Evaluator } from '../engine/evaluate';
 import type { Diagnostic } from '../engine/diagnostics';
+import type { RefactorHint } from '../engine/refactors';
 import { parse, type Graph } from '../engine/parse';
 import type { FixtureName, PillKind, PillState } from '../engine/vocab';
 
@@ -35,6 +36,8 @@ export interface EditorHandlers {
 export interface EditorContext {
   evaluator: Evaluator;
   diagnostics: Diagnostic[];
+  /** Passive structural prompts — never blocking, never modal (§7.3). */
+  hints: RefactorHint[];
   fixture: FixtureName;
   activeMeasure: string;
   /** The state switcher demonstrates each pill state on one measure. */

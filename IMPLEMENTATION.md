@@ -6,13 +6,14 @@ React + TypeScript app with a real CodeMirror 6 editor.
 ```
 npm install
 npm run dev        # http://localhost:5173
+npm run test       # 81 engine tests
 npm run build      # typecheck + production bundle
-npm run typecheck
 ```
 
 Desktop only, one canvas at 1600×1000 — the same call the design made. Below
 1280px the spec calls for the validation column to become a drawer, and below
-900px for the surface to go read-only; neither is built.
+900px for the surface to go read-only; neither is built, per the scoping
+decision in the design chat.
 
 ---
 
@@ -30,21 +31,24 @@ src/
     expression.ts            arithmetic, comparisons, functions, `case … end`
     evaluate.ts              measure → 60-point daily series
     diagnostics.ts           the KEEL catalogue + pure quick-fix transformations
+    refactors.ts             passive structural prompts (§7.3)
     completion.ts            context-scoped candidates
     tokens.ts                what becomes a pill, and in which state
     trace.ts                 derivation trace + blast radius
     plan.ts                  generated query + backend conformance
     format.ts                number formatting
+    engine.test.ts           81 tests
   editor/                    CodeMirror 6 extensions
     context.ts               app state in editor state; live re-parse of the doc
     pills.ts                 replace-widgets, atomic ranges, edit-reveal
-    chrome.ts                key/value colouring, active-measure rail, both gutters
+    chrome.ts                key/value colouring, active rail, gutters, hints
     lint.ts                  diagnostics → inline squiggles + fix actions
     completion.ts            completion source, auto-open on fixed-choice lines
     ghost.ts                 dimmed inline suggestion, accepted with Tab
     peek.ts                  ⌥-click block widget
-    quickActions.ts          ⌘. menu
-    keymap.ts                Tab priority, pill traversal, drag-insert
+    banner.ts                signed-off measure banner (§11)
+    quickActions.ts          ⌘. menu — fixes, navigate, rename, extract, inline
+    keymap.ts                Tab priority, pill traversal, ⌘N, ⌘↑/↓, drag-insert
     apply.ts                 document mutations, narrowed to the smallest edit
     theme.ts                 the editor's visual layer
   components/                the React chrome around the editor
@@ -56,7 +60,8 @@ src/
 The split that matters: **`engine/` knows nothing about the editor or React.**
 Everything in it is a pure function of (document text, fixture), which is why
 the same diagnostic drives the inline squiggle, the gutter glyph, the problems
-strip and the `⌘.` menu without any of them re-deriving it.
+strip and the `⌘.` menu without any of them re-deriving it — and why the whole
+catalogue is testable without a DOM.
 
 ## Pills, per §5.7
 
@@ -76,8 +81,29 @@ values and diagnostics arrive from React one render behind. That is what lets
 pills repaint on the keystroke without waiting on evaluation.
 
 **CodeMirror owns the document.** React's copy is a mirror kept current by
-`onChange`, and every mutation — typing, quick fixes, drag-insert, rename —
-goes through the view, so there is one undo history and no way to desync.
+`onChange`, and every mutation — typing, quick fixes, drag-insert, rename,
+extract, inline — goes through the view, so there is one undo history and no
+way to desync.
+
+## Diagnostics
+
+All 29 codes in §6.2 are emitted, plus four the prototype added
+(`KEEL026`/`KEEL027` for trailing windows, `KEEL035` for deprecated external
+references, `KEEL044` for closed-choice fields, `KEEL050`–`KEEL052` for
+filters). Severity is coupled to governance tier, so the same missing
+description is `error` at tier 1–2 and `warn` at tier 3.
+
+Every fix is a pure text transformation. The test suite asserts an invariant
+that caught two real bugs: **a fix must change the document, and must clear the
+diagnostic that offered it.** A fix that inserts an empty stub fails that test,
+which is how `KEEL024` ended up proposing a real weight column instead of a
+blank line.
+
+`KEEL032` and `KEEL034` compare against the document as it was when the session
+opened, so they fire on *change* rather than on load — editing a signed-off
+measure raises `KEEL032` and shows an inline banner, but is never blocked. A
+lock would be routed around by copying the file; the diagnostic and the audit
+record are the control.
 
 ## Data
 
@@ -92,34 +118,39 @@ single-row entities); `stress` applies a shock. Calibration is computed against
 
 - **`case`/`when`/`then`/`else`/`end` are expression grammar, not references.**
   The prototype resolved them as measure names, so every case-statement measure
-  raised five spurious `KEEL001` errors and rendered red pills. They are now in
-  a `KEYWORDS` set and excluded from resolution, pills and the trace.
+  raised five spurious `KEEL001` errors and rendered red pills.
 - **Diagnostics point at the line the text is on.** For a folded block scalar
   (`expression: >`) the prototype pointed every expression diagnostic at the
   key's line, which put the squiggle above the code and made the rename fix
-  rewrite a line not containing the name. `Measure.contentOf` tracks the
-  content line and diagnostics use it.
+  rewrite a line not containing the name. `Measure.contentOf` tracks this.
 - **The value panel holds the last good number** (§8.6). The prototype rendered
   `—` when an edit broke the arithmetic; it now holds the previous value dimmed
   with an honest staleness caption, and the blast radius does the same.
+- **`where: x <<` is a syntax error.** The prototype's predicate compiler
+  accepted an operator in value position, silently compiling it to
+  `x < '<'` — a filter that reads as valid while meaning nothing.
+- **Backend conformance is driven by a `targets:` list** on the view rather than
+  a hard-coded table, which is what gives `KEEL021` a fix that removes the
+  backend that cannot run the operator.
 - **The definition card has no buttons.** §5.5 sketches
   `[Go to definition] [Show dependents]`; the reviewed prototype omits them and
   so does this. Both actions live on `⌘.` and on ⌘-click.
-- **`⌘.` offers rename-across-references but not inline/extract.** The two
-  omitted actions from §5.4 are not stubbed out.
-- **Loop timing is measured, not simulated.** The `updated in Nms` figure in the
-  problems strip is the real elapsed parse + diagnose + evaluate time.
+- **Loop timing is measured, not simulated.** The `updated in Nms` figure is the
+  real elapsed parse + diagnose + evaluate time.
 
-## Verified
+## Testing
 
-Driven end-to-end in headless Chromium: pill select / edit-reveal / atomic
-delete / undo, quick fixes from both the strip and `⌘.`, live blast-radius
-propagation with the MRM note, the completion picker on every fixed-choice
-field with live `format:` samples, `where:` completion offering values actually
-present in the data, `KEEL051`/`KEEL052` firing from real row counts and a real
-parse failure, ⌥-click peek, ⌘-click navigation, drag-insert from the tree,
-fixture switching, all seven pill states, both trace modes, and the query tab.
-No console errors.
+`npm run test` runs 81 engine tests covering the calibrated figures, the
+expression evaluator, the predicate compiler, number formatting, every
+diagnostic in the catalogue, every quick fix, the trace and blast radius
+(including termination on a cyclic graph), completion scoping, and the parser's
+handling of folded scalars.
 
-The checks were ad-hoc scripts rather than a committed suite — there are no
-automated tests in the repo yet.
+The UI was driven end-to-end in headless Chromium — 38 checks over pill
+lifecycle, atomic delete and undo, quick fixes from both the strip and `⌘.`,
+`⌘N` templates, `⌘↑/↓` navigation, extract and inline, `where:` completion
+against real data, ⌥-click peek, ⌘-click navigation, drag-insert, fixture
+switching, all seven pill states, both trace modes, the query tab, column
+resizing with persistence, and the digit roll. Those scripts are not committed:
+they hard-code this environment's Chromium path, so they would fail anywhere
+else. A committed Playwright suite is the obvious next step.

@@ -18,6 +18,7 @@ import { conformance as conformanceOf, planLines } from '../engine/plan';
 import { dependents, traceNodes, type TraceMode } from '../engine/trace';
 import { HUE, type FixtureName } from '../engine/vocab';
 import { Pill } from './Pill';
+import { RollingNumber } from './RollingNumber';
 
 interface Props {
   graph: Graph;
@@ -129,9 +130,12 @@ export function ValidationColumn(props: Props) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
                 {/* Holds the last good number rather than blanking — an author
                     needs to remember what it was to judge what it becomes. */}
-                <span className="mdl-value" data-stale={stale} aria-live="polite">
-                  {fmt(shown, value.format)}
-                </span>
+                <RollingNumber
+                  className="mdl-value"
+                  value={fmt(shown, value.format)}
+                  aria-live="polite"
+                  style={stale ? { color: 'rgba(231,235,241,.62)' } : undefined}
+                />
                 <span className="mono" style={{ fontSize: 11, color: 'var(--mdl-measure)' }}>
                   ⟨{active}⟩
                 </span>

@@ -6,6 +6,7 @@ export type ViewFile = (typeof VIEW_FILES)[number];
 const LIQUIDITY_PIT = `version: 1
 view: liquidity_pit
 source: alm.fct_liquidity_position
+targets: [duckdb, snowflake, databricks, bigquery, dremio]
 grain:
   type: stock
   as_of_field: as_of_date
@@ -20,8 +21,11 @@ measures:
     field: hqla_eligible_amount
     where: is_encumbered = false
     format: currency_usd
+    valid_range: [0, 900000000000]
     sr_11_7_tier: 1
     citation: 12 CFR 249.20-22
+    validation_status: validated
+    change_ticket: ALM-4471
 
   - name: gross_outflows_30d
     type: simple
@@ -42,6 +46,7 @@ measures:
     expression: >
       greatest(gross_outflows_30d - capped_inflows_30d, 0)
     format: currency_usd
+    valid_range: [0, 900000000000]
 
   - name: lcr_pct
     label: Liquidity Coverage Ratio
@@ -50,8 +55,10 @@ measures:
     expression: >
       100.0 * hqla_total / nullif(net_cash_outflows_30d, 0)
     format: percent_1dp
+    valid_range: [0, 500]
     sr_11_7_tier: 1
     citation: 12 CFR 249.20
+    validation_status: validated
 
   - name: lcr_buffer
     type: derived
@@ -66,7 +73,9 @@ measures:
     expression: >
       lcr_pct * 0.834
     format: percent_1dp
+    valid_range: [0, 500]
     sr_11_7_tier: 2
+    citation: 12 CFR 249.20
 
   - name: lcr_headroom
     type: derived
@@ -112,6 +121,7 @@ measures:
 const IRRBB_EVE = `version: 1
 view: irrbb_eve
 source: alm.fct_repricing_gap
+targets: [duckdb, snowflake, databricks, bigquery, dremio]
 grain:
   type: stock
   as_of_field: as_of_date
@@ -139,8 +149,10 @@ measures:
     expression: >
       pv_assets - pv_liabilities
     format: currency_usd
+    valid_range: [-900000000000, 900000000000]
     sr_11_7_tier: 1
     citation: SR 96-13
+    validation_status: validated
 
   - name: eve_up200
     description: Economic value of equity under a parallel +200bp shock.
@@ -156,8 +168,10 @@ measures:
     expression: >
       eve_up200 - eve_base
     format: currency_usd
+    valid_range: [-900000000000, 900000000000]
     sr_11_7_tier: 1
     citation: SR 96-13
+    validation_status: in_review
 
   - name: nii_12m_smoothed
     type: windowed

@@ -44,6 +44,10 @@ export interface CompiledPredicate {
 const TOKEN_RE = /'[^']*'|>=|<=|!=|<>|[<>=()]|[A-Za-z_][A-Za-z0-9_]*|-?\d+\.?\d*/g;
 const COMPARISONS = ['=', '!=', '<>', '>', '<', '>='];
 
+const OPERATOR_TOKENS: Record<string, true> = {
+  '=': true, '!=': true, '<>': true, '>': true, '<': true, '>=': true, '<=': true,
+};
+
 export function compilePredicate(src: string): CompiledPredicate {
   const text = (src || '').replace(/\s+/g, ' ').trim();
   if (!text) return { fn: () => true, err: null, cols: [], empty: true };
@@ -133,7 +137,15 @@ export function compilePredicate(src: string): CompiledPredicate {
       return () => true;
     }
 
-    const lit = literalOf(toks[p++]);
+    const raw = toks[p++];
+    // An operator sitting where a value belongs is a typo, not a string. Without
+    // this, `is_encumbered <<` silently compiles to `is_encumbered < '<'` and
+    // the filter reads as valid while matching nothing meaningful.
+    if (raw !== undefined && (OPERATOR_TOKENS[raw] || raw === '(' || raw === ')')) {
+      err = err || `“${raw}” is not a value to compare “${left}” against`;
+      return () => true;
+    }
+    const lit = literalOf(raw);
     if (lit === undefined) {
       err = err || `no value after “${op}”`;
       return () => true;

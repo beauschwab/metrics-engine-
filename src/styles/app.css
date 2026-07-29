@@ -102,11 +102,32 @@ body {
   width: min(1600px, 100vw);
   height: min(1000px, 100vh);
   display: grid;
-  grid-template-columns: 244px minmax(0, 1fr) 380px;
+  /* Column widths are driven from persisted layout state. */
+  grid-template-columns: 244px 5px minmax(0, 1fr) 5px 380px;
   grid-template-rows: 1fr;
   background: var(--mdl-canvas);
   border: 1px solid var(--mdl-border);
   overflow: hidden;
+}
+
+/* Resize follows the pointer — no transition, which would lag the hand. */
+.mdl-resizer {
+  cursor: col-resize;
+  background: var(--mdl-border);
+  position: relative;
+}
+
+.mdl-resizer:hover,
+.mdl-resizer:focus-visible {
+  background: var(--mdl-signal);
+  outline: none;
+}
+
+/* A wider invisible hit area than the 5px rail, so it is grabbable. */
+.mdl-resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 -3px;
 }
 
 .mdl-col {
@@ -440,6 +461,23 @@ body {
 
 .mdl-value[data-stale='true'] {
   color: rgba(231, 235, 241, 0.62);
+}
+
+/* ---- digit roll ---------------------------------------------------------
+   Only the characters that changed move. It earns its place by pointing at
+   *which part* of a nine-figure number shifted. */
+
+.mdl-roll {
+  display: inline-block;
+}
+
+.mdl-roll-changed {
+  animation: mdl-digit-roll 180ms ease-out;
+}
+
+@keyframes mdl-digit-roll {
+  from { transform: translateY(-0.42em); opacity: 0.35; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .mdl-spark {

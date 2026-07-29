@@ -97,18 +97,30 @@ export function activeMeasureGutter(ctxField: ContextField): Extension {
 const SEV_GLYPH: Record<Severity, string> = { error: '✕', warn: '⚠', info: 'i' };
 
 class SeverityMarker extends GutterMarker {
-  constructor(readonly sev: Severity) {
+  constructor(
+    readonly sev: Severity | null,
+    readonly hint: string,
+  ) {
     super();
   }
 
   eq(other: SeverityMarker) {
-    return this.sev === other.sev;
+    return this.sev === other.sev && this.hint === other.hint;
   }
 
   toDOM() {
     const el = document.createElement('span');
-    el.className = `cm-mdl-sev cm-mdl-sev-${this.sev}`;
-    el.textContent = SEV_GLYPH[this.sev];
+    if (this.sev) {
+      el.className = `cm-mdl-sev cm-mdl-sev-${this.sev}`;
+      el.textContent = SEV_GLYPH[this.sev];
+      if (this.hint) el.title = this.hint;
+      return el;
+    }
+    // A refactor prompt: dim, quiet, and it expands on hover rather than
+    // asking for anything.
+    el.className = 'cm-mdl-sev cm-mdl-hint';
+    el.textContent = '\u22ef';
+    el.title = this.hint;
     return el;
   }
 }
@@ -121,16 +133,20 @@ export function severityGutter(ctxField: ContextField): Extension {
       const ctx = view.state.field(ctxField);
       const lineNo = view.state.doc.lineAt(block.from).number - 1;
       const here = ctx.diagnostics.filter((d) => d.line === lineNo);
-      if (!here.length) return null;
+      const hint = ctx.hints.find((h) => h.line === lineNo);
+
+      if (!here.length) return hint ? new SeverityMarker(null, hint.text) : null;
+
       const sev: Severity = here.some((d) => d.sev === 'error')
         ? 'error'
         : here.some((d) => d.sev === 'warn')
           ? 'warn'
           : 'info';
-      return new SeverityMarker(sev);
+      // One glyph per line, at the worst severity present.
+      return new SeverityMarker(sev, here.map((d) => `${d.code} · ${d.message}`).join('\n'));
     },
     lineMarkerChange: () => true,
-    initialSpacer: () => new SeverityMarker('error'),
+    initialSpacer: () => new SeverityMarker('error', ''),
   });
 }
 

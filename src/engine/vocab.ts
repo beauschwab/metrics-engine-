@@ -46,12 +46,40 @@ export const UNSUPPORTED: Record<string, string> = { ema: 'Dremio' };
 export const ENUMS: Record<string, string[]> = {
   type: ['simple', 'derived', 'windowed'],
   format: ['currency_usd', 'currency_usd_mm', 'percent_1dp', 'percent_2dp', 'number', 'bps'],
-  agg: ['sum', 'avg', 'last', 'first', 'max', 'min', 'count'],
+  agg: ['sum', 'avg', 'last', 'first', 'max', 'min', 'count', 'weighted_avg'],
   sr_11_7_tier: ['1', '2', '3'],
   grain_type: ['stock', 'flow', 'ratio'],
+  grain: ['stock', 'flow', 'ratio'],
+  validation_status: ['draft', 'in_review', 'validated', 'deprecated'],
   'window.op': ['delta', 'pct_change', 'stddev', 'variance', 'avg', 'sum', 'min', 'max'],
   'window.over': ['1d', '7d', '30d', '90d'],
+  'window.frame': ['time', 'rows'],
 };
+
+/**
+ * Aggregates fold rows. A `derived` measure composes other measures, so an
+ * aggregate appearing inside one means the author is reaching past the
+ * measure layer into the source table — KEEL022.
+ */
+export const AGGREGATES: Record<string, true> = {
+  sum: true, avg: true, count: true, first: true, last: true, weighted_avg: true,
+};
+
+/** Everything the metric algebra accepts as an operator. Anything else is KEEL020. */
+export const ALGEBRA_OPS: Record<string, true> = {
+  '+': true, '-': true, '*': true, '/': true, '(': true, ')': true, ',': true,
+  '=': true, '!=': true, '<>': true, '>': true, '<': true, '>=': true, '<=': true,
+};
+
+/** Spans that permit more than one as-of date to be folded together. */
+export function spanPermitsMultipleDates(span: string): boolean {
+  const t = (span || '').trim().toUpperCase();
+  if (!t) return true;
+  const m = /^P(?:(\d+)D|(\d+)W|(\d+)M|(\d+)Y)$/.exec(t);
+  if (!m) return true;
+  if (m[1]) return parseInt(m[1], 10) > 1;
+  return true;
+}
 
 export const ENUM_HELP: Record<string, string> = {
   simple: 'reads one column', derived: 'combines other measures', windowed: 'looks across dates',
@@ -60,7 +88,12 @@ export const ENUM_HELP: Record<string, string> = {
   percent_2dp: 'percent, 2 decimals', number: 'plain number', bps: 'basis points',
   sum: 'adds every row', avg: 'averages rows', last: 'latest row', first: 'earliest row',
   max: 'largest row', min: 'smallest row', count: 'counts rows',
+  weighted_avg: 'averages rows, weighted by a column',
   '1': 'top oversight', '2': 'reviewed', '3': 'exploratory',
+  draft: 'still being written', in_review: 'waiting on review',
+  validated: 'signed off — edits need a ticket', deprecated: 'being retired',
+  time: 'a span of time — well defined under ticking',
+  rows: 'a count of rows — ill defined under ticking',
 };
 
 export const ENUM_LABEL: Record<string, string> = {
@@ -71,6 +104,10 @@ export const ENUM_LABEL: Record<string, string> = {
   grain_type: 'what the numbers represent',
   'window.op': 'time calculation',
   'window.over': 'how far back to look',
+  'window.frame': 'how the window is measured',
+  validation_status: 'where this sits in review',
+  grain: 'what this measure represents',
+  targets: 'databases this must run on',
 };
 
 export const WINDOW_HELP: Record<string, string> = {
@@ -124,7 +161,8 @@ export const PILL_KEYS: Record<string, true> = {
 /** Keys with a closed set of legal values — clicking one always opens the picker. */
 export const CHOICE_KEYS: Record<string, true> = {
   type: true, format: true, agg: true, sr_11_7_tier: true,
-  'window.op': true, 'window.over': true,
+  'window.op': true, 'window.over': true, 'window.frame': true,
+  validation_status: true, grain: true, targets: true,
   field: true, weight: true, where: true, requires: true,
   partition_by: true, order_by: true,
   'window.partition_by': true, 'window.order_by': true,

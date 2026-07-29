@@ -15,6 +15,7 @@ import { EditorView, drawSelection, highlightSpecialChars, keymap, lineNumbers }
 import type { Fix } from '../engine/diagnostics';
 import { ownerAt } from '../engine/parse';
 import { applyFixToView } from '../editor/apply';
+import { validatedBanner } from '../editor/banner';
 import { activeMeasureGutter, chrome, pillMarkGutter, severityGutter } from '../editor/chrome';
 import { contextField, setContext, syntaxField, type EditorContext } from '../editor/context';
 import { ghostText } from '../editor/ghost';
@@ -76,6 +77,7 @@ export function MetricEditor({ doc, context, onChange, onCursorMeasure, handle }
         chrome(ctxField),
         pills(ctxField),
         peekPane(ctxField),
+        validatedBanner(ctxField),
         mdlLinter(ctxField),
         mdlCompletion(ctxField),
         ghost.extension,

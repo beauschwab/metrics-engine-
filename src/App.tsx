@@ -14,6 +14,7 @@ import { MetricEditor, type MetricEditorHandle } from './components/MetricEditor
 import { ProblemsStrip } from './components/ProblemsStrip';
 import { RegistryPanel } from './components/RegistryPanel';
 import { ValidationColumn } from './components/ValidationColumn';
+import { Resizer, useLayout } from './components/Resizer';
 import type { EditorContext } from './editor/context';
 import { diagnose, type Fix } from './engine/diagnostics';
 import { DEFAULT_MEASURE, INITIAL_DOCS, type ViewFile } from './engine/documents';
@@ -21,6 +22,7 @@ import { Evaluator } from './engine/evaluate';
 import { parseDoc } from './engine/parse';
 import { conformance as conformanceOf } from './engine/plan';
 import { plural } from './engine/format';
+import { refactorHints } from './engine/refactors';
 import type { TraceMode } from './engine/trace';
 import type { FixtureName, PillState } from './engine/vocab';
 
@@ -52,20 +54,29 @@ export default function App() {
   const [peek, setPeek] = useState<{ name: string; line: number } | null>(null);
   const [baseline, setBaseline] = useState<Record<string, number>>({});
 
+  const [layout, setLayout] = useLayout();
   const editor = useRef<MetricEditorHandle>(null);
   const hoverTimer = useRef<number | undefined>(undefined);
 
   // ---- the loop -----------------------------------------------------------
   // parse → resolve + diagnose → evaluate. Measured rather than asserted; the
   // number in the strip is the real elapsed time for this document.
-  const { graph, evaluator, diagnostics, loopMs } = useMemo(() => {
+  // What the file looked like when the session opened. KEEL032 and KEEL034 are
+  // about *change*, so they need something to compare against.
+  const shipped = useMemo(() => parseDoc(INITIAL_DOCS[file]), [file]);
+
+  const { graph, evaluator, diagnostics, hints, loopMs } = useMemo(() => {
     const t0 = performance.now();
     const g = parseDoc(docs[file]);
     const ev = new Evaluator(g, fixture);
-    const d = diagnose(g, ev);
+    const d = diagnose(g, ev, shipped);
+    const h = refactorHints(g);
     ev.snapshot();
-    return { graph: g, evaluator: ev, diagnostics: d, loopMs: Math.round(performance.now() - t0) };
-  }, [docs, file, fixture]);
+    return {
+      graph: g, evaluator: ev, diagnostics: d, hints: h,
+      loopMs: Math.round(performance.now() - t0),
+    };
+  }, [docs, file, fixture, shipped]);
 
   // The last value each measure computed successfully. When an edit breaks the
   // arithmetic the panel holds this rather than blanking: an author needs to
@@ -123,6 +134,7 @@ export default function App() {
     () => ({
       evaluator,
       diagnostics,
+      hints,
       fixture,
       activeMeasure: active,
       pillStateOverride,
@@ -145,7 +157,7 @@ export default function App() {
         },
       },
     }),
-    [evaluator, diagnostics, fixture, active, pillStateOverride, peek, openMeasure, showCard],
+    [evaluator, diagnostics, hints, fixture, active, pillStateOverride, peek, openMeasure, showCard],
   );
 
   // The strip's fix button routes through the same transformation the editor's
@@ -161,7 +173,10 @@ export default function App() {
   const warns = diagnostics.filter((d) => d.sev === 'warn').length;
 
   return (
-    <div className="mdl-shell">
+    <div
+      className="mdl-shell"
+      style={{ gridTemplateColumns: `${layout.registry}px 5px minmax(0, 1fr) 5px ${layout.validation}px` }}
+    >
       <RegistryPanel
         file={file}
         docs={docs}
@@ -179,6 +194,8 @@ export default function App() {
         }}
         onPickMeasure={openMeasure}
       />
+
+      <Resizer panel="registry" layout={layout} onChange={setLayout} label="Resize measures panel" />
 
       <div className="mdl-col mdl-col-editor">
         <div className="mdl-tabs">
@@ -254,6 +271,8 @@ export default function App() {
           onFix={applyQuickFix}
         />
       </div>
+
+      <Resizer panel="validation" layout={layout} onChange={setLayout} label="Resize validation panel" />
 
       <ValidationColumn
         graph={graph}

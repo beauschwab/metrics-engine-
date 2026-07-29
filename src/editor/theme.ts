@@ -73,6 +73,29 @@ export const mdlTheme = EditorView.theme(
       textAlign: 'center',
       fontSize: '10px',
     },
+    // A refactor prompt is quieter than any diagnostic — it is not a problem.
+    '.cm-mdl-hint': { color: C.faint, opacity: 0.55, cursor: 'help' },
+    '.cm-mdl-hint:hover': { opacity: 1 },
+
+    // ---- signed-off banner ---------------------------------------------
+    '.cm-mdl-banner': {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      margin: '4px 16px 2px 6px',
+      padding: '5px 10px',
+      background: 'rgba(242,179,0,.08)',
+      borderLeft: `2px solid ${HUE.signal}`,
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: '11px',
+      color: C.muted,
+    },
+    '.cm-mdl-banner-mark': { color: HUE.signal, fontSize: '7px' },
+    '.cm-mdl-banner-ticket': {
+      fontFamily: MONO,
+      fontSize: '11px',
+      color: HUE.signal,
+    },
     '.cm-mdl-mark-gutter .cm-gutterElement': {
       width: '14px',
       padding: '0 4px 0 2px',
