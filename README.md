@@ -1,25 +1,80 @@
-# CODING AGENTS: READ THIS FIRST
+# Metrics Definition Layer
 
-This is a **handoff bundle** from Claude Design (claude.ai/design).
+An authoring surface for governed metric definitions — the place a liquidity
+analyst writes an FR 2052a rule, watches the number it produces, and reads the
+plan that the nightly pipeline will run.
 
-A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported this bundle so a coding agent can implement the designs for real.
+Built from the Claude Design handoff in `project/` (the original brief is
+`project/HANDOFF.md`) as a React + TypeScript app with a real CodeMirror 6
+editor.
 
-## What you should do — IMPORTANT
+```
+npm install
+npm run dev        # http://localhost:5173
+npm run verify     # typecheck, 192 unit tests, 32 browser checks
+npm run build      # typecheck + production bundle
+```
 
-**Read the chat transcripts first.** There are 1 chat transcript(s) in `chats/`. The transcripts show the full back-and-forth between the user and the design assistant — they tell you **what the user actually wants** and **where they landed** after iterating. Don't skip them. The final HTML files are the output, but the chat is where the intent lives.
+## What it does
 
-**Read `project/Metrics Definition Layer.dc.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
+Three columns. The registry tree on the left, the document in the middle, and
+on the right the answer to "is this right?" — which is a different question for
+each kind of document the workspace holds:
 
-**If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
+| Document | Holds | Verified by |
+| --- | --- | --- |
+| `metrics_view` | derivations and measures | the value, its derivation trace, and what moves if you change it |
+| `classification` | an ordered rule set | coverage — which rule fired, on how many records, moving how much notional |
+| `parameter_set` | governed assumptions | the in-force window, the keys, the citation behind each rate |
+| `report` | a grain and a destination | the rows that would actually be filed |
 
-## About the design files
+Six documents ship in the workspace: two metrics views (`liquidity_pit`,
+`irrbb_eve`), the FR 2052a product-ID rule set and its LCR rate table, the
+outflow view that applies them, and the daily submission report.
 
-The design medium is **HTML/CSS/JS** — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology makes sense for the target codebase (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
+The surface is desktop-only at 1600×1000 — the same call the design made.
 
-**Don't render these files in a browser or take screenshots unless the user asks you to.** Everything you need — dimensions, colors, layout rules — is spelled out in the source. Read the HTML and CSS directly; a screenshot won't tell you anything they don't.
+## Three ideas worth knowing before reading the code
 
-## Bundle contents
+**References are pills.** A resolved name is a CodeMirror replace-widget over an
+atomic range: it deletes as one unit, comes back on one undo, and reveals its
+raw text only when you open it deliberately. Colour carries state — recognised,
+unknown, deprecated, restricted, recalculating — so a broken reference is
+visible without reading.
 
-- `README.md` — this file
-- `chats/` — conversation transcripts (read these!)
-- `project/` — the `Metrics Definition Authoring Surface` project files (HTML prototypes, assets, components)
+**The engine knows nothing about React or the editor.** Everything in `engine/`
+is a pure function of (document text, fixture), which is why one diagnostic
+drives the inline squiggle, the gutter glyph, the problems strip and the `⌘.`
+menu without any of them re-deriving it — and why the whole 33-code catalogue
+is testable without a DOM.
+
+**One definition, several execution targets.** The compiler walks the rules,
+rates, derivations and measures once and emits SQL, Polars and PySpark. The
+claim that the pipeline runs the same definition the author verified is not
+asserted: `npm run conformance` seeds a real DuckDB, executes the compiled
+plan, and compares the filed table row for row against the in-browser
+evaluator. It runs the Polars plan through a real Python process for the same
+comparison. That harness found three bugs the day it was written, and they are
+written up in `IMPLEMENTATION.md`.
+
+## Where to read next
+
+`IMPLEMENTATION.md` covers the architecture, the diagnostic catalogue, the
+classification layer, the conformance policy, every deliberate deviation from
+the prototype, and the limits that are still open — money is a float64 today,
+and PySpark is parsed rather than executed.
+
+## Testing
+
+```
+npm run test         # 192 unit + conformance tests
+npm run conformance  # just the executed backends (needs python3 + polars)
+npm run e2e          # 32 browser checks against the built bundle
+```
+
+The browser suite resolves Chromium the ordinary way. On a machine that already
+has one and no route to download another, point it there:
+
+```
+CHROMIUM_PATH=/path/to/chromium npm run e2e
+```
