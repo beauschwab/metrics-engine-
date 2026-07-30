@@ -13,7 +13,7 @@ npm install
 pip install -r requirements.txt   # only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
-npm run verify     # typecheck, 383 unit tests, 46 browser checks
+npm run verify     # typecheck, 404 unit tests, 57 browser checks
 npm run build      # typecheck + production bundle
 ```
 
@@ -52,6 +52,43 @@ that judges it. Both are pinned by tests, and DuckDB is made to raise the same
 breach list as the browser.
 
 The surface is desktop-only at 1600×1000 — the same call the design made.
+
+## How the workspace is organised
+
+Documents are grouped by **what they are for**, not by what they contain — because
+`kind:` cannot tell those apart. `liquidity_pit` holds the LCR ratio a dashboard
+reads and `fr2052a_outflows` classifies positions for a filing; both are
+`kind: metrics_view`.
+
+| Stage | The question it answers | Runs |
+| --- | --- | --- |
+| **Prepare** | what each record is | compiled into whatever files from it |
+| **File** | what gets submitted | in the pipeline, writing a table |
+| **Publish** | what people read | at query time, writing nothing |
+| **Watch** | what checks it | after the report, raising breaches |
+
+Prepare → File → Publish is a chain; each consumes the last. **Watch is not a
+fourth link — it points at the chain**, which is why a monitor sitting as a peer
+of the report it watches reads wrong.
+
+Every stage is *derived*, never declared. A view is Prepare when a report files
+from it and Publish when none does, so deleting the report reclassifies the same
+unedited view. That is what stops the picture drifting from the workspace.
+
+The chain itself is drawn above the editor, source table to last consumer, with
+the open document marked:
+
+```
+alm.fct_2052a_positions › fr2052a_outflows › fr2052a_submission › reg.fr2052a_daily › fr2052a_variance
+```
+
+Every document step navigates, so "what does this feed?" is something you follow
+rather than reconstruct from `using:` fields across four files. Rule sets and rate
+tables hang off a step as inputs rather than appearing as links, because
+`positions → product_id → outflows` is not what runs — and misdescribing the
+pipeline to whoever is judging whether an edit is safe is worse than drawing
+nothing. Beside it sits the sentence the surface could not previously say:
+`Pipeline · writes reg.fr2052a_daily` against `Query time · writes nothing`.
 
 ## Three ideas worth knowing before reading the code
 
@@ -172,9 +209,9 @@ against a real implementation of the protocol rather than against Dremio itself.
 ## Testing
 
 ```
-npm run test         # 383 unit, conformance and server tests
+npm run test         # 404 unit, conformance and server tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e          # 46 browser checks against the built bundle
+npm run e2e          # 57 browser checks against the built bundle
 ```
 
 The server tests include a live Flight SQL round trip. They skip themselves,

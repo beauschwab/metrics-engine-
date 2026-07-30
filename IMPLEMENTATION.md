@@ -8,9 +8,9 @@ npm install
 pip install -r requirements.txt   # only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
-npm run test       # 383 unit, conformance and server tests
+npm run test       # 404 unit, conformance and server tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e        # 46 browser checks against the built bundle
+npm run e2e        # 57 browser checks against the built bundle
 npm run verify     # all of the above, plus both typecheck projects
 npm run build      # typecheck + production bundle
 ```
@@ -51,6 +51,7 @@ src/
     variance.ts              day-over-day change, trailing dispersion, thresholds
     variance-diagnostics.ts  the KEEL09x family — is the control watching?
     compile-variance.ts      the monitor as window functions, per backend
+    lineage.ts               what each document is *for*, and what feeds what
     conformance.ts           fixture → DDL, plan retargeting, tolerance policy
     engine.test.ts           81 tests — measures, diagnostics, fixes
     classification.test.ts   rules, coverage, effective dating
@@ -60,6 +61,7 @@ src/
     conformance-python.test.ts  the compiled Polars, executed; PySpark, parsed
     conformance-iceberg.test.ts the whole plan, against a real Iceberg catalogue
     conformance-variance.test.ts  same breaches in DuckDB as in the browser
+    lineage.test.ts          stages derived, chains built, nothing hardcoded
   editor/                    CodeMirror 6 extensions
     context.ts               app state in editor state; live re-parse of the doc
     pills.ts                 replace-widgets, atomic ranges, edit-reveal
@@ -74,6 +76,7 @@ src/
     apply.ts                 document mutations, narrowed to the smallest edit
     theme.ts                 the editor's visual layer
   components/                the React chrome around the editor
+    LineageStrip.tsx         where the open document sits in the chain
   styles/
     app.css                  surface tokens + layout
     aperture/                Aperture Risk token files, copied from the bundle
@@ -102,6 +105,83 @@ Everything in it is a pure function of (document text, fixture), which is why
 the same diagnostic drives the inline squiggle, the gutter glyph, the problems
 strip and the `⌘.` menu without any of them re-deriving it — and why the whole
 catalogue is testable without a DOM.
+
+## The information hierarchy
+
+The registry knew its documents by what they *contained* — rules, rates,
+measures, thresholds. That is a syntactic taxonomy, and it put two very different
+things in the same drawer:
+
+| | `liquidity_pit` | `fr2052a_outflows` |
+| --- | --- | --- |
+| Kind | `metrics_view` | `metrics_view` |
+| Holds | `lcr_pct = 100 × HQLA / net outflows` | classify, rate lookup, weighting |
+| Runs | at query time, in a dashboard | in the nightly pipeline, into a filed table |
+| Was shown as | ⧉, row 1 of 7 | ⧉, row 5 of 7 |
+
+Same kind, same glyph, one flat hardcoded list, nothing between them. `lineage.ts`
+derives the taxonomy an author actually reasons about:
+
+**Prepare** — what is this record? **File** — what goes on the form? **Publish** —
+what does it mean? **Watch** — should anyone look at it?
+
+The first three are a chain; each consumes the last. **Watch is not a fourth
+link — it points at the chain.** That distinction is why a monitor listed as a
+peer of the report it watches reads wrong, and why the fix is not simply a
+fifth glyph.
+
+### Derived, never declared
+
+No document says which stage it is in, and adding a `stage:` field would have
+been the wrong answer — it is a fact about the workspace, not about a document,
+and a hand-maintained one goes stale in a week. Four kinds map straight through;
+`metrics_view` is derived:
+
+> A view is **Prepare** when a report files from it, and **Publish** when none
+> does.
+
+Structural rather than heuristic, and the test is the proof: delete
+`fr2052a_submission` and the same unedited `fr2052a_outflows` becomes Publish.
+Add a report over `liquidity_pit` and it becomes Prepare. Nothing is hardcoded,
+so the picture cannot drift from the workspace.
+
+### Saying where things run
+
+`targets: [duckdb, snowflake, …]` says which engines *could* run a plan. What an
+author needs before editing is what happens tonight, and the compiler is the
+authority: `compileReport` inlines a view's derivations, which inline its rule
+sets and rate tables, into one plan. **Only the report writes.** So a rule set
+reads `Compiled in · writes nothing` rather than "runs nightly", which would have
+been a comfortable lie about the thing most likely to be edited carelessly.
+
+Each node carries a short label for the strip and the full sentence for its
+tooltip — the chain is the content, the runtime is a caption on it, and a test
+holds the short form to 36 characters so it cannot grow back into the chain's
+width.
+
+### Drawing the chain
+
+`LineageStrip` renders the spine above the editor, every document step
+navigable:
+
+```
+alm.fct_2052a_positions › fr2052a_outflows › fr2052a_submission › reg.fr2052a_daily › fr2052a_variance
+```
+
+Two things it deliberately does not do. Real lineage is a DAG, and drawing it as
+one produces a picture nobody reads — so the spine is the path the data travels
+and everything else hangs off a step. And a rule set is **not** drawn as a link:
+`positions → product_id → outflows` is not what runs, and misdescribing the
+pipeline to whoever is judging whether an edit is safe is worse than drawing
+nothing. Rule sets appear as inputs *on* the step that folds them in, and only
+when you are standing on that step.
+
+That last clause was a fix, not a design. The first cut carried the inputs at
+every step, which pushed `fr2052a_variance` off the right edge — so standing on
+the report, the monitor watching it was invisible, and the surface looked like it
+had told you everything. It is the document-strip bug exactly: an element that
+scrolls needs an affordance saying there is more. Both edges now fade and the
+current step scrolls into view, the same treatment and for the same reason.
 
 ## Pills, per §5.7
 
@@ -816,7 +896,7 @@ pipeline would do — but emitting a create-if-absent step is an open question.
 
 ## Testing
 
-`npm run test` runs 383 tests — 266 in `src/engine/`, 117 in `server/` — covering
+`npm run test` runs 404 tests — 287 in `src/engine/`, 117 in `server/` — covering
 the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius
@@ -836,7 +916,7 @@ structurally impossible to detect.
 
 ## End to end
 
-`npm run e2e` drives the built bundle in headless Chromium — 46 checks in
+`npm run e2e` drives the built bundle in headless Chromium — 57 checks in
 `e2e/`, split between the surface, the editor and persistence. It runs against `vite
 preview` rather than the dev server, because a production-only failure in
 chunking or CSS ordering is exactly the kind a dev-server test cannot see.
@@ -857,7 +937,7 @@ falls back to Playwright's own browser resolution, so it behaves like a default
 config anywhere with a normal toolchain. The escape hatch is also what to reach
 for when an image ships a pre-installed Chromium whose build number does not
 match the pinned `@playwright/test` — the whole suite fails at launch, which
-looks like 46 regressions and is one mismatched path:
+looks like 57 regressions and is one mismatched path:
 
 ```
 npm run e2e                                    # ordinary machines

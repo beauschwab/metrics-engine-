@@ -19,10 +19,23 @@ import { fmt } from '../engine/format';
 import { sectionBlocks, type Graph, type Measure } from '../engine/parse';
 import { HUE, type PillState } from '../engine/vocab';
 import type { Coverage } from '../engine/rows';
+import {
+  STAGE_CAPTION, STAGE_LABEL, groupByStage, type LineageGraph,
+} from '../engine/lineage';
 
 interface Props {
   file: ViewFile;
   docs: Record<ViewFile, string>;
+  /**
+   * What each document is for, and what feeds what.
+   *
+   * The tree used to be a flat list of seven in a hardcoded order, which put a
+   * dashboard ratio and a pipeline enrichment stage four rows apart with
+   * nothing to tell them apart. Grouping by stage is the fix, and taking the
+   * grouping as a prop rather than computing it here keeps the panel a
+   * renderer.
+   */
+  lineage: LineageGraph;
   graph: Graph;
   evaluator: Evaluator;
   diagnostics: Diagnostic[];
@@ -141,7 +154,7 @@ const FILE_GLYPH: Record<string, string> = {
 };
 
 export function RegistryPanel({
-  file, docs, graph, evaluator, diagnostics, active, filter,
+  file, docs, lineage, graph, evaluator, diagnostics, active, filter,
   onFilter, onPickFile, onPickMeasure, onPickForeign,
   pillState, onPillState, stateOptions, stateTarget,
 }: Props) {
@@ -218,7 +231,25 @@ export function RegistryPanel({
       </div>
 
       <div className="mdl-scroll" style={{ flex: 1, padding: '6px 0' }} role="tree" aria-label="Registry">
-        {VIEW_FILES.map((f) => {
+        {groupByStage(lineage, VIEW_FILES).map((group) => (
+          // The group is what makes the stage legible, so it has to be a real
+          // group to a screen reader too — otherwise the panel reads as seven
+          // flat items again and the whole distinction is visual-only.
+          <div
+            key={group.stage}
+            role="group"
+            aria-label={`${STAGE_LABEL[group.stage]} — ${STAGE_CAPTION[group.stage]}`}
+          >
+            <div className="mdl-tree-group" data-stage={group.stage}>
+              <span className="mdl-tree-group-name">{STAGE_LABEL[group.stage]}</span>
+              {/* The question the stage answers. A header that only names
+                  itself teaches nothing the first time the panel is opened. */}
+              <span className="mdl-tree-group-caption">{STAGE_CAPTION[group.stage]}</span>
+              <span className="mdl-tree-group-rule" aria-hidden="true" />
+            </div>
+
+        {group.files.map((name) => {
+          const f = name as ViewFile;
           const isCurrent = f === file;
           return (
             // A file's own name is the file's own name. Without the explicit
@@ -368,6 +399,8 @@ export function RegistryPanel({
             </div>
           );
         })}
+          </div>
+        ))}
       </div>
 
       <div

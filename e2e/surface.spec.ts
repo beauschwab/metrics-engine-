@@ -500,3 +500,142 @@ test.describe('layout', () => {
     expect(Math.abs((await registry.boundingBox())!.width - after)).toBeLessThan(4);
   });
 });
+
+test.describe('the shape of the workspace', () => {
+  /**
+   * The registry used to be a flat list of seven documents in a hardcoded
+   * order, grouped — implicitly — by what each one *contained*. That put
+   * `liquidity_pit`, which holds the LCR ratio a dashboard reads, four rows from
+   * `fr2052a_outflows`, which classifies positions for a filing, wearing the
+   * same `kind:` and the same glyph.
+   *
+   * These check the other taxonomy is the one on screen: what a document is
+   * *for*, and what feeds what.
+   */
+
+  const tree = (page: Page) => page.locator('.mdl-col-registry [role="tree"]');
+
+  test('groups documents by what they are for, in pipeline order', async ({ page }) => {
+    // Title case in the DOM; the uppercase is `text-transform`, and asserting
+    // what the CSS renders rather than what the markup says would break on a
+    // styling change that altered nothing about the content.
+    const names = await tree(page).locator('.mdl-tree-group-name').allTextContents();
+    expect(names).toEqual(['Prepare', 'File', 'Publish', 'Watch']);
+
+    // The header names the stage; the caption says what question it answers. A
+    // header that only names itself teaches nothing on first open.
+    await expect(tree(page).locator('.mdl-tree-group-caption').first())
+      .toHaveText('what each record is');
+  });
+
+  test('separates a pipeline view from a dashboard view that share a kind', async ({ page }) => {
+    // The collision the grouping exists for, asserted in the DOM rather than in
+    // the engine: same document kind, opposite ends of the chain.
+    const groupFor = async (file: string) => {
+      const group = tree(page).locator('[role="group"]', {
+        has: page.getByRole('button', { name: `${file}.yaml`, exact: false }),
+      }).first();
+      return (await group.getAttribute('aria-label')) || '';
+    };
+
+    expect(await groupFor('fr2052a_outflows')).toContain('Prepare');
+    expect(await groupFor('liquidity_pit')).toContain('Publish');
+    expect(await groupFor('fr2052a_submission')).toContain('File');
+    expect(await groupFor('fr2052a_variance')).toContain('Watch');
+  });
+
+  test('a stage is a real group, not a visual gap', async ({ page }) => {
+    // Without a `role="group"` the panel reads back as seven flat items and the
+    // whole distinction is available only to people who can see it.
+    const groups = tree(page).locator('[role="group"][aria-label*="—"]');
+    expect(await groups.count()).toBe(4);
+    await expect(groups.first()).toHaveAttribute('aria-label', /Prepare — what each record is/);
+  });
+});
+
+test.describe('the chain', () => {
+  const strip = (page: Page) => page.getByTestId('mdl-lineage');
+
+  test('draws source table → view → report → sink → monitor', async ({ page }) => {
+    await openFile(page, 'fr2052a_submission');
+
+    const steps = strip(page).locator('.mdl-lineage-table, .mdl-lineage-doc');
+    await expect(steps).toHaveText([
+      'alm.fct_2052a_positions',
+      'fr2052a_outflows',
+      'fr2052a_submission',
+      'reg.fr2052a_daily',
+      'fr2052a_variance',
+    ]);
+  });
+
+  test('shows the monitor from the report it watches', async ({ page }) => {
+    // Standing on the submission, the fact that something checks it used to be
+    // discoverable only by knowing `fr2052a_variance` existed. The last step
+    // must be *visible*, not merely present — it was scrolled off the right
+    // edge with no affordance in the first cut of this strip.
+    await openFile(page, 'fr2052a_submission');
+    await expect(strip(page).getByRole('button', { name: 'fr2052a_variance' }))
+      .toBeInViewport();
+  });
+
+  test('marks where the open document sits, and moves the mark', async ({ page }) => {
+    await openFile(page, 'fr2052a_submission');
+    await expect(strip(page).locator('[aria-current="step"]')).toHaveText('fr2052a_submission');
+
+    await openFile(page, 'fr2052a_variance');
+    await expect(strip(page).locator('[aria-current="step"]')).toHaveText('fr2052a_variance');
+  });
+
+  test('navigates', async ({ page }) => {
+    // Orientation is half of it; "what does this feed?" should be a thing you
+    // follow rather than reconstruct from `using:` fields across four files.
+    await openFile(page, 'fr2052a_submission');
+    await strip(page).getByRole('button', { name: 'fr2052a_outflows' }).click();
+    await expect(page.locator('.mdl-tab[data-current="true"]').first())
+      .toContainText('fr2052a_outflows');
+  });
+
+  test('treats a rule set as an input to a step, not as a step', async ({ page }) => {
+    // `positions → product_id → outflows` is not what runs, and misdescribing
+    // the pipeline to whoever is judging whether an edit is safe is worse than
+    // drawing nothing.
+    await openFile(page, 'fr2052a_product_id');
+    const spine = strip(page).locator('.mdl-lineage-doc');
+    await expect(spine).not.toContainText(['fr2052a_product_id']);
+    await expect(strip(page).locator('.mdl-lineage-use[data-here="true"]'))
+      .toHaveText('fr2052a_product_id');
+  });
+
+  test('says when a document runs and what it writes', async ({ page }) => {
+    // The difference the surface could not previously express. `targets:` says
+    // which engines *could* run a plan; this says what happens tonight.
+    await openFile(page, 'fr2052a_submission');
+    await expect(page.getByTestId('mdl-runtime')).toContainText('reg.fr2052a_daily');
+
+    await openFile(page, 'liquidity_pit');
+    await expect(page.getByTestId('mdl-runtime')).toContainText('Query time');
+
+    await openFile(page, 'fr2052a_product_id');
+    await expect(page.getByTestId('mdl-runtime')).toContainText('writes nothing');
+  });
+
+  test('stays on one row, however long the chain is', async ({ page }) => {
+    // A wrapped chain reads as two chains, which is the one thing this element
+    // must not do — the same failure the document strip had.
+    for (const f of ['fr2052a_product_id', 'fr2052a_submission', 'fr2052a_variance']) {
+      await openFile(page, f);
+      const box = (await strip(page).boundingBox())!;
+      expect(box.height, f).toBeLessThan(40);
+    }
+  });
+
+  test('ends a published view where it actually ends', async ({ page }) => {
+    // Two steps, and that is the finding rather than a thin result: nothing
+    // files from `liquidity_pit`, so the LCR ratio is read straight off a source
+    // table with no governed table in between.
+    await openFile(page, 'liquidity_pit');
+    await expect(strip(page).locator('.mdl-lineage-table, .mdl-lineage-doc'))
+      .toHaveText(['alm.fct_liquidity_position', 'liquidity_pit']);
+  });
+});
