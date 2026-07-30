@@ -29,7 +29,7 @@ src/
   engine/                    everything that computes — no DOM, no React
     vocab.ts                 pill taxonomy, closed-choice fields, source columns
     fixtures.ts              seeded 60-day test data, calibrated to the spec's numbers
-    documents.ts             the five documents the surface opens with
+    documents.ts             the seven documents the surface opens with
     registry.ts              cross-document resolution + effective dating
     compile.ts               one AST → SQL · Polars · PySpark
     report.ts                the grouped table that gets filed
@@ -46,17 +46,18 @@ src/
     trace.ts                 derivation trace + blast radius
     plan.ts                  generated query + backend conformance
     format.ts                number formatting
-    conformance.ts           fixture → DDL, plan retargeting, tolerance policy
-    engine.test.ts           82 tests — measures, diagnostics, fixes
-    classification.test.ts   rules, coverage, effective dating
-    compile.test.ts          plan emission, report grain, reconciliation
-    conformance.test.ts      the compiled SQL, executed on DuckDB
-    conformance-python.test.ts  the compiled Polars, executed; PySpark, parsed
-    conformance-iceberg.test.ts the whole plan, against a real Iceberg catalogue
     money.ts                 what a filed amount is — rounding as computation
     variance.ts              day-over-day change, trailing dispersion, thresholds
     variance-diagnostics.ts  the KEEL09x family — is the control watching?
     compile-variance.ts      the monitor as window functions, per backend
+    conformance.ts           fixture → DDL, plan retargeting, tolerance policy
+    engine.test.ts           82 tests — measures, diagnostics, fixes
+    classification.test.ts   rules, coverage, effective dating
+    compile.test.ts          plan emission, report grain, reconciliation
+    variance.test.ts         window semantics, thresholds, the KEEL09x family
+    conformance.test.ts      the compiled SQL, executed on DuckDB
+    conformance-python.test.ts  the compiled Polars, executed; PySpark, parsed
+    conformance-iceberg.test.ts the whole plan, against a real Iceberg catalogue
     conformance-variance.test.ts  same breaches in DuckDB as in the browser
   editor/                    CodeMirror 6 extensions
     context.ts               app state in editor state; live re-parse of the doc
@@ -87,6 +88,7 @@ e2e/
   surface.spec.ts            the three columns, the loop, fixes, plans, layout
   editor.spec.ts             pills, keyboard, completion, gutters
   persistence.spec.ts        edits survive a reload, against its own registry
+  (surface.spec also covers the document strip, the panel naming, and variance)
 ```
 
 The split that matters: **`engine/` knows nothing about the editor or React.**

@@ -72,17 +72,17 @@ leg also proves the two things only a catalogue can answer: filing one day
 leaves every other day untouched, and a pinned snapshot still reproduces a filed
 number after the source has been corrected underneath it.
 
-Every bug that harness has found — nine so far, every one of them in code that
-was in code that had been emitted and read many times but never executed. They
-are written up in `IMPLEMENTATION.md`.
+Nine bugs have come out of that harness, every one of them in code that had been
+emitted and read many times but never executed. They are written up in
+`IMPLEMENTATION.md`.
 
 ## Persistence
 
 `server/` is the registry: a small HTTP API over **SQLite in development and SQL
 Server in production**, selected by `KEEL_DB` and defaulting to SQLite so a fresh
 clone works with no connection string. Without it the surface still runs — it
-loads the shipped documents, says `not connected · edits are local`, and behaves
-as the static prototype it began as.
+loads the shipped documents, says `local only`, and behaves as the static
+prototype it began as.
 
 **Revisions are append-only.** Saving never updates a row; it adds one. That is
 what lets the registry answer the question that matters about a filed number —
