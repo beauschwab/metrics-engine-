@@ -639,3 +639,68 @@ test.describe('the chain', () => {
       .toHaveText(['alm.fct_liquidity_position', 'liquidity_pit']);
   });
 });
+
+test.describe('what an edit does', () => {
+  /**
+   * The diagnostics strip says whether a document is well formed. This says what
+   * changing it does to things that already exist — and those come apart most
+   * sharply on a threshold, where a raised limit is perfectly well formed, has no
+   * errors, and has quietly stopped watching a series.
+   */
+  const impact = (page: Page) => page.getByTestId('mdl-impact');
+
+  /** Loosen the hard limit, the way somebody quietening a noisy alert would. */
+  async function loosenTheLimit(page: Page) {
+    await openFile(page, 'fr2052a_variance');
+    await page.locator('.cm-line', { hasText: 'limit: 1000000' }).first().dblclick();
+    await page.keyboard.press('End');
+    for (let i = 0; i < 7; i++) await page.keyboard.press('Backspace');
+    await page.keyboard.type('5000000');
+  }
+
+  test('says nothing until something changes', async ({ page }) => {
+    // A banner that is always there is a banner nobody reads.
+    await openFile(page, 'fr2052a_variance');
+    await expect(impact(page)).toHaveCount(0);
+  });
+
+  test('names what a loosened threshold would silence', async ({ page }) => {
+    await loosenTheLimit(page);
+    await expect(impact(page)).toBeVisible();
+    await expect(impact(page)).toContainText('Silences 3 breaches');
+    await expect(impact(page)).toContainText('worth a second pair of eyes');
+    await expect(impact(page)).toHaveAttribute('data-review', 'true');
+  });
+
+  test('shows the specific moves that stop breaching, not just a count', async ({ page }) => {
+    // A count is a claim; a list is evidence, and it is the difference between
+    // "trust me" and "look".
+    await loosenTheLimit(page);
+    await page.getByTestId('mdl-impact-toggle').click();
+    await expect(impact(page)).toContainText('O.S.5');
+    await expect(impact(page)).toContainText('2026-05-17');
+  });
+
+  test('does not ask for review when a change only tightens', async ({ page }) => {
+    await openFile(page, 'fr2052a_variance');
+    await page.locator('.cm-line', { hasText: 'limit: 1000000' }).first().dblclick();
+    await page.keyboard.press('End');
+    for (let i = 0; i < 7; i++) await page.keyboard.press('Backspace');
+    await page.keyboard.type('100000');
+    await expect(impact(page)).toBeVisible();
+    await expect(impact(page)).toContainText('Raises');
+    await expect(impact(page)).toHaveAttribute('data-review', 'false');
+  });
+
+  test('stays out of the problems strip, which answers a different question', async ({ page }) => {
+    // A problem is something wrong with what you wrote. This is a consequence of
+    // what you wrote being right — filing them together would teach people to
+    // clear both with the same reflex.
+    await loosenTheLimit(page);
+    const problems = page.locator('.mdl-problems, [data-testid="mdl-problems"]').first();
+    if (await problems.count()) {
+      await expect(problems).not.toContainText('Silences 3 breaches');
+    }
+    await expect(impact(page)).toContainText('Silences 3 breaches');
+  });
+});

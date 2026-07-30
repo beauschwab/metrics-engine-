@@ -1040,3 +1040,115 @@ input:focus-visible,
      rather than taking it. */
   max-width: 30%;
 }
+
+/* ============================================================
+   Change impact — what an edit does to things that already exist
+   ============================================================ */
+
+.mdl-impact {
+  flex: none;
+  border-bottom: 1px solid var(--mdl-border-soft);
+  background: var(--mdl-panel);
+}
+
+/* A weakening is the one case worth a chromatic event of its own: the whole
+   problem is that the document looks fine. */
+.mdl-impact[data-review='true'] {
+  box-shadow: inset 3px 0 0 var(--mdl-unresolved);
+}
+
+.mdl-impact-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--mdl-text-muted);
+  font-size: 11px;
+}
+
+.mdl-impact-head:hover {
+  background: var(--mdl-raised-2);
+}
+
+.mdl-impact-tag {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--mdl-text-faint);
+  white-space: nowrap;
+}
+
+.mdl-impact-summary {
+  color: var(--mdl-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdl-impact-more,
+.mdl-impact-caret {
+  font-size: 10px;
+  color: var(--mdl-text-faint);
+  flex: none;
+}
+
+.mdl-impact-review {
+  font-size: 10px;
+  color: var(--mdl-unresolved);
+  white-space: nowrap;
+  flex: none;
+}
+
+.mdl-impact-body {
+  padding: 2px 12px 10px 30px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.mdl-impact-finding + .mdl-impact-finding {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--mdl-border-soft);
+}
+
+.mdl-impact-finding-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+
+.mdl-impact-detail {
+  margin: 0 0 3px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--mdl-text-muted);
+  max-width: 70ch;
+}
+
+/* A count is a claim; a list is evidence. */
+.mdl-impact-silenced {
+  list-style: none;
+  margin: 5px 0 0;
+  padding: 0;
+  font-size: 10px;
+  color: var(--mdl-text-dim);
+}
+
+.mdl-impact-silenced li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 1px 0;
+}
+
+.mdl-impact-date {
+  color: var(--mdl-text-faint);
+}

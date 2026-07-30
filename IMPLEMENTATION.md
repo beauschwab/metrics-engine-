@@ -8,9 +8,10 @@ npm install
 pip install -r requirements.txt   # only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
-npm run test       # 404 unit, conformance and server tests
+npm run mcp        # the MCP server on stdio (read-only by default)
+npm run test       # 491 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e        # 57 browser checks against the built bundle
+npm run e2e        # 62 browser checks against the built bundle
 npm run verify     # all of the above, plus both typecheck projects
 npm run build      # typecheck + production bundle
 ```
@@ -52,6 +53,8 @@ src/
     variance-diagnostics.ts  the KEEL09x family — is the control watching?
     compile-variance.ts      the monitor as window functions, per backend
     lineage.ts               what each document is *for*, and what feeds what
+    impact.ts                what an edit does, by running both versions
+    semantic.ts              publishing a definition to the layer people read
     conformance.ts           fixture → DDL, plan retargeting, tolerance policy
     engine.test.ts           81 tests — measures, diagnostics, fixes
     classification.test.ts   rules, coverage, effective dating
@@ -62,6 +65,8 @@ src/
     conformance-iceberg.test.ts the whole plan, against a real Iceberg catalogue
     conformance-variance.test.ts  same breaches in DuckDB as in the browser
     lineage.test.ts          stages derived, chains built, nothing hardcoded
+    impact.test.ts           silencing measured, not inferred from a diff
+    conformance-semantic.test.ts  the published view, executed and reconciled
   editor/                    CodeMirror 6 extensions
     context.ts               app state in editor state; live re-parse of the doc
     pills.ts                 replace-widgets, atomic ranges, edit-reveal
@@ -77,6 +82,7 @@ src/
     theme.ts                 the editor's visual layer
   components/                the React chrome around the editor
     LineageStrip.tsx         where the open document sits in the chain
+    ChangeImpact.tsx         what this edit does, while it is still an edit
   styles/
     app.css                  surface tokens + layout
     aperture/                Aperture Risk token files, copied from the bundle
@@ -93,6 +99,9 @@ server/                      the registry API — no React, no browser
   live.ts                    the three live reads, built on the same compiler
   query/dremio.py            ADBC Flight SQL client, stdin JSON → stdout JSON
   query/flight_sql_stub.py   a real Flight SQL server over DuckDB, for the tests
+mcp/                         the registry as tools an external agent can call
+  tools.ts                   plain functions over a Repository — all the decisions
+  server.ts                  the MCP binding: schemas in, JSON out, no decisions
 e2e/
   surface.spec.ts            the three columns, the loop, fixes, plans, layout
   editor.spec.ts             pills, keyboard, completion, gutters
@@ -182,6 +191,167 @@ the report, the monitor watching it was invisible, and the surface looked like i
 had told you everything. It is the document-strip bug exactly: an element that
 scrolls needs an affordance saying there is more. Both edges now fade and the
 current step scrolls into view, the same treatment and for the same reason.
+
+## What an edit does
+
+`impact.ts` answers a question nothing on the surface previously asked: not *is
+this document well formed* but *what does changing it do to things that already
+exist*. Those come apart most sharply on a control. A monitor with a raised limit
+has no diagnostics, parses cleanly, and has stopped watching sixteen series.
+
+**Loosening a threshold is how a breach disappears.** A wrong number is a data
+error; a control that no longer fires is a control failure, and under SR 11-7
+that is the more serious finding because it is systemic — nobody would have
+caught the next one either. It is also the easiest edit to make for an innocent
+reason (this alert is noisy) and the hardest to see in a diff, because the
+document still says `thresholds:` and still lists the same number of them.
+
+### It runs both versions
+
+The whole design turns on refusing to pattern-match the YAML. A heuristic — the
+number went up, so this is a loosening — is wrong in both directions: it flags a
+widened band that changes nothing, and it misses a narrowed trailing window that
+now spans a calm period and stops flagging a series. So `assessChange` runs the
+monitor over both documents and diffs the breach lists.
+
+| Edit | Reported as |
+| --- | --- |
+| `limit: 1000000` → `5000000` | silences 3 breaches across 1 series · **needs review** |
+| `sigma: 3.0` → `6.0` | silences 32 breaches across 18 series · **needs review** |
+| `limit: 1000000` → `100000` | raises 46 new breaches · no review needed |
+| description reworded | nothing |
+
+That last row matters as much as the first. Prose moving must not produce a
+governance finding, or the finding stops being read — which is how a real one
+gets missed.
+
+### One defect worth recording
+
+The first cut identified a breach by rollup and date. Raising `HARD-USD` from
+$1mm to $5mm reported **nothing** — those same three key-days were still
+breaching under `SIGMA-30`, so the rollup still appeared in the "after" list. The
+rollup looked watched; the specific control that had been weakened was invisible.
+
+That is precisely the blindness the module exists to remove, reproduced inside
+it. A breach is now identified by *which threshold* fired on which rollup on
+which day, and the test that catches it says so.
+
+### Beyond controls
+
+The same pass reports a rule change in records and money — with the prompt the
+effective dating exists to record — a report grain that loses a dimension, a
+measure that stops being filed, a sink that was redirected (which goes stale
+rather than failing), and a rate that moved while its citation did not. That last
+one is what a reviewer is actually looking for: a governed assumption changing
+under an unchanged authority.
+
+`ChangeImpact.tsx` puts it above the editor rather than in the problems strip. A
+problem is something wrong with what you wrote; this is a consequence of what you
+wrote being right, and filing them together would teach people to clear both with
+the same reflex. It does not block — the surface has no maker-checker model and
+inventing a soft one would be worse than saying the thing plainly. **The MCP path
+does block**, because an agent has no eyes to read a banner with.
+
+## Publishing to the semantic layer
+
+The compiler emitted SQL, Polars and PySpark — three ways of running a plan in a
+pipeline, none of which a dashboard consumes. So the last hop of a governed
+number was a human retyping it: `lcr_pct` is defined here under a tier with a
+citation and a revision history, and then somebody writes
+`100.0 * [HQLA] / [Net Outflows]` into a Tableau calculated field, and *that* is
+what the committee sees.
+
+The two then drift — a rounding rule here, a filter there — and the drift is
+undetectable because nothing compares them. **Drift you cannot detect is worse
+than a wrong number you can.**
+
+`semantic.ts` adds two targets from the same AST: a `CREATE OR REPLACE VIEW` any
+BI tool can point at, and a dbt semantic model for stacks that already have a
+metric layer. Simple measures become `measures:` and derived ones become
+`metrics:` of type `derived`, which is dbt's own split and happens to be exactly
+the one the documents already make.
+
+### Refusing rather than guessing
+
+The expression language is SQL-shaped by design, so most of a derived measure
+passes through untouched. Three things do not, and each is refused by name:
+
+- `ema()` is `x * 0.981` in the browser — fine for a sparkline, not a definition
+  anybody should publish. Emitting *something* would be a dashboard that is
+  confidently wrong.
+- `max(a, b)` is scalar here and an aggregate in SQL, so it becomes `GREATEST`.
+  Passing it through would be a syntax error on some engines and a silent
+  aggregate on others, which is worse.
+- A `windowed` measure has no single-row form at all.
+
+A refused measure is **named in the issues list, never dropped** — a measure
+silently missing from a published view is a number that quietly stops existing on
+somebody's dashboard.
+
+### Executed, not asserted
+
+`conformance-semantic.test.ts` creates the view in a real DuckDB over the same
+fixture the browser evaluates, and reconciles every published measure — all ten,
+including the staged chain `net_cash_outflows_30d → lcr_pct → lcr_buffer` — to
+the value on screen. An emitter nobody executes would recreate the drift problem
+one layer further in, and a generated view that is subtly wrong is worse than a
+hand-written one because it carries the authority of having been generated.
+
+Derived measures each get their own CTE stage, for the reason the report compiler
+chains them: SQL cannot reference an alias declared beside it.
+
+## The MCP server
+
+`mcp/` exposes the registry as tools an external agent can call. The split
+mirrors `server/api.ts`: `tools.ts` holds every decision as plain async functions
+over a `Repository`, and `server.ts` is a schema binding with nothing in it —
+so the behaviour is tested without a subprocess, and the protocol is tested
+without re-testing the behaviour.
+
+### The reads return semantics, not YAML
+
+`get_rules` gives every rule in evaluation order with its condition, emitted
+value, citation and share of the book. First-match precedence means a rule's
+position is part of its meaning, and making every caller re-derive that from a
+document body is exactly the work a tool should absorb. `get_lineage` answers the
+question behind most edits — `usedBy` is the list of things that break —
+and `list_artifacts` carries the stage, because otherwise an agent sees several
+`metrics_view`s and cannot tell a dashboard ratio from a pipeline enrichment
+stage. The same collision, one layer out.
+
+### Authoring is a loop, not a PUT
+
+`validate`, `test_rules`, `preview_report`, `compile` and `assess_change` all
+take a proposed **body** and write nothing. An agent can propose a rule set, see
+which records it strands, and iterate without touching the registry. A tool that
+only saved would be a worse `PUT`.
+
+### Three gates on writing
+
+1. **Off by default.** `KEEL_MCP_WRITE=1` or nothing is written. An agent that
+   can silently rewrite a governed rule set is not a capability anybody should
+   acquire by forgetting to disable it.
+2. **New errors block** — the same catalogue a person is held to, but only for
+   errors the change *introduces*. A flat "no errors" gate was implemented first
+   and immediately made an unrelated edit to `liquidity_pit` impossible, because
+   it ships with two KEEL030s. An agent told to fix someone else's problem before
+   it may touch a file will either give up or fix it badly, so pre-existing
+   errors are reported in the outcome and are not this edit's fault.
+3. **A weakening must be acknowledged.** `assessChange` runs before every save,
+   and a change that silences a control is refused unless `acknowledgeReview` is
+   passed. The acknowledgement — with *what* was silenced — is appended to the
+   revision message. Not a veto: a step that cannot happen by accident, and that
+   lands in the history rather than only in the agent's transcript. Six months
+   later the question is not "was this allowed" but "who decided, and did they
+   know what it did".
+
+Identity comes from `KEEL_MCP_IDENTITY`, never from a tool argument — an author
+field the caller can set to any string is not an attribution.
+
+`server.test.ts` drives the real thing over stdio with the SDK's own client, and
+checks the one failure mode that is invisible until it is fatal: the banner goes
+to **stderr**, and stdout holds nothing at all before a request, because every
+byte there is one the client must parse as a protocol message.
 
 ## Pills, per §5.7
 
@@ -896,7 +1066,7 @@ pipeline would do — but emitting a create-if-absent step is an open question.
 
 ## Testing
 
-`npm run test` runs 404 tests — 287 in `src/engine/`, 117 in `server/` — covering
+`npm run test` runs 491 tests — 322 in `src/engine/`, 117 in `server/`, 54 in `mcp/` — covering
 the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius
@@ -916,7 +1086,7 @@ structurally impossible to detect.
 
 ## End to end
 
-`npm run e2e` drives the built bundle in headless Chromium — 57 checks in
+`npm run e2e` drives the built bundle in headless Chromium — 62 checks in
 `e2e/`, split between the surface, the editor and persistence. It runs against `vite
 preview` rather than the dev server, because a production-only failure in
 chunking or CSS ordering is exactly the kind a dev-server test cannot see.
@@ -937,7 +1107,7 @@ falls back to Playwright's own browser resolution, so it behaves like a default
 config anywhere with a normal toolchain. The escape hatch is also what to reach
 for when an image ships a pre-installed Chromium whose build number does not
 match the pinned `@playwright/test` — the whole suite fails at launch, which
-looks like 57 regressions and is one mismatched path:
+looks like 62 regressions and is one mismatched path:
 
 ```
 npm run e2e                                    # ordinary machines
@@ -957,5 +1127,21 @@ dense numeric column back to a proportional stack; tabular figures are what
 make a column of currency scannable here, so the typeface is now self-hosted
 and the suite asserts the page makes no external request at all.
 
-`npm run verify` runs the typecheck, the unit and conformance suites, and the
-end-to-end suite in one pass.
+### The server was never typechecked
+
+Found while adding `mcp/`, and worth recording because of how long it survived.
+`tsconfig.json` includes only `src`; the harness project adds `e2e`. Nothing
+included `server/`. A deliberate `const PROOF: number = "not a number"` in
+`server/live.ts` passed `npm run typecheck` cleanly — and vitest transpiles
+without checking, so the 117 server tests could not catch it either. The only
+type errors that would ever have surfaced were the ones that also happened to
+break at run time.
+
+`tsconfig.node.json` now covers `server` and `mcp`, and `npm run typecheck` runs
+all three projects. Turning it on produced three real errors immediately: an
+unused import, a `Diagnostic.msg` that has been `message` all along, and `mssql`
+having no type declarations at all. The lesson is not about TypeScript — it is
+that a check nobody has watched fail is not evidence of anything.
+
+`npm run verify` runs all three typecheck projects, the unit and conformance
+suites, and the end-to-end suite in one pass.
