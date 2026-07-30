@@ -72,7 +72,7 @@ describe('document kinds', () => {
 
   it('reads every rule with its condition and citation', () => {
     const c = resolveClassification(buildRegistry(workspace()), 'fr2052a_product_id', AS_OF)!;
-    expect(c.rules).toHaveLength(13);
+    expect(c.rules).toHaveLength(16);
     expect(c.rules[0].id).toBe('OD-1');
     expect(c.rules[0].emit).toBe('O.D.1');
     expect(c.rules[0].citation).toBe('12 CFR 249.32(a)(1)');
@@ -259,7 +259,9 @@ describe('classification diagnostics', () => {
   it('KEEL069 a condition that cannot be read', () => {
     const { diags } = analyse(
       'fr2052a_product_id',
-      workspace({ fr2052a_product_id: RULES.replace("when: direction = 'OUTFLOW' and segment = 'RETAIL' and insured_flag = true and account_type = 'TRANSACTIONAL'", 'when: direction <<') }),
+      workspace({
+        fr2052a_product_id: RULES.replace(/when: direction = 'OUTFLOW'[^\n]*/, 'when: direction <<'),
+      }),
     );
     expect(withCode(diags, 'KEEL069').length).toBeGreaterThan(0);
   });

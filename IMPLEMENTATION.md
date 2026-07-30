@@ -7,9 +7,9 @@ React + TypeScript app with a real CodeMirror 6 editor.
 npm install
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
-npm run test       # 267 unit, conformance and server tests
+npm run test       # 327 unit, conformance and server tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e        # 39 browser checks against the built bundle
+npm run e2e        # 42 browser checks against the built bundle
 npm run verify     # all of the above, plus both typecheck projects
 npm run build      # typecheck + production bundle
 ```
@@ -53,6 +53,11 @@ src/
     conformance.test.ts      the compiled SQL, executed on DuckDB
     conformance-python.test.ts  the compiled Polars, executed; PySpark, parsed
     conformance-iceberg.test.ts the whole plan, against a real Iceberg catalogue
+    money.ts                 what a filed amount is — rounding as computation
+    variance.ts              day-over-day change, trailing dispersion, thresholds
+    variance-diagnostics.ts  the KEEL09x family — is the control watching?
+    compile-variance.ts      the monitor as window functions, per backend
+    conformance-variance.test.ts  same breaches in DuckDB as in the browser
   editor/                    CodeMirror 6 extensions
     context.ts               app state in editor state; live re-parse of the doc
     pills.ts                 replace-widgets, atomic ranges, edit-reveal
@@ -153,6 +158,7 @@ Three document kinds share one parser, discriminated by `kind:`:
 | `classification` | an ordered rule set | coverage, precedence, migration |
 | `parameter_set` | governed assumptions | in-force window, keys, citations |
 | `report` | a grain + a destination | the rows that would be filed |
+| `variance_monitor` | thresholds on a rollup | what each threshold did, over the window |
 
 **Row-level operators are the safest tier in the algebra, not an extension of
 its riskiest part.** Every one is stateless and row-wise, so a rule chain maps
@@ -404,7 +410,132 @@ Still open: there is no identity provider, so every save is attributed to
 `authoring-surface`; and a conflict is reported but not resolved — the author is
 told to reload rather than offered a merge.
 
+## Day-over-day variance
+
+A report says what is being filed. It cannot say whether a number moved more than
+it should have overnight, because that is a statement about a *change* and a
+report is a statement about a day. `kind: variance_monitor` is the seventh
+document kind and the first whose answer spans more than one as-of date.
+
+```yaml
+kind: variance_monitor
+report: fr2052a_submission       # the rollup being watched
+measure: weighted_outflows_30d
+watch:
+  grain: [product_id, entity_id] # coarser than the submission, on purpose
+thresholds:
+  - id: HARD-USD
+    basis: static_abs            # dollars
+    limit: 1000000
+    severity: error
+  - id: RETAIL-PCT
+    basis: static_pct            # percent
+    limit: 12.0
+    applies_to: product_id in ('O.D.1', 'O.D.2', 'O.D.3')
+  - id: SIGMA-30
+    basis: stddev_30d            # k · σ of the trailing 30 daily moves
+    sigma: 3.0
+  - id: SIGMA-60
+    basis: stddev_60d
+    sigma: 2.5
+```
+
+### Four decisions that carry the weight
+
+**σ is the dispersion of the past *changes*, not of the levels.** A balance series
+that trends has a large σ of levels and a small σ of daily moves, so `|Δ| > k·σ(level)`
+fires essentially never and reads like a working control. There is a test that
+pins this: a series rising by exactly 100 a day has σ(levels) > 1000 and
+σ(changes) = 0.
+
+**The trailing window excludes today.** `ROWS BETWEEN 30 PRECEDING AND 1
+PRECEDING`, not `AND CURRENT ROW`. Including the current observation lets an
+outlier widen the band it is being tested against — the bigger the break, the
+wider the band — so the largest breaks are the ones most likely to be missed. It
+is a one-word difference from the version that looks right, and the conformance
+suite measures the effect rather than asserting it: among the 25 largest moves in
+the window, over 80% would have had their threshold inflated by including today.
+
+**Windows count observations, not calendar days.** `RANGE … INTERVAL '30' DAY`
+is defensible, but it cannot be matched exactly by an evaluator walking an array,
+and on a business-day series "trailing 30 days" operationally means the last 30
+points. Choosing the definition both sides can implement identically is what makes
+conformance testable at all.
+
+**A σ from too little history is not a threshold, and is not silently treated as
+one.** Below ten trailing moves the dispersion is dominated by whichever two days
+happen to be in the window. Those points report `insufficient`, distinct from
+`pass` — and the panel shows that column, because a monitor with no breaches and a
+monitor with no coverage look identical without it.
+
+A rollup can also be absent for a day. The change on the day it returns is
+measured **across the gap** rather than dropped: suppressing it would silence a
+breach because a bucket happened to be empty, which is exactly when a breach
+matters. The distance is carried so the surface can say `⟂` rather than implying
+the move happened overnight — and that alignment was found by conformance, where
+DuckDB's `LAG` spanned gaps and the evaluator did not.
+
+### The KEEL09x family
+
+A monitor is a control, and a control's failure mode is not computing the wrong
+number — it is looking like it is watching something and not.
+
+| Code | What it catches |
+| --- | --- |
+| `KEEL090` | names a report that does not exist |
+| `KEEL091` | watches a measure the report does not file |
+| `KEEL092` | a grain, or a scope, the rollup key does not carry |
+| `KEEL093` | a threshold with no basis, no limit, or an unreadable scope |
+| `KEEL094` | a σ basis with no usable threshold on most points |
+| `KEEL095` | **a threshold that never fires** |
+| `KEEL096` | a threshold that fires so often nobody would read it |
+| `KEEL097` | a limit every change exceeds |
+| `KEEL099` | a tier 1–2 threshold with no citation |
+
+`KEEL095` is the one worth reading twice. It is a warning, not an error — an
+escalation trigger that has not fired in sixty days may be correctly set — but
+"no alerts" and "no coverage" are indistinguishable from outside, and the author
+should decide which one they have knowingly.
+
+### Conformance
+
+`conformance-variance.test.ts` seeds DuckDB with the filed table day by day —
+running the report 60 times, so what is monitored is genuinely what would have
+been submitted — then runs the compiled monitor and compares. It checks the
+breach lists are **identical as sets**, that every move agrees, and that σ *and
+the observation count behind it* match on the quiet days too, since an off-by-one
+frame shows up in the count before it shows up in a breach.
+
+The monitor reads the **sink**, not the positions. A variance alert that disagrees
+with the submission it is about is worse than no alert — and matching that meant
+the evaluator had to roll up the *filed* rows rather than recompute the measure,
+because each filed row is quantized to the cent and the two differ by rounding.
+
+### Performance
+
+Building the series runs the whole report once per day in the window, and the
+editing loop calls it on every keystroke — 1252ms, which is a sluggish editor.
+Nothing about the series depends on the thresholds, though: tightening a limit
+re-judges points that are already computed. The expensive half is keyed on what it
+actually depends on, and the loop settles at **26ms**.
+
 ## Conformance
+
+Filed amounts are **exact to the cent on every backend**, not close. That used to
+be a ±$0.005 tolerance in the comparison, which quietly conceded that the engines
+did not actually agree — and a submission that reconciles only approximately is a
+finding. The fix was to make rounding part of the computation rather than of the
+display: a filed amount *is* the correctly-rounded amount in the minor unit, the
+emitters say so (`ROUND(…, 2)` / `.round(2)` / `F.round(…, 2)`), and the tolerance
+became an equality. `money.ts` carries the arithmetic, including the reason
+`Math.round(x * 100) / 100` is wrong at the boundary — `1.005 * 100` is
+`100.49999999999999`.
+
+What that does *not* fix: intermediate arithmetic is still float64. A consequence
+worth knowing is that the sum of the filed rows no longer equals the
+portfolio-level figure exactly — it differs by up to half a cent per row, which is
+an ordinary rounding difference in a filing and is asserted as a band computed
+from the row count rather than guessed at.
 
 The compiler's claim is that the nightly pipeline runs the same definition the
 author verified. Until this layer existed, that claim was checked by asserting

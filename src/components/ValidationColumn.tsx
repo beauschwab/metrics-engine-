@@ -20,6 +20,7 @@ import { HUE, type FixtureName } from '../engine/vocab';
 import { CoveragePanel } from './CoveragePanel';
 import { ParameterPanel } from './ParameterPanel';
 import { ReportPanel } from './ReportPanel';
+import { VariancePanel } from './VariancePanel';
 import { readReport } from '../engine/compile';
 import type { Registry } from '../engine/registry';
 import type { Migration } from '../engine/rows';
@@ -47,6 +48,8 @@ interface Props {
   /** Notional that would change classification versus the filed version. */
   migration: Migration[];
   onPickRule(id: string): void;
+  /** The open workspace — a monitor reaches across to its report and its view. */
+  docs: Record<string, string>;
   /** Every document in the workspace — a report reaches across to its view. */
   registry: Registry;
 }
@@ -57,7 +60,7 @@ export function ValidationColumn(props: Props) {
   const {
     graph, evaluator, diagnostics, fixture, active, baseline, lastGood, traceMode, collapsed,
     vtab, onVtab, onTraceMode, onToggleNode, onPickMeasure, onHoverPill, onLeavePill,
-    migration, onPickRule, registry,
+    migration, onPickRule, registry, docs,
   } = props;
 
   if (graph.kind === 'report') {
@@ -83,6 +86,19 @@ export function ValidationColumn(props: Props) {
           />
         </div>
       </div>
+    );
+  }
+
+  // A monitor is verified by what its thresholds did, not by a value.
+  if (graph.kind === 'variance_monitor') {
+    return (
+      <VariancePanel
+        graph={graph}
+        registry={registry}
+        fixture={fixture}
+        docs={docs}
+        onPickThreshold={onPickRule}
+      />
     );
   }
 

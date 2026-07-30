@@ -155,6 +155,10 @@ test.describe('navigation', () => {
     // A report is verified by the rows that would be filed.
     await openFile(page, 'fr2052a_submission');
     await expect(page.locator('.mdl-col-validation')).toContainText('Rows to file');
+
+    // A monitor is verified by what its thresholds did.
+    await openFile(page, 'fr2052a_variance');
+    await expect(page.locator('.mdl-col-validation')).toContainText('Per threshold');
   });
 });
 
@@ -320,6 +324,7 @@ test.describe('every combination', () => {
     const files = [
       'liquidity_pit', 'irrbb_eve', 'fr2052a_product_id',
       'lcr_outflow_rates', 'fr2052a_outflows', 'fr2052a_submission',
+      'fr2052a_variance',
     ];
 
     // Eighteen combinations, and the ones that break are never the ones you
@@ -340,6 +345,50 @@ test.describe('every combination', () => {
     }
 
     expect(errors).toEqual([]);
+  });
+});
+
+test.describe('variance', () => {
+  test('reports what each threshold did, not just the alerts', async ({ page }) => {
+    await openFile(page, 'fr2052a_variance');
+    const column = page.locator('.mdl-col-validation');
+
+    // The "no threshold" column is the point: a monitor with no breaches and a
+    // monitor with no coverage look identical without it.
+    await expect(column).toContainText('no threshold');
+    await expect(column).toContainText('HARD-USD');
+    await expect(column).toContainText('SIGMA-30');
+    await expect(column).toContainText('Worst first');
+  });
+
+  test('shows a plan for every execution target', async ({ page }) => {
+    await openFile(page, 'fr2052a_variance');
+
+    await page.getByRole('tab', { name: 'SQL' }).click();
+    const sql = page.locator('.mdl-plan');
+    // The frame that excludes today is the single most consequential detail.
+    await expect(sql).toContainText('ROWS BETWEEN 30 PRECEDING AND 1 PRECEDING');
+    await expect(sql).toContainText('STDDEV_SAMP');
+
+    await page.getByRole('tab', { name: 'Polars' }).click();
+    await expect(page.locator('.mdl-plan')).toContainText('rolling_std');
+
+    await page.getByRole('tab', { name: 'PySpark' }).click();
+    await expect(page.locator('.mdl-plan')).toContainText('rowsBetween(-30, -1)');
+  });
+
+  test('says so when a threshold stops firing', async ({ page }) => {
+    await openFile(page, 'fr2052a_variance');
+    await expect(page.locator('.mdl-problem', { hasText: 'KEEL095' })).toHaveCount(0);
+
+    // Push the hard limit far out of reach. The control is now silent, and
+    // silence has to be reported rather than read as health.
+    await line(page, 'limit: 1000000').click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('00');
+
+    await expect(page.locator('.mdl-problem', { hasText: 'KEEL095' })).toBeVisible();
+    await expect(page.locator('.mdl-problem', { hasText: 'KEEL095' })).toContainText('never fires');
   });
 });
 

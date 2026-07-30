@@ -144,7 +144,10 @@ describe.skipIf(!HAS_POLARS)('polars conformance', () => {
       const a = expected.rows.reduce((s, r) => s + (Number.isFinite(r.values[m]) ? r.values[m] : 0), 0);
       const b = actual.reduce((s, r) => s + (Number.isFinite(r.values[m]) ? r.values[m] : 0), 0);
       expect(a).toBeGreaterThan(0);
-      expect(Math.abs(a - b), `${m}: ${a} vs ${b}`).toBeLessThanOrEqual(0.005);
+      // Both sides round every filed amount to the cent, so this is an equality
+      // in all but name — the tenth of a cent is float64 slack on a sum of ~130
+      // already-rounded values, not permission to disagree.
+      expect(Math.abs(a - b), `${m}: ${a} vs ${b}`).toBeLessThanOrEqual(0.001);
     });
   });
 

@@ -206,10 +206,12 @@ export type Tolerance = 'exact' | 'currency' | 'ratio';
 /**
  * How a measure's format decides what "equal" means.
  *
- * Counts are identities and must match exactly. Currency is compared to the
- * cent, because that is the unit a submission is reconciled in and no engine
- * gets to disagree above it. Ratios are compared relatively, since two engines
- * summing the same addends in different orders will differ in the last bits.
+ * Counts are identities and must match exactly. Currency is now *also* exact,
+ * to the cent: since the emitters round every filed amount to the minor unit,
+ * "close enough" is no longer a thing two engines are allowed to be. This used
+ * to be a ±$0.005 tolerance, which quietly conceded that the backends did not
+ * actually agree — a submission that reconciles only approximately is a finding.
+ * Ratios stay relative, because they are not amounts and are not rounded.
  */
 export function toleranceFor(format: string): Tolerance {
   if (/^count/.test(format) || format === 'integer') return 'exact';
@@ -218,7 +220,12 @@ export function toleranceFor(format: string): Tolerance {
 }
 
 const RATIO_EPS = 1e-9;
-const CENT = 0.005;
+/**
+ * Both sides have rounded to the cent, so any difference is a real disagreement.
+ * The allowance left is a tenth of a cent, purely so that two values that *are*
+ * the same cent cannot fail on the float64 representation of that cent.
+ */
+const CENT = 0.001;
 
 export function withinTolerance(a: number, b: number, kind: Tolerance): boolean {
   const aNull = a === null || a === undefined || Number.isNaN(a);
@@ -254,6 +261,17 @@ export interface TableRow {
 }
 
 /**
+ * The separator inside a composite key.
+ *
+ * A literal control character rather than a space, because a grouping value may
+ * contain a space and `['a b', 'c']` must not collide with `['a', 'b c']`. It is
+ * written as an escape: this was an unescaped raw byte for a while, which made
+ * the file read as binary to every tool that looked at it — `grep` refused to
+ * search it — and left two invisible characters in the source.
+ */
+const KEY_SEP = '\u001f';
+
+/**
  * A grouping key as a comparable string.
  *
  * SQL returns an unmatched classification as NULL; the evaluator writes the
@@ -262,7 +280,7 @@ export interface TableRow {
  * else that differs is a real divergence.
  */
 export function keyOf(parts: Array<unknown>): string {
-  return parts.map((p) => (p === null || p === undefined ? '' : String(p))).join(' ');
+  return parts.map((p) => (p === null || p === undefined ? '' : String(p))).join(KEY_SEP);
 }
 
 export function compareTables(
@@ -285,7 +303,7 @@ export function compareTables(
   const out: Divergence[] = [];
 
   keys.forEach((k) => {
-    const label = k.split(' ').map((p) => p || '∅').join(' · ');
+    const label = k.split(KEY_SEP).map((p) => p || '∅').join(' · ');
     if (!(k in a)) {
       out.push({
         key: label, measure: '*', expected: null, actual: null, delta: null,

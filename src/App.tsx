@@ -52,6 +52,8 @@ type SaveState =
   | { kind: 'saving' }
   | { kind: 'saved'; revision: number; at: number }
   | { kind: 'conflict'; message: string }
+  /** Their version is now loaded and yours is on the clipboard. */
+  | { kind: 'reloaded' }
   | { kind: 'offline'; message: string };
 
 /**
@@ -72,7 +74,9 @@ function saveLabel(connection: Connection, save: SaveState): { text: string; hue
     case 'saved':
       return { text: `saved · r${save.revision}`, hue: HUE.signal };
     case 'conflict':
-      return { text: 'someone else saved — reload', hue: HUE.unresolved };
+      return { text: 'someone else saved', hue: HUE.unresolved };
+    case 'reloaded':
+      return { text: 'theirs loaded · yours copied', hue: HUE.warn };
     case 'offline':
       return { text: 'save failed', hue: HUE.warn };
     default:
@@ -118,7 +122,7 @@ export default function App() {
     const registry = buildRegistry(docs);
     const g = parseDoc(docs[file]);
     const ev = new Evaluator(g, fixture, registry);
-    const d = diagnose(g, ev, shipped, registry);
+    const d = diagnose(g, ev, shipped, registry, docs);
     const h = g.kind === 'metrics_view' ? refactorHints(g) : [];
     if (g.kind === 'metrics_view') ev.snapshot();
     return {
@@ -413,6 +417,36 @@ export default function App() {
           <span style={{ flex: 1 }} />
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px' }}>
+            {saveState.kind === 'conflict' ? (
+              /**
+               * A conflict has to have a way out.
+               *
+               * Telling the author "someone else saved" and stopping there means
+               * their work is stranded in a tab with no action available — they
+               * either lose it or force it over a change they cannot see. This
+               * takes the stored revision, keeps their text on the clipboard, and
+               * lets them reapply deliberately. It does not merge: choosing
+               * between two governed rule sets is not a thing to automate.
+               */
+              <button
+                type="button"
+                className="mdl-fix"
+                data-testid="mdl-resolve-conflict"
+                title={saveState.message}
+                onClick={() => {
+                  const mine = docs[file];
+                  navigator.clipboard?.writeText(mine).catch(() => {});
+                  loadWorkspace().then((ws) => {
+                    setDocs(ws.docs);
+                    setConnection(ws.connection);
+                    setSaveState({ kind: 'reloaded' });
+                  });
+                }}
+              >
+                Load theirs · copy mine
+              </button>
+            ) : null}
+
             <span
               className="mono"
               data-testid="mdl-save-state"
@@ -505,6 +539,7 @@ export default function App() {
         migration={migration}
         onPickRule={(id) => editor.current?.goToMeasure(id)}
         registry={registry}
+        docs={docs}
       />
 
       {card ? (

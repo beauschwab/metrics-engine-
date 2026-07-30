@@ -258,16 +258,40 @@ describe('the report', () => {
     expect(r.rows.reduce((a, x) => a + x.records, 0)).toBe(r.records);
   });
 
-  it('reconciles to the view it groups', () => {
-    // The filed table must add up to the same number the measure reports, or
-    // the submission and the dashboard disagree.
+  it('reconciles to the view it groups, within the rounding it declares', () => {
+    // The filed table has to add up to the number the measure reports, or the
+    // submission and the dashboard disagree. It cannot add up *exactly*: each
+    // filed row is quantized to the cent, because that is what a filed amount
+    // is, so the sum of the rows and the portfolio-level figure differ by up to
+    // half a cent per row. That band is a property of rounding, not slack in
+    // the test, so it is computed from the row count rather than guessed.
     const registry = buildRegistry(workspace());
     const view = parseDoc(VIEW);
     const ev = new Evaluator(view, 'nominal', registry);
     const r = result();
+    const band = r.rows.length * 0.005 + 0.005;
 
-    expect(r.totals.weighted_outflows_30d).toBeCloseTo(ev.value('weighted_outflows_30d').v, 2);
-    expect(r.totals.gross_outflow_balance).toBeCloseTo(ev.value('gross_outflow_balance').v, 2);
+    expect(Math.abs(r.totals.weighted_outflows_30d - ev.value('weighted_outflows_30d').v))
+      .toBeLessThanOrEqual(band);
+    expect(Math.abs(r.totals.gross_outflow_balance - ev.value('gross_outflow_balance').v))
+      .toBeLessThanOrEqual(band);
+    // And the band is small — a rounding difference, not a modelling one.
+    expect(band).toBeLessThan(1);
+  });
+
+  it('files every amount at exactly two decimal places', () => {
+    // This is what makes cross-backend conformance an equality rather than a
+    // tolerance: there is no "close enough" once the filed value is defined as
+    // the correctly-rounded one.
+    const r = result();
+    r.rows.forEach((row) => {
+      r.measures.forEach((m) => {
+        const v = row.values[m];
+        if (!Number.isFinite(v)) return;
+        expect(Math.abs(v * 100 - Math.round(v * 100)), `${m} on ${row.key.join('·')}`)
+          .toBeLessThan(1e-6);
+      });
+    });
   });
 
   it('is sorted by the leading measure', () => {

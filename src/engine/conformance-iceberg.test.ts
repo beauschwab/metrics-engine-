@@ -116,26 +116,6 @@ def ensure(identifier, schema, spec):
     except Exception:
         return CATALOG.create_table(identifier, schema=schema, partition_spec=spec)
 
-def ensure_sink(identifier, lf, partition_by):
-    """Create the sink from the plan's own output schema.
-
-    dynamic_partition_overwrite needs a table that already exists and is
-    partitioned — the compiled plan writes, it does not provision. A pipeline
-    bootstraps the sink from the shape the definition produces, which is what
-    a zero-row collect gives without running the aggregation.
-    """
-    ns = identifier.split(".")[0]
-    CATALOG.create_namespace_if_not_exists(ns)
-    try:
-        return CATALOG.load_table(identifier)
-    except Exception:
-        pass
-    t = CATALOG.create_table(identifier, schema=lf.limit(0).collect().to_arrow().schema)
-    with t.update_spec() as us:
-        for c in partition_by:
-            us.add_field(c, IdentityTransform(), c + "_part")
-    return CATALOG.load_table(identifier)
-
 def load_fixture():
     t = ensure("${SOURCE}", SOURCE_SCHEMA, SOURCE_SPEC)
     if t.current_snapshot() is None:
@@ -228,7 +208,7 @@ sys.stdout.write(res.write_ndjson())
       expect(there, `missing group ${r.key.join(' · ')}`).toBeTruthy();
       expected.measures.forEach((m) => {
         expect(Math.abs(Number(there[m]) - r.values[m]), `${r.key.join(' · ')} ${m}`)
-          .toBeLessThanOrEqual(0.005);
+          .toBeLessThanOrEqual(0.001);
       });
     });
   });
@@ -244,13 +224,14 @@ sys.stdout.write(res.write_ndjson())
     spec.grouping.forEach((c) => expect(cols).toContain(c));
   });
 
-  it('writes to the sink, and the sink reconciles to the evaluator', () => {
+  it('provisions its own sink and reconciles to the evaluator', () => {
+    // The plan creates the table on first run now. The harness used to bootstrap
+    // it, which meant the emitted plan was never actually self-sufficient — the
+    // first night of a new report would have failed on a missing table.
     const { query, materialize } = halves();
     const out = runPython(
       `${head}
 ${query}
-
-ensure_sink("${SINK}", df, ${JSON.stringify(spec.partitionBy)})
 
 ${materialize}
 
@@ -269,8 +250,8 @@ print(sorted(str(d) for d in res["as_of_date"].unique()))
       expected.rows.reduce((s, r) => s + (Number.isFinite(r.values[m]) ? r.values[m] : 0), 0);
 
     expect(Number(out[0])).toBe(expected.rows.length);
-    expect(Math.abs(Number(out[1]) - total('gross_outflow_balance'))).toBeLessThanOrEqual(0.005);
-    expect(Math.abs(Number(out[2]) - total('weighted_outflows_30d'))).toBeLessThanOrEqual(0.005);
+    expect(Math.abs(Number(out[1]) - total('gross_outflow_balance'))).toBeLessThanOrEqual(0.001);
+    expect(Math.abs(Number(out[2]) - total('weighted_outflows_30d'))).toBeLessThanOrEqual(0.001);
     expect(out[3]).toContain(AS_OF);
   });
 
@@ -284,7 +265,6 @@ print(sorted(str(d) for d in res["as_of_date"].unique()))
 import datetime as dt
 
 ${query}
-ensure_sink("${SINK}", df, ${JSON.stringify(spec.partitionBy)})
 ${materialize}
 
 # Stand a prior day up beside the one just filed.
@@ -345,10 +325,12 @@ print(total(None))
     const base = expected.rows.reduce(
       (s, r) => s + (Number.isFinite(r.values.gross_outflow_balance) ? r.values.gross_outflow_balance : 0), 0);
 
-    expect(Math.abs(Number(out[0]) - base)).toBeLessThanOrEqual(0.005);
+    expect(Math.abs(Number(out[0]) - base)).toBeLessThanOrEqual(0.001);
     // And reading the latest snapshot sees the correction, so the pin is doing
-    // real work rather than the two reads being accidentally identical.
-    expect(Math.abs(Number(out[1]) - base * 2)).toBeLessThanOrEqual(0.01);
+    // real work rather than the two reads being accidentally identical. Compared
+    // relatively: each of the ~130 filed rows is independently rounded to the
+    // cent, so doubling the input does not double the rounded total exactly.
+    expect(Number(out[1]) / base).toBeCloseTo(2, 6);
   });
 });
 

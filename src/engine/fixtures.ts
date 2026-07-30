@@ -97,50 +97,113 @@ const COLLATERAL = ['L1', 'L2A', 'L2B', 'NON_HQLA', 'UNSECURED'] as const;
  * bucket, no rate. Those are exactly what the classification and parameter
  * layers derive — which is the point of the fixture.
  *
+ * **A portfolio, not a fresh random draw per day.** The first version of this
+ * re-rolled every attribute on every date, which meant a rollup key's membership
+ * was random from one morning to the next: 52 keys produced 310 appearances and
+ * 310 disappearances over 60 days, and a day-over-day series was a sequence of
+ * unrelated numbers. Thresholds fitted to that measure nothing. So attributes are
+ * drawn once per instrument and held; only the balance moves, as a random walk
+ * around a level.
+ *
+ * Maturity is an absolute date, so `days_to_maturity` genuinely shrinks as the
+ * as-of date advances and positions roll into the 30-day window over the series
+ * — which is where a lot of real day-over-day movement in an LCR number comes
+ * from. An instrument is on the book between its issue and its maturity, so
+ * appearances and disappearances happen, but as events rather than as noise.
+ *
  * `edge` deliberately includes a PUBLIC_SECTOR segment that no shipped rule
- * matches, so unmapped-record detection has something real to find.
+ * matches, so unmapped-record detection has something real to find. `nominal`
+ * carries one deliberate one-day spike, so a dispersion-based threshold has an
+ * unambiguous outlier to catch.
  */
+const DAY = 86400000;
+const SERIES_START = Date.parse(`${DATES[0]}T00:00:00Z`);
+
+/**
+ * Everything about a position except the date it is observed on and its size.
+ *
+ * Spelled out rather than `Omit<Row, …>`: `Row` carries a string index signature,
+ * and `Omit` over that keeps the signature while dropping every named field, so
+ * spreading the result satisfies nothing and the compiler complains about the
+ * wrong thing.
+ */
+interface Attributes {
+  entity_id: string;
+  scenario_code: string;
+  bucket_code: string;
+  is_encumbered: boolean;
+  [column: string]: string | number | boolean;
+}
+
+interface Instrument {
+  entity: string;
+  attrs: Attributes;
+  /** Index into DATES from which the position is on the book. */
+  from: number;
+  /** Index after which it has matured off the book, or DATES.length. */
+  to: number;
+  level: number;
+  /** Per-instrument walk, so the balance moves without the population moving. */
+  walk: () => number;
+  /** The date index that carries a deliberate one-day spike, if any. */
+  spikeAt: number;
+}
+
 function build2052a(fx: FixtureName): Table {
   const r = seeded(31);
-  const byDate: Table = {};
   const pick = <T,>(list: readonly T[], draw: number) => list[Math.floor(draw * list.length)];
+  const perEntity = fx === 'edge' ? 24 : 60;
+  const shock = fx === 'stress' ? 1.34 : 1;
 
-  DATES.forEach((d, di) => {
-    const rows: Row[] = [];
-    const drift = 1 + 0.0009 * di + 0.018 * Math.sin(di / 5.1);
-    const shock = fx === 'stress' ? 1.34 : 1;
+  // ---- the book, drawn once -------------------------------------------------
+  const instruments: Instrument[] = [];
+  ENTITIES.forEach((entity, ei) => {
+    for (let k = 0; k < perEntity; k++) {
+      // Each attribute gets its own draw. Deriving several of them from one
+      // counter correlates them — with `segment` and `insured_flag` on the same
+      // modulus, no row can be both retail and insured, and the rule that reads
+      // for exactly that combination silently matches nothing.
+      const nSeg = r();
+      const nAcct = r();
+      const nCpty = r();
+      const nIns = r();
+      const nSec = r();
+      const nColl = r();
+      const nDir = r();
+      const nMat = r();
+      const nAmt = r();
+      const nLife = r();
 
-    ENTITIES.forEach((entity, ei) => {
-      for (let k = 0; k < (fx === 'edge' ? 24 : 48); k++) {
-        // Each attribute gets its own draw. Deriving several of them from one
-        // counter correlates them — with `segment` and `insured_flag` on the
-        // same modulus, no row can be both retail and insured, and the rule
-        // that reads for exactly that combination silently matches nothing.
-        const nSeg = r();
-        const nAcct = r();
-        const nCpty = r();
-        const nIns = r();
-        const nSec = r();
-        const nColl = r();
-        const nDir = r();
-        const nMat = r();
-        const nAmt = r();
+      const secured = nSec > 0.74;
+      const inflow = nDir > 0.74;
+      const segment = fx === 'edge' && k % 11 === 0 ? 'PUBLIC_SECTOR' : pick(SEGMENTS, nSeg);
 
-        const secured = nSec > 0.82;
-        const inflow = nDir > 0.74;
+      // Most of the book is on-boarded before the series starts and matures
+      // after it ends; a minority does either inside the window, which is what
+      // gives appearances and disappearances something real to be.
+      const openPosition = nMat > 0.88;
+      // Spread over roughly three times the series, so a thirty-day window
+      // always holds a meaningful slice of the book and positions roll into it
+      // continuously rather than all at once.
+      const maturesAt = openPosition
+        ? DATES.length
+        : Math.floor(-8 + nMat * (DATES.length + 150));
+      const issuedAt = nLife > 0.92 ? Math.floor(nLife * 40) % (DATES.length - 5) : -1;
 
-        // Only the tricky data set carries a segment the rule set has never
-        // been told about — which is what makes the coverage gap findable.
-        const segment = fx === 'edge' && k % 11 === 0 ? 'PUBLIC_SECTOR' : pick(SEGMENTS, nSeg);
+      const maturity = openPosition
+        ? ''
+        : new Date(SERIES_START + maturesAt * DAY).toISOString().slice(0, 10);
 
-        const openPosition = nMat > 0.88;
-        const daysToMaturity = Math.floor(nMat * 420);
-        const maturity = openPosition
-          ? ''
-          : new Date(Date.UTC(2026, 5, 30) + daysToMaturity * 86400000).toISOString().slice(0, 10);
-
-        rows.push({
-          as_of_date: d,
+      instruments.push({
+        entity,
+        from: Math.max(0, issuedAt),
+        to: Math.min(DATES.length, Math.max(0, maturesAt)),
+        level: (0.5 + nAmt) * (1 + ei * 0.15) * 1.0e6 * (inflow ? 0.6 : shock),
+        walk: seeded(101 + instruments.length * 7),
+        // One instrument on the nominal set gets a single large day, so a
+        // dispersion threshold has an outlier that is unarguably an outlier.
+        spikeAt: fx === 'nominal' && instruments.length === 37 ? 45 : -1,
+        attrs: {
           entity_id: entity,
           scenario_code: 'base',
           bucket_code: '',
@@ -156,10 +219,33 @@ function build2052a(fx: FixtureName): Table {
           direction: inflow ? 'INFLOW' : 'OUTFLOW',
           encumbered_flag: nSec < 0.11,
           maturity_date: maturity,
-          balance_usd: (0.5 + nAmt) * (1 + ei * 0.15) * drift * 1.0e6 * (inflow ? 0.6 : shock),
-        });
-      }
+        } as Attributes,
+      });
+    }
+  });
+
+  // ---- the book, observed daily --------------------------------------------
+  const byDate: Table = {};
+  const balances = instruments.map((i) => i.level);
+
+  DATES.forEach((d, di) => {
+    const drift = 1 + 0.0009 * di + 0.018 * Math.sin(di / 5.1);
+    const rows: Row[] = [];
+
+    instruments.forEach((inst, idx) => {
+      // The walk advances whether or not the position is on the book, so a
+      // balance does not depend on which other instruments happen to be live.
+      balances[idx] *= 1 + (inst.walk() - 0.5) * 0.06;
+      if (di < inst.from || di >= inst.to) return;
+
+      const spike = di === inst.spikeAt ? 6.5 : 1;
+      rows.push({
+        ...inst.attrs,
+        as_of_date: d,
+        balance_usd: balances[idx] * drift * spike,
+      });
     });
+
     byDate[d] = rows;
   });
 

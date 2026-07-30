@@ -18,6 +18,16 @@ export interface ApiRequest {
   path: string;
   query?: Record<string, string>;
   body?: unknown;
+  /**
+   * Who the request is from, as established by whatever sits in front of this.
+   *
+   * There is no identity provider yet, so this is whatever the reverse proxy or
+   * SSO layer asserts — and the point of taking it here rather than from the
+   * request body is that the client cannot choose it. An author attribution a
+   * caller can set to any string is not an attribution, and under SR 11-7 the
+   * name against a rule change is part of the control rather than a label.
+   */
+  identity?: string | null;
 }
 
 export interface ApiResponse {
@@ -65,7 +75,10 @@ export async function handle(repo: Repository, req: ApiRequest): Promise<ApiResp
         if (text === null) return json(400, { error: 'body is required and must be a string' });
 
         const kind = asString(body.kind) || 'metrics_view';
-        const author = asString(body.author) || 'unknown';
+        // The proxy's assertion wins over anything the body claims. `unknown` is
+        // deliberately not a friendly default: an unattributed rule change should
+        // read as unattributed in the history, not as somebody plausible.
+        const author = req.identity || asString(body.author) || 'unknown';
         const message = asString(body.message) || 'Edited in the authoring surface';
         const expected = body.expectedRevision;
 

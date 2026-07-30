@@ -21,6 +21,7 @@ import {
   CLASSIFICATION_BLOCKING, diagnoseClassification, diagnoseDerivations, diagnoseParameterSet,
   diagnoseReport,
 } from './classification-diagnostics';
+import { diagnoseMonitor } from './variance-diagnostics';
 import { buildRegistry, type Registry } from './registry';
 import { derivationsOf } from './rows';
 
@@ -163,10 +164,21 @@ export function diagnose(
   ev: Evaluator,
   baseline?: Graph,
   registry: Registry = buildRegistry({}),
+  /**
+   * The open workspace, needed only by a variance monitor.
+   *
+   * A monitor is the one document kind that cannot be checked in isolation: it
+   * names a report, which names a view, and whether its grain and its measure
+   * make sense depends on both. Passing the texts rather than resolving through
+   * the registry keeps that dependency explicit — reports are not registry
+   * artifacts the way classifications and parameter sets are.
+   */
+  docs: Record<string, string> = {},
 ): Diagnostic[] {
   if (g.kind === 'classification') return diagnoseClassification(g, ev, registry, baseline);
   if (g.kind === 'parameter_set') return diagnoseParameterSet(g, registry, baseline);
   if (g.kind === 'report') return diagnoseReport(g, registry);
+  if (g.kind === 'variance_monitor') return diagnoseMonitor(g, registry, ev.fixture, docs);
   return diagnoseMetricsView(g, ev, baseline, registry);
 }
 

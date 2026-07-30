@@ -29,6 +29,7 @@ import {
 } from './registry';
 import { MATURITY_LADDERS, OPEN_BUCKET } from './vocab';
 import { AS_OF } from './fixtures';
+import { MINOR_UNIT_DP, isCurrency } from './money';
 
 export type Backend = 'sql' | 'polars' | 'pyspark';
 
@@ -335,28 +336,42 @@ function emitMeasure(m: Measure, backend: Backend): string | null {
   // reconciliation break, and the conformance suite catches it as one.
   const zeroWhenEmpty = agg === 'sum';
 
+  // A filed amount is the correctly-rounded amount in the minor unit, not
+  // whatever a float64 addition happened to produce. Emitting the rounding
+  // makes that the definition on every backend, which is what lets conformance
+  // demand exact equality rather than tolerating a cent of drift between
+  // engines that add in different orders. Ratios are left alone — a coverage
+  // ratio is not an amount and is not reconciled to the cent.
+  const cents = isCurrency(m.f.format);
+
   if (backend === 'sql') {
     const fn = SQL_AGG[agg] || 'SUM';
     // FILTER (WHERE …) rather than a CASE, so a row excluded by the predicate
     // does not become a zero inside an average.
     const where = filtered ? ` FILTER (WHERE ${emitPredicate(pred.ast, 'sql')})` : '';
-    const expr = `${fn}(${field})${where}`;
-    return `${zeroWhenEmpty ? `COALESCE(${expr}, 0)` : expr} AS ${m.name}`;
+    let expr = `${fn}(${field})${where}`;
+    if (zeroWhenEmpty) expr = `COALESCE(${expr}, 0)`;
+    if (cents) expr = `ROUND(${expr}, ${MINOR_UNIT_DP})`;
+    return `${expr} AS ${m.name}`;
   }
 
   if (backend === 'polars') {
     const base = filtered
       ? `pl.col("${field}").filter(${emitPredicate(pred.ast, 'polars')})`
       : `pl.col("${field}")`;
-    const expr = `${base}.${agg === 'count' ? 'len' : agg}()`;
-    return `${zeroWhenEmpty ? `${expr}.fill_null(0)` : expr}.alias("${m.name}")`;
+    let expr = `${base}.${agg === 'count' ? 'len' : agg}()`;
+    if (zeroWhenEmpty) expr = `${expr}.fill_null(0)`;
+    if (cents) expr = `${expr}.round(${MINOR_UNIT_DP})`;
+    return `${expr}.alias("${m.name}")`;
   }
 
   const inner = filtered
     ? `F.when(${emitPredicate(pred.ast, 'pyspark')}, F.col("${field}"))`
     : `F.col("${field}")`;
-  const expr = `F.${agg}(${inner})`;
-  return `${zeroWhenEmpty ? `F.coalesce(${expr}, F.lit(0))` : expr}.alias("${m.name}")`;
+  let expr = `F.${agg}(${inner})`;
+  if (zeroWhenEmpty) expr = `F.coalesce(${expr}, F.lit(0))`;
+  if (cents) expr = `F.round(${expr}, ${MINOR_UNIT_DP})`;
+  return `${expr}.alias("${m.name}")`;
 }
 
 // ---------------------------------------------------------------------------
@@ -509,7 +524,8 @@ function compilePython(
   const write = report.table ? emitWrite(report, backend) : '';
 
   const imports = polars
-    ? 'import polars as pl\nfrom datetime import date'
+    ? `import polars as pl\nfrom datetime import date${
+        report.table ? '\nfrom pyiceberg.transforms import IdentityTransform' : ''}`
     : 'from pyspark.sql import functions as F';
 
   // Named holes rather than defaults. A plan that ships with `CATALOG = None`
@@ -520,6 +536,7 @@ function compilePython(
       '#   CATALOG   a pyiceberg Catalog\n' +
       '#   SNAPSHOT  snapshot id to read, or None for the table’s current snapshot\n'
     : '';
+
 
   return `# ${report.name} · compiled for ${BACKEND_LABEL[backend]}\n${imports}\n${params}\n` +
          `${head}\n${steps.join('\n')}\n${group}\n${agg}\n)${write}`;
@@ -558,10 +575,36 @@ function groupingKeys(report: ReportSpec): string[] {
  * raises; emitting `overwrite` would quietly destroy history. So partition
  * overwrite goes through PyIceberg, which has exactly this operation.
  */
+/**
+ * Create the sink if it is not there, from the shape the plan produces.
+ *
+ * `dynamic_partition_overwrite` requires a table that already exists and is
+ * partitioned; the plan used to write without ever provisioning, so the first
+ * night of a new report failed on a missing table and the harness had to
+ * bootstrap it by hand. Deriving the schema from a zero-row collect means the
+ * sink cannot drift from the definition — there is no second place to update
+ * when a measure is added.
+ */
+function emitProvision(report: ReportSpec): string {
+  const parts = report.partitionBy.map((c) => `"${c}"`).join(', ');
+  return `# Provision on first run. The schema comes from the plan itself, so the
+# sink cannot drift from the definition it is filed from.
+if not CATALOG.table_exists("${report.table}"):
+  CATALOG.create_namespace_if_not_exists("${report.table.split('.')[0]}")
+  _sink = CATALOG.create_table(
+    "${report.table}",
+    schema=df.limit(0).collect().to_arrow().schema,
+  )
+  with _sink.update_spec() as _spec:
+    for _col in [${parts}]:
+      _spec.add_field(_col, IdentityTransform(), _col + "_part")
+`;
+}
+
 function emitWrite(report: ReportSpec, backend: Backend): string {
   if (backend === 'polars') {
     if (report.mode === 'overwrite_partitions') {
-      return `\n\n# materialize\n` +
+      return `\n\n# materialize\n${emitProvision(report)}\n` +
         `# Polars writes whole tables; replacing only the partitions in this\n` +
         `# result is PyIceberg's dynamic_partition_overwrite.\n` +
         `CATALOG.load_table("${report.table}").dynamic_partition_overwrite(\n` +

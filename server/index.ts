@@ -93,10 +93,17 @@ export async function main(): Promise<void> {
       return;
     }
 
+    // Identity comes from a header the front door sets, never from the body.
+    // `KEEL_IDENTITY_HEADER` names it; unset means nobody is asserting one, and
+    // saves land as `unknown` rather than as a name the client picked.
+    const identityHeader = (process.env.KEEL_IDENTITY_HEADER || '').toLowerCase();
+    const asserted = identityHeader ? req.headers[identityHeader] : undefined;
+
     const request: ApiRequest = {
       method: req.method || 'GET',
       path: url.pathname,
       query,
+      identity: Array.isArray(asserted) ? asserted[0] : asserted || null,
       body: req.method === 'PUT' ? await readBody(req) : undefined,
     };
 

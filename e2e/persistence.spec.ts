@@ -136,7 +136,7 @@ test.describe('the registry', () => {
   test('serves the workspace it seeded from the shipped documents', async () => {
     const res = await fetch(`${API}/api/artifacts`);
     const { artifacts } = (await res.json()) as { artifacts: Array<{ name: string; revision: number }> };
-    expect(artifacts).toHaveLength(6);
+    expect(artifacts).toHaveLength(7);
     expect(artifacts.every((a) => a.revision >= 1)).toBe(true);
   });
 

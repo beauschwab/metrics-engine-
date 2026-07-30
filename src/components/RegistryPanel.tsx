@@ -38,6 +38,7 @@ const LABEL: Record<string, string> = {
   classification: 'rules',
   parameter_set: 'rates',
   report: 'filed',
+  variance_monitor: 'thresholds',
 };
 
 /** Blocks of any kind — measures, rules, or parameter entries. */
@@ -49,6 +50,7 @@ function countBlocks(doc: string): number {
 function primarySection(g: Graph): string {
   if (g.kind === 'classification') return 'rules';
   if (g.kind === 'parameter_set') return 'entries';
+  if (g.kind === 'variance_monitor') return 'thresholds';
   return 'measures';
 }
 
@@ -71,6 +73,7 @@ const FILE_GLYPH: Record<string, string> = {
   classification: '⌗',
   parameter_set: '≡',
   report: '▤',
+  variance_monitor: '∿',
 };
 
 export function RegistryPanel({
@@ -92,6 +95,13 @@ export function RegistryPanel({
 
   /** What sits on the right of a row: a value, an emitted code, or a rate. */
   const metaFor = (m: Measure): string => {
+    if (graph.kind === 'variance_monitor') {
+      // What the threshold compares against, so the tree says what each one is
+      // for rather than only naming it.
+      const basis = (m.f.basis || '').trim();
+      if (basis.startsWith('stddev')) return `${(m.f.sigma || '').trim()}σ`;
+      return basis === 'static_pct' ? `${(m.f.limit || '').trim()}%` : (m.f.limit || '').trim();
+    }
     if (graph.kind === 'classification') return (m.f.emit || '').trim();
     if (graph.kind === 'parameter_set') {
       const v = parseFloat((m.f[(graph.view.value || '').trim()] || '').trim());

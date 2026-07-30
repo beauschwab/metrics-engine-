@@ -20,6 +20,7 @@ import { exprNames, type Graph, type Measure } from './parse';
 import type { Registry } from './registry';
 import { TABLES, type Row } from './fixtures';
 import { isReferenceName, type FixtureName } from './vocab';
+import { asFiled } from './money';
 import type { ReportSpec } from './compile';
 
 export interface ReportRow {
@@ -81,12 +82,21 @@ export function runReport(
         const v = r[field];
         if (typeof v === 'number' && !Number.isNaN(v)) vals.push(v);
       });
-      values[m.name] = aggregate((m.f.agg || 'sum').trim(), vals);
+      // A filed amount is the correctly-rounded amount, not whatever the
+      // float64 addition produced. Applying that here rather than at render
+      // time is what lets the conformance suite demand exact equality from
+      // every backend instead of tolerating a cent of drift.
+      values[m.name] = asFiled(aggregate((m.f.agg || 'sum').trim(), vals), m.f.format);
     });
 
     composed.forEach((m) => {
-      values[m.name] = evalExpression(m.f.expression || '', (n) =>
-        values[n] === undefined ? NaN : values[n]).value;
+      // Composed from the *filed* inputs, so the arithmetic an auditor can
+      // redo by hand from the filed rows gives the filed answer.
+      values[m.name] = asFiled(
+        evalExpression(m.f.expression || '', (n) =>
+          values[n] === undefined ? NaN : values[n]).value,
+        m.f.format,
+      );
     });
 
     return { key: bucket.key, records: bucket.rows.length, values };
@@ -98,7 +108,12 @@ export function runReport(
 
   const totals: Record<string, number> = {};
   measures.forEach((m) => {
-    totals[m.name] = rows.reduce((acc, r) => acc + (Number.isFinite(r.values[m.name]) ? r.values[m.name] : 0), 0);
+    // The total of the filed rows, quantized again — a sum of exact cents is
+    // still a float64 sum, and the footing has to tie to the column above it.
+    totals[m.name] = asFiled(
+      rows.reduce((acc, r) => acc + (Number.isFinite(r.values[m.name]) ? r.values[m.name] : 0), 0),
+      m.f.format,
+    );
   });
 
   const coverage = Object.values(derived.coverage)[0] || null;

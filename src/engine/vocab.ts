@@ -217,8 +217,8 @@ export const DOMAINS: Record<string, string[]> = {
   fr2052a_product_ids: [
     'O.D.1', 'O.D.2', 'O.D.3', 'O.D.5', 'O.D.6',
     'O.W.1', 'O.W.2', 'O.W.3',
-    'O.S.1', 'O.S.2',
-    'I.U.1', 'I.S.1', 'I.O.1',
+    'O.S.1', 'O.S.2', 'O.S.3', 'O.S.5',
+    'I.U.1', 'I.S.1', 'I.S.2', 'I.O.1',
   ],
 };
 

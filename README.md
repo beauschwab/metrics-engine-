@@ -12,7 +12,7 @@ editor.
 npm install
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
-npm run verify     # typecheck, 267 unit tests, 39 browser checks
+npm run verify     # typecheck, 327 unit tests, 42 browser checks
 npm run build      # typecheck + production bundle
 ```
 
@@ -28,10 +28,21 @@ each kind of document the workspace holds:
 | `classification` | an ordered rule set | coverage — which rule fired, on how many records, moving how much notional |
 | `parameter_set` | governed assumptions | the in-force window, the keys, the citation behind each rate |
 | `report` | a grain and a destination | the rows that would actually be filed |
+| `variance_monitor` | thresholds on a rollup | what each threshold did across the window — fired, passed, or had no threshold at all |
 
-Six documents ship in the workspace: two metrics views (`liquidity_pit`,
+Seven documents ship in the workspace: two metrics views (`liquidity_pit`,
 `irrbb_eve`), the FR 2052a product-ID rule set and its LCR rate table, the
-outflow view that applies them, and the daily submission report.
+outflow view that applies them, the daily submission report, and a day-over-day
+variance monitor over what that report files.
+
+**Variance monitoring** answers the question a report cannot: did a number move
+more overnight than it should have? Thresholds are either static — an absolute
+amount or a percentage — or derived from how much that particular rollup normally
+moves, as `k × σ` of its trailing 30 or 60 daily changes. Two details decide
+whether such a control works at all: σ is the dispersion of past *changes*, not of
+the levels, and the trailing window excludes today so a spike cannot widen the band
+that judges it. Both are pinned by tests, and DuckDB is made to raise the same
+breach list as the browser.
 
 The surface is desktop-only at 1600×1000 — the same call the design made.
 
@@ -46,7 +57,7 @@ visible without reading.
 **The engine knows nothing about React or the editor.** Everything in `engine/`
 is a pure function of (document text, fixture), which is why one diagnostic
 drives the inline squiggle, the gutter glyph, the problems strip and the `⌘.`
-menu without any of them re-deriving it — and why the whole 33-code catalogue
+menu without any of them re-deriving it — and why the whole 42-code catalogue
 is testable without a DOM.
 
 **One definition, several execution targets.** The compiler walks the rules,
@@ -61,9 +72,9 @@ leg also proves the two things only a catalogue can answer: filing one day
 leaves every other day untouched, and a pinned snapshot still reproduces a filed
 number after the source has been corrected underneath it.
 
-Six bugs have come out of that harness so far, every one of them in code that
-had been emitted and read but never run. They are written up in
-`IMPLEMENTATION.md`.
+Every bug that harness has found — nine so far, every one of them in code that
+was in code that had been emitted and read many times but never executed. They
+are written up in `IMPLEMENTATION.md`.
 
 ## Persistence
 
@@ -88,15 +99,17 @@ disappears into a stale browser tab.
 
 `IMPLEMENTATION.md` covers the architecture, the diagnostic catalogue, the
 classification layer, the conformance policy, every deliberate deviation from
-the prototype, and the limits that are still open — money is a float64 today,
-and PySpark is parsed rather than executed.
+the prototype, and the limits that are still open — filed amounts are now exact
+to the cent but intermediate arithmetic is still binary floating point, PySpark is
+parsed rather than executed, and the SQL Server path is proved as portable T-SQL
+without a SQL Server to run it against.
 
 ## Testing
 
 ```
-npm run test         # 267 unit, conformance and server tests
+npm run test         # 327 unit, conformance and server tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e          # 39 browser checks against the built bundle
+npm run e2e          # 42 browser checks against the built bundle
 ```
 
 The browser suite resolves Chromium the ordinary way. On a machine that already

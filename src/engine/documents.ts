@@ -7,6 +7,7 @@ export const VIEW_FILES = [
   'lcr_outflow_rates',
   'fr2052a_outflows',
   'fr2052a_submission',
+  'fr2052a_variance',
 ] as const;
 export type ViewFile = (typeof VIEW_FILES)[number];
 
@@ -249,31 +250,31 @@ rules:
   - id: OD-1
     emit: O.D.1
     label: Retail — insured, transactional
-    when: direction = 'OUTFLOW' and segment = 'RETAIL' and insured_flag = true and account_type = 'TRANSACTIONAL'
+    when: direction = 'OUTFLOW' and is_secured = false and segment = 'RETAIL' and insured_flag = true and account_type = 'TRANSACTIONAL'
     citation: 12 CFR 249.32(a)(1)
 
   - id: OD-2
     emit: O.D.2
     label: Retail — insured, non-transactional
-    when: direction = 'OUTFLOW' and segment = 'RETAIL' and insured_flag = true
+    when: direction = 'OUTFLOW' and is_secured = false and segment = 'RETAIL' and insured_flag = true
     citation: 12 CFR 249.32(a)(1)
 
   - id: OD-3
     emit: O.D.3
     label: Retail — uninsured
-    when: direction = 'OUTFLOW' and segment = 'RETAIL'
+    when: direction = 'OUTFLOW' and is_secured = false and segment = 'RETAIL'
     citation: 12 CFR 249.32(a)(2)
 
   - id: OD-5
     emit: O.D.5
     label: Small business — insured
-    when: direction = 'OUTFLOW' and segment = 'SMALL_BUSINESS' and insured_flag = true
+    when: direction = 'OUTFLOW' and is_secured = false and segment = 'SMALL_BUSINESS' and insured_flag = true
     citation: 12 CFR 249.32(a)(3)
 
   - id: OD-6
     emit: O.D.6
     label: Small business — uninsured
-    when: direction = 'OUTFLOW' and segment = 'SMALL_BUSINESS'
+    when: direction = 'OUTFLOW' and is_secured = false and segment = 'SMALL_BUSINESS'
     citation: 12 CFR 249.32(a)(3)
 
   - id: OS-1
@@ -288,22 +289,34 @@ rules:
     when: direction = 'OUTFLOW' and is_secured = true and collateral_class = 'L2A'
     citation: 12 CFR 249.32(j)
 
+  - id: OS-3
+    emit: O.S.3
+    label: Secured funding — level 2B collateral
+    when: direction = 'OUTFLOW' and is_secured = true and collateral_class = 'L2B'
+    citation: 12 CFR 249.32(j)
+
+  - id: OS-5
+    emit: O.S.5
+    label: Secured funding — non-HQLA collateral
+    when: direction = 'OUTFLOW' and is_secured = true and collateral_class = 'NON_HQLA'
+    citation: 12 CFR 249.32(j)
+
   - id: OW-1
     emit: O.W.1
     label: Wholesale — operational, non-financial
-    when: direction = 'OUTFLOW' and account_type = 'OPERATIONAL' and counterparty_type in ('NONFIN_CORP', 'SOVEREIGN')
+    when: direction = 'OUTFLOW' and is_secured = false and account_type = 'OPERATIONAL' and counterparty_type in ('NONFIN_CORP', 'SOVEREIGN')
     citation: 12 CFR 249.32(h)
 
   - id: OW-3
     emit: O.W.3
     label: Wholesale — financial institution
-    when: direction = 'OUTFLOW' and counterparty_type = 'FINANCIAL'
+    when: direction = 'OUTFLOW' and is_secured = false and counterparty_type = 'FINANCIAL'
     citation: 12 CFR 249.32(h)(5)
 
   - id: OW-2
     emit: O.W.2
     label: Wholesale — non-operational, non-financial
-    when: direction = 'OUTFLOW' and segment in ('WHOLESALE', 'RETAIL', 'SMALL_BUSINESS')
+    when: direction = 'OUTFLOW' and is_secured = false and segment in ('WHOLESALE', 'RETAIL', 'SMALL_BUSINESS')
     citation: 12 CFR 249.32(h)(2)
 
   - id: IS-1
@@ -312,16 +325,22 @@ rules:
     when: direction = 'INFLOW' and is_secured = true and collateral_class = 'L1'
     citation: 12 CFR 249.33(f)
 
+  - id: IS-2
+    emit: I.S.2
+    label: Secured lending — collateral other than level 1
+    when: direction = 'INFLOW' and is_secured = true
+    citation: 12 CFR 249.33(f)
+
   - id: IU-1
     emit: I.U.1
     label: Unsecured inflow — financial counterparty
-    when: direction = 'INFLOW' and counterparty_type = 'FINANCIAL'
+    when: direction = 'INFLOW' and is_secured = false and counterparty_type = 'FINANCIAL'
     citation: 12 CFR 249.33(c)
 
   - id: IO-1
     emit: I.O.1
     label: Other inflows
-    when: direction = 'INFLOW' and segment in ('WHOLESALE', 'RETAIL', 'SMALL_BUSINESS')
+    when: direction = 'INFLOW' and is_secured = false and segment in ('WHOLESALE', 'RETAIL', 'SMALL_BUSINESS')
     citation: 12 CFR 249.33(g)`;
 
 /**
@@ -377,6 +396,14 @@ entries:
     outflow_rate: 0.15
     citation: 12 CFR 249.32(j)(2)
 
+  - product_id: O.S.3
+    outflow_rate: 0.25
+    citation: 12 CFR 249.32(j)(3)
+
+  - product_id: O.S.5
+    outflow_rate: 1.00
+    citation: 12 CFR 249.32(j)(4)
+
   - product_id: O.W.1
     outflow_rate: 0.25
     citation: 12 CFR 249.32(h)(1)
@@ -392,6 +419,10 @@ entries:
   - product_id: I.S.1
     outflow_rate: 0.00
     citation: 12 CFR 249.33(f)(1)
+
+  - product_id: I.S.2
+    outflow_rate: 0.50
+    citation: 12 CFR 249.33(f)
 
   - product_id: I.U.1
     outflow_rate: 1.00
@@ -531,6 +562,72 @@ governance:
   citation: FR 2052a Instructions
   validation_status: validated`;
 
+
+/**
+ * The morning question.
+ *
+ * A report says what is being filed. It cannot say whether a number moved more
+ * than it should have overnight, because that is a statement about a change and
+ * a report is a statement about a day. This watches the rollups the rules
+ * produce and judges each day-over-day move against thresholds that are either
+ * fixed by policy or derived from how much that particular series normally
+ * moves.
+ *
+ * The grain is deliberately coarser than the submission's. Watching every
+ * product ID by bucket by currency by entity yields hundreds of series, most of
+ * them too thin for a standard deviation to mean anything; watching product ID
+ * by entity gives series with enough history to have a dispersion worth
+ * comparing against.
+ */
+const FR2052A_VARIANCE = `version: 1
+kind: variance_monitor
+name: fr2052a_variance
+display_name: FR 2052a — day-over-day outflow variance
+report: fr2052a_submission
+measure: weighted_outflows_30d
+
+watch:
+  grain: [product_id, entity_id]
+
+effective:
+  from: 2025-10-01
+
+governance:
+  owner: Liquidity Regulatory Reporting
+  sr_11_7_tier: 2
+  citation: SR 11-7
+  validation_status: validated
+
+thresholds:
+  - id: HARD-USD
+    basis: static_abs
+    limit: 1000000
+    severity: error
+    citation: Internal liquidity risk policy 4.2
+    description: Any overnight move above $1mm in a product bucket is escalated.
+
+  - id: RETAIL-PCT
+    basis: static_pct
+    limit: 12.0
+    severity: warn
+    applies_to: product_id in ('O.D.1', 'O.D.2', 'O.D.3')
+    citation: Internal liquidity risk policy 4.3
+    description: Retail run-off is sticky, so a double-digit daily move is unusual.
+
+  - id: SIGMA-30
+    basis: stddev_30d
+    sigma: 3.0
+    severity: warn
+    citation: SR 11-7 outcomes analysis
+    description: Three sigma against the trailing 30 daily moves for this rollup.
+
+  - id: SIGMA-60
+    basis: stddev_60d
+    sigma: 2.5
+    severity: info
+    citation: SR 11-7 outcomes analysis
+    description: A wider window catches a drift the 30-day window has absorbed.`;
+
 export const INITIAL_DOCS: Record<ViewFile, string> = {
   liquidity_pit: LIQUIDITY_PIT,
   irrbb_eve: IRRBB_EVE,
@@ -538,6 +635,7 @@ export const INITIAL_DOCS: Record<ViewFile, string> = {
   lcr_outflow_rates: LCR_OUTFLOW_RATES,
   fr2052a_outflows: FR2052A_OUTFLOWS,
   fr2052a_submission: FR2052A_SUBMISSION,
+  fr2052a_variance: FR2052A_VARIANCE,
 };
 
 /** What each document opens on — a measure, or the artifact itself. */
@@ -548,4 +646,5 @@ export const DEFAULT_MEASURE: Record<ViewFile, string> = {
   lcr_outflow_rates: 'O.D.1',
   fr2052a_outflows: 'net_outflows_30d',
   fr2052a_submission: 'fr2052a_submission',
+  fr2052a_variance: 'HARD-USD',
 };

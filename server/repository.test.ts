@@ -232,17 +232,18 @@ describe('transaction time', () => {
 describe('seeding', () => {
   it('puts every shipped document in as revision 1', async () => {
     const docs = shippedDocuments();
-    expect(docs).toHaveLength(6);
-    expect(await repo.seed(docs)).toBe(6);
+    expect(docs).toHaveLength(7);
+    expect(await repo.seed(docs)).toBe(7);
 
     const ws = await repo.workspace();
-    expect(ws).toHaveLength(6);
+    expect(ws).toHaveLength(7);
     expect(ws.every((r) => r.revision === 1)).toBe(true);
     // The kind comes off the parsed document rather than being guessed.
     expect(ws.find((r) => r.name === 'fr2052a_product_id')?.kind).toBe('classification');
     expect(ws.find((r) => r.name === 'lcr_outflow_rates')?.kind).toBe('parameter_set');
     expect(ws.find((r) => r.name === 'fr2052a_submission')?.kind).toBe('report');
     expect(ws.find((r) => r.name === 'liquidity_pit')?.kind).toBe('metrics_view');
+    expect(ws.find((r) => r.name === 'fr2052a_variance')?.kind).toBe('variance_monitor');
   });
 
   it('is a no-op on the second boot', async () => {
