@@ -12,7 +12,7 @@ npm run mcp        # the MCP server on stdio (read-only by default)
 npm run test       # 491 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e        # 62 browser checks against the built bundle
-npm run verify     # all of the above, plus both typecheck projects
+npm run verify     # all of the above, plus all three typecheck projects
 npm run build      # typecheck + production bundle
 ```
 
@@ -377,7 +377,7 @@ way to desync.
 
 ## Diagnostics
 
-All 29 codes in §6.2 are emitted, plus four the prototype added
+All 29 codes in §6.2 are emitted, plus the families this build added
 (`KEEL026`/`KEEL027` for trailing windows, `KEEL035` for deprecated external
 references, `KEEL044` for closed-choice fields, `KEEL050`–`KEEL052` for
 filters). Severity is coupled to governance tier, so the same missing

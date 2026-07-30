@@ -12,6 +12,17 @@
 
 import { parseDoc, sectionBlocks, type Graph, type Measure } from './parse';
 
+/**
+ * Separator for composite lookup keys.
+ *
+ * Spelled as an escape rather than typed literally: a raw control byte makes the
+ * whole file read as binary to grep, diff and every review tool, which has now
+ * happened four times in this repo and cost a search each time. `\u001f` is the
+ * ASCII unit separator — it cannot occur in a parameter key — and this way the
+ * file stays text.
+ */
+const KEY_SEP = '\u001f';
+
 export interface ClassificationRule {
   id: string;
   emit: string;
@@ -94,7 +105,7 @@ function readParameterSet(g: Graph): ParameterSet {
   const table: Record<string, number> = {};
   const byKey: Record<string, Measure> = {};
   entries.forEach((e) => {
-    const k = keys.map((key) => (e.f[key] || '').trim()).join('');
+    const k = keys.map((key) => (e.f[key] || '').trim()).join(KEY_SEP);
     const v = parseFloat((e.f[value] || '').trim());
     if (!Number.isNaN(v)) table[k] = v;
     byKey[k] = e;

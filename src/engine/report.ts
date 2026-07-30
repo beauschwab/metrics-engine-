@@ -42,6 +42,9 @@ export interface ReportResult {
   missing: string[];
 }
 
+/** Separator for the composite grouping key. See the note in `registry.ts`. */
+const KEY_SEP = '\u001f';
+
 export function runReport(
   report: ReportSpec,
   view: Graph,
@@ -64,7 +67,7 @@ export function runReport(
   const buckets: Record<string, { key: string[]; rows: Row[] }> = {};
   derived.rows.forEach((row) => {
     const key = report.grouping.map((c) => String(row[c] ?? ''));
-    const id = key.join('');
+    const id = key.join(KEY_SEP);
     (buckets[id] ||= { key, rows: [] }).rows.push(row);
   });
 

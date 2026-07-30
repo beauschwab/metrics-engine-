@@ -102,7 +102,7 @@ visible without reading.
 **The engine knows nothing about React or the editor.** Everything in `engine/`
 is a pure function of (document text, fixture), which is why one diagnostic
 drives the inline squiggle, the gutter glyph, the problems strip and the `⌘.`
-menu without any of them re-deriving it — and why the whole 42-code catalogue
+menu without any of them re-deriving it — and why the whole 68-code catalogue
 is testable without a DOM.
 
 **One definition, several execution targets.** The compiler walks the rules,
@@ -117,9 +117,10 @@ leg also proves the two things only a catalogue can answer: filing one day
 leaves every other day untouched, and a pinned snapshot still reproduces a filed
 number after the source has been corrected underneath it.
 
-Nine bugs have come out of that harness, every one of them in code that had been
-emitted and read many times but never executed. They are written up in
-`IMPLEMENTATION.md`.
+Every defect written up under *Conformance* in `IMPLEMENTATION.md` came out of
+that harness, and every one of them was in code that had been emitted and read
+many times but never executed. A count is not given here because it would go
+stale; the list is.
 
 ## Persistence
 
