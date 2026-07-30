@@ -12,7 +12,7 @@ editor.
 npm install
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
-npm run verify     # typecheck, 327 unit tests, 42 browser checks
+npm run verify     # typecheck, 327 unit tests, 46 browser checks
 npm run build      # typecheck + production bundle
 ```
 
@@ -109,7 +109,7 @@ without a SQL Server to run it against.
 ```
 npm run test         # 327 unit, conformance and server tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e          # 42 browser checks against the built bundle
+npm run e2e          # 46 browser checks against the built bundle
 ```
 
 The browser suite resolves Chromium the ordinary way. On a machine that already

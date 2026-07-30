@@ -1,10 +1,15 @@
 /**
- * The measures panel.
+ * The registry panel.
  *
- * A tree of views and measures with a status dot per entry and the current
- * value on the right. Measures drag into the editor, which is what makes this
- * more than a file list: an author scanning for the right measure can place it
- * without typing or memorising its exact name.
+ * A tree of documents and what each one holds, with a status dot per entry and
+ * the current value on the right. Measures drag into the editor, which is what
+ * makes this more than a file list: an author scanning for the right measure can
+ * place it without typing or memorising its exact name.
+ *
+ * It holds five kinds of thing now, not one, and the header, the search box and
+ * the footer hint all name whichever it is. They all used to say "measures"
+ * unconditionally — over a count of "16 rules", with an instruction to drag a
+ * measure that a rate table has none of.
  */
 
 import type { Diagnostic } from '../engine/diagnostics';
@@ -12,7 +17,7 @@ import type { Evaluator } from '../engine/evaluate';
 import { VIEW_FILES, type ViewFile } from '../engine/documents';
 import { fmt } from '../engine/format';
 import { sectionBlocks, type Graph, type Measure } from '../engine/parse';
-import { HUE } from '../engine/vocab';
+import { HUE, type PillState } from '../engine/vocab';
 import type { Coverage } from '../engine/rows';
 
 interface Props {
@@ -28,6 +33,18 @@ interface Props {
   onPickMeasure(name: string): void;
   /** Open a measure that lives in another document — what a report files. */
   onPickForeign(f: ViewFile, name: string): void;
+  /**
+   * The pill-state gallery, from §5.7 of the design.
+   *
+   * It lives here rather than in the document strip because it is a
+   * workspace-level demonstration, not a per-document control — and because in
+   * the strip its label was the widest thing in the row, squeezing primary
+   * navigation down to two visible tabs out of seven.
+   */
+  pillState: PillState;
+  onPillState(state: PillState): void;
+  stateOptions: Array<[PillState, string]>;
+  stateTarget: string;
 }
 
 const IDLE_DOT = '#59636e';
@@ -37,8 +54,55 @@ const LABEL: Record<string, string> = {
   metrics_view: 'measures',
   classification: 'rules',
   parameter_set: 'rates',
-  report: 'filed',
+  report: 'measures',
   variance_monitor: 'thresholds',
+};
+
+/**
+ * What the panel is a panel *of*, per document kind.
+ *
+ * It said "Measures" over a count of "16 rules" — a header contradicting the
+ * number beside it, which reads as a bug rather than as a fixed label. The panel
+ * has held four kinds of thing since the classification layer landed and only
+ * ever admitted to one.
+ */
+const PANEL_TITLE: Record<string, string> = {
+  metrics_view: 'Measures',
+  classification: 'Rules',
+  parameter_set: 'Rates',
+  report: 'Filed',
+  variance_monitor: 'Thresholds',
+};
+
+/**
+ * The hint at the bottom, which has to be true.
+ *
+ * "Drag a measure into the editor to use it" was shown over a rate table, a
+ * report and a monitor — documents with no measures and nothing draggable. An
+ * instruction that does not apply is worse than no instruction: it makes the
+ * reader doubt the parts that do.
+ */
+const PANEL_HINT: Record<string, [string, string]> = {
+  metrics_view: [
+    'Drag a measure into the editor to use it',
+    '⌘-click a name to open it · ⌥-click to preview',
+  ],
+  classification: [
+    'Rules are tried in order, first match wins',
+    'Click a rule to jump to it · a dim dot means it classified nothing',
+  ],
+  parameter_set: [
+    'These rates are the governed assumption',
+    'Click an entry to jump to it · each carries its own citation',
+  ],
+  report: [
+    'These measures are defined in the view this report files from',
+    'Click one to open it where it is defined',
+  ],
+  variance_monitor: [
+    'Thresholds judge each day-over-day move',
+    'Click a threshold to jump to it · σ bases need 10 prior moves',
+  ],
 };
 
 /** Blocks of any kind — measures, rules, or parameter entries. */
@@ -79,6 +143,7 @@ const FILE_GLYPH: Record<string, string> = {
 export function RegistryPanel({
   file, docs, graph, evaluator, diagnostics, active, filter,
   onFilter, onPickFile, onPickMeasure, onPickForeign,
+  pillState, onPillState, stateOptions, stateTarget,
 }: Props) {
   // A measure's block runs to the start of the next one — that span is what
   // its status dot aggregates.
@@ -89,6 +154,10 @@ export function RegistryPanel({
   const headerCount = graph.kind === 'report' ? filed.length : items.length;
   const coverage: Coverage | null =
     graph.kind === 'classification' ? evaluator.selfCoverage() : null;
+
+  const hint = PANEL_HINT[graph.kind] || PANEL_HINT.metrics_view;
+  const title = PANEL_TITLE[graph.kind] || 'Measures';
+  const noun = LABEL[graph.kind] || 'measures';
 
   const blockEnd = (index: number) =>
     index + 1 < items.length ? items[index + 1].line : graph.lines.length;
@@ -128,10 +197,12 @@ export function RegistryPanel({
     <div className="mdl-col mdl-col-registry">
       <div className="mdl-head">
         <span className="mdl-mark" aria-hidden="true" />
-        <span className="mdl-eyebrow">Measures</span>
+        <span className="mdl-eyebrow">{title}</span>
         <span style={{ flex: 1 }} />
         <span className="tnum" style={{ fontSize: 10, color: 'var(--mdl-text-faint)' }}>
-          {headerCount} {LABEL[graph.kind]}
+          {/* No "Measures · 12 measures". The noun is dropped when it would only
+              repeat the title the reader has just read. */}
+          {headerCount}{noun === title.toLowerCase() ? '' : ` ${noun}`}
         </span>
       </div>
 
@@ -139,14 +210,14 @@ export function RegistryPanel({
         <input
           className="mdl-search"
           type="text"
-          placeholder="Search measures…"
-          aria-label="Search measures"
+          placeholder={`Search ${noun}…`}
+          aria-label={`Search ${noun}`}
           value={filter}
           onChange={(e) => onFilter(e.target.value)}
         />
       </div>
 
-      <div className="mdl-scroll" style={{ flex: 1, padding: '6px 0' }} role="tree" aria-label="Measures">
+      <div className="mdl-scroll" style={{ flex: 1, padding: '6px 0' }} role="tree" aria-label="Registry">
         {VIEW_FILES.map((f) => {
           const isCurrent = f === file;
           return (
@@ -309,10 +380,41 @@ export function RegistryPanel({
           gap: 4,
         }}
       >
-        <span className="mdl-eyebrow-quiet">Drag a measure into the editor to use it</span>
-        <span style={{ fontSize: 11, color: 'var(--mdl-text-muted)' }}>
-          ⌘-click a name to open it · ⌥-click to preview
-        </span>
+        <span className="mdl-eyebrow-quiet">{hint[0]}</span>
+        <span style={{ fontSize: 11, color: 'var(--mdl-text-muted)' }}>{hint[1]}</span>
+
+        {/* Stacked, not side by side. The column is ~230px and a 10px uppercase
+            label beside a full-width select folded onto two lines. */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            gap: 4,
+            marginTop: 6,
+            paddingTop: 8,
+            borderTop: '1px solid var(--mdl-border-soft)',
+          }}
+        >
+          <label
+            className="mdl-eyebrow-quiet"
+            htmlFor="mdl-state"
+            title={`Render ${stateTarget} in each pill state`}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            Pill state · {stateTarget}
+          </label>
+          <select
+            id="mdl-state"
+            className="mdl-select"
+            value={pillState}
+            onChange={(e) => onPillState(e.target.value as PillState)}
+          >
+            {stateOptions.map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   );

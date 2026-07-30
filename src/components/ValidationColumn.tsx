@@ -75,8 +75,13 @@ export function ValidationColumn(props: Props) {
   if (graph.kind === 'classification') {
     return (
       <div className="mdl-col mdl-col-validation">
-        <div className="mdl-tabs">
-          <div className="mdl-tab" data-current="true">Coverage</div>
+        {/* A real tab, even though it is the only one. It was a `div`, which put
+            two of the five document kinds outside the keyboard order and made
+            the column's chrome change shape depending on what was open. */}
+        <div className="mdl-tabs" role="tablist" aria-label="Validation">
+          <button type="button" role="tab" aria-selected className="mdl-tab" data-current="true">
+            Coverage
+          </button>
         </div>
         <div className="mdl-scroll" style={{ flex: 1 }}>
           <CoveragePanel
@@ -105,8 +110,10 @@ export function ValidationColumn(props: Props) {
   if (graph.kind === 'parameter_set') {
     return (
       <div className="mdl-col mdl-col-validation">
-        <div className="mdl-tabs">
-          <div className="mdl-tab" data-current="true">Assumptions</div>
+        <div className="mdl-tabs" role="tablist" aria-label="Validation">
+          <button type="button" role="tab" aria-selected className="mdl-tab" data-current="true">
+            Assumptions
+          </button>
         </div>
         <div className="mdl-scroll" style={{ flex: 1 }}>
           <ParameterPanel graph={graph} />

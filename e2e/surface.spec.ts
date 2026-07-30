@@ -348,6 +348,91 @@ test.describe('every combination', () => {
   });
 });
 
+test.describe('the document strip', () => {
+  test('reaches every document, however many there are', async ({ page }) => {
+    // Seven documents did not fit. The last two sat past the right edge with no
+    // indication they existed — including the variance monitor — so two of seven
+    // were unreachable from the strip. A fixed row is a design that works until
+    // it silently stops.
+    const strip = page.locator('.mdl-tabs-scroll');
+    const files = [
+      'liquidity_pit', 'irrbb_eve', 'fr2052a_product_id', 'lcr_outflow_rates',
+      'fr2052a_outflows', 'fr2052a_submission', 'fr2052a_variance',
+    ];
+
+    for (const f of files) {
+      await page.locator(`.mdl-tab[data-file="${f}"]`).click();
+      await expect(page.locator('.mdl-tab[data-current="true"]').first()).toContainText(f);
+
+      // The current tab is scrolled into view, so it can be read and clicked
+      // again without hunting for it.
+      const inView = await strip.evaluate((el, name) => {
+        const tab = el.querySelector<HTMLElement>(`[data-file="${name}"]`)!;
+        const t = tab.getBoundingClientRect();
+        const s = el.getBoundingClientRect();
+        return t.left >= s.left - 2 && t.right <= s.right + 2;
+      }, f);
+      expect(inView, `${f} is not in view after opening it`).toBe(true);
+    }
+  });
+
+  test('says there is more to the right, and nothing wraps out of the row', async ({ page }) => {
+    await page.locator('.mdl-tab[data-file="liquidity_pit"]').click();
+    await expect(page.locator('.mdl-tabs-wrap')).toHaveAttribute('data-overflowing', 'true');
+
+    // A label folding onto a second line inside a 44px row reads as a rendering
+    // fault. This caught exactly that after the strip started scrolling.
+    const overflowing = await page.locator('.mdl-col-editor .mdl-tabs').evaluate((row) =>
+      [...row.querySelectorAll('*')]
+        .filter((e) => e.children.length === 0 && e.getBoundingClientRect().height > 30)
+        .map((e) => (e.textContent || '').trim().slice(0, 30)));
+    expect(overflowing).toEqual([]);
+
+    // And the workspace controls stay reachable rather than being pushed out.
+    await expect(page.locator('#mdl-fixture')).toBeInViewport();
+  });
+});
+
+test.describe('naming', () => {
+  test('the registry panel says what it is holding', async ({ page }) => {
+    // It said "Measures" over a count of "16 rules" — a header contradicting the
+    // number beside it — and told the reader to drag a measure on documents that
+    // have none.
+    const head = page.locator('.mdl-col-registry .mdl-head');
+    const foot = page.locator('.mdl-col-registry').locator('> div').last();
+
+    await openFile(page, 'fr2052a_product_id');
+    await expect(head).toContainText('Rules');
+    await expect(foot).toContainText('first match wins');
+
+    await openFile(page, 'lcr_outflow_rates');
+    await expect(head).toContainText('Rates');
+    await expect(foot).toContainText('governed assumption');
+
+    await openFile(page, 'fr2052a_variance');
+    await expect(head).toContainText('Thresholds');
+    await expect(foot).toContainText('day-over-day');
+
+    await openFile(page, 'liquidity_pit');
+    await expect(head).toContainText('Measures');
+    await expect(foot).toContainText('Drag a measure into the editor to use it');
+  });
+
+  test('every validation tab is a real tab', async ({ page }) => {
+    // Coverage and Assumptions were `div`s, which put two of the five document
+    // kinds outside the keyboard order.
+    for (const f of ['fr2052a_product_id', 'lcr_outflow_rates', 'liquidity_pit', 'fr2052a_submission']) {
+      await openFile(page, f);
+      const tabs = page.locator('.mdl-col-validation .mdl-tab');
+      const count = await tabs.count();
+      expect(count).toBeGreaterThan(0);
+      for (let i = 0; i < count; i++) {
+        await expect(tabs.nth(i)).toHaveRole('tab');
+      }
+    }
+  });
+});
+
 test.describe('variance', () => {
   test('reports what each threshold did, not just the alerts', async ({ page }) => {
     await openFile(page, 'fr2052a_variance');
@@ -356,6 +441,9 @@ test.describe('variance', () => {
     // The "no threshold" column is the point: a monitor with no breaches and a
     // monitor with no coverage look identical without it.
     await expect(column).toContainText('no threshold');
+    // Each basis has to be readable, not truncated to `> $1,…`.
+    await expect(column).toContainText('>$1.0M');
+    await expect(column).toContainText('>3σ/30d');
     await expect(column).toContainText('HARD-USD');
     await expect(column).toContainText('SIGMA-30');
     await expect(column).toContainText('Worst first');

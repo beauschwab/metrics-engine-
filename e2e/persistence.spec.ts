@@ -130,7 +130,7 @@ test.describe('the registry', () => {
   test('says it is connected, and what revision a save produced', async ({ page }) => {
     // "Edits die on reload" and "your change is revision 7" are different
     // products. The surface has to say which one the author is using.
-    await expect(page.locator(SAVED)).toHaveText(/registry connected|saved/);
+    await expect(page.locator(SAVED)).toHaveText(/registry|saved/);
   });
 
   test('serves the workspace it seeded from the shipped documents', async () => {
@@ -160,7 +160,7 @@ test.describe('the registry', () => {
     // that lands scrolls the outgoing document and the assertion below reads the
     // wrong viewport — which is a test bug, not a persistence one, and worth not
     // having to diagnose twice.
-    await expect(page.locator(SAVED)).toHaveText(/registry connected|saved/);
+    await expect(page.locator(SAVED)).toHaveText(/registry|saved/);
     await measure(page, 'lcr_buffer').click();
 
     // The whole feature, in one assertion.

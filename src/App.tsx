@@ -66,7 +66,7 @@ type SaveState =
  */
 function saveLabel(connection: Connection, save: SaveState): { text: string; hue: string } {
   if (connection.state === 'offline') {
-    return { text: 'not connected · edits are local', hue: 'var(--mdl-text-faint)' };
+    return { text: 'local only', hue: 'var(--mdl-text-faint)' };
   }
   switch (save.kind) {
     case 'saving':
@@ -74,13 +74,13 @@ function saveLabel(connection: Connection, save: SaveState): { text: string; hue
     case 'saved':
       return { text: `saved · r${save.revision}`, hue: HUE.signal };
     case 'conflict':
-      return { text: 'someone else saved', hue: HUE.unresolved };
+      return { text: 'conflict', hue: HUE.unresolved };
     case 'reloaded':
-      return { text: 'theirs loaded · yours copied', hue: HUE.warn };
+      return { text: 'theirs loaded', hue: HUE.warn };
     case 'offline':
       return { text: 'save failed', hue: HUE.warn };
     default:
-      return { text: 'registry connected', hue: HUE.signal };
+      return { text: 'registry', hue: HUE.signal };
   }
 }
 
@@ -107,6 +107,56 @@ export default function App() {
   const [layout, setLayout] = useLayout();
   const editor = useRef<MetricEditorHandle>(null);
   const hoverTimer = useRef<number | undefined>(undefined);
+
+  // Nothing renders until the workspace has loaded, so anything measuring the
+  // DOM has to wait for it.
+  const [loaded, setLoaded] = useState(false);
+
+  // ---- the document strip -------------------------------------------------
+  // It scrolls, so the current tab has to be brought into view and the fade has
+  // to know whether there is anything past the edge. Both are measured rather
+  // than assumed: the strip's width depends on the resizable columns either
+  // side of it.
+  const tabStrip = useRef<HTMLDivElement>(null);
+  const [tabsOverflowing, setTabsOverflowing] = useState(false);
+  const [tabsScrolled, setTabsScrolled] = useState(false);
+
+  useEffect(() => {
+    const strip = tabStrip.current;
+    if (!strip) return;
+
+    const measure = () => {
+      setTabsOverflowing(strip.scrollWidth - strip.clientWidth - strip.scrollLeft > 2);
+      setTabsScrolled(strip.scrollLeft > 2);
+    };
+
+    const current = strip.querySelector<HTMLElement>('[data-current="true"]');
+    current?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    measure();
+
+    // Tab labels are set in Inter, which arrives after first paint, and the
+    // strip's own box does not change when its *content* gets wider — so a
+    // ResizeObserver on the scroller alone never re-fires and the fade stayed
+    // hidden on load even though there was more to the right.
+    let live = true;
+    void document.fonts?.ready.then(() => {
+      if (live) measure();
+    });
+
+    strip.addEventListener('scroll', measure, { passive: true });
+    const observer = new ResizeObserver(measure);
+    observer.observe(strip);
+    // The row of tabs, so a document being added or renamed is caught too.
+    if (strip.firstElementChild) observer.observe(strip.firstElementChild);
+    return () => {
+      live = false;
+      strip.removeEventListener('scroll', measure);
+      observer.disconnect();
+    };
+    // `loaded` belongs here even though it is not read: the strip does not exist
+    // until the workspace has arrived, so without it this effect runs once
+    // against a null ref and never again. The fade stayed hidden on every load.
+  }, [file, layout, loaded]);
 
   // ---- the loop -----------------------------------------------------------
   // parse → resolve + diagnose → evaluate. Measured rather than asserted; the
@@ -164,7 +214,6 @@ export default function App() {
   // and swapping them for the registry's a moment later means the surface shows
   // rule text that is not what is stored — briefly, but an author reading a
   // condition during that moment is reading the wrong one.
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -386,18 +435,32 @@ export default function App() {
         }}
         onPickMeasure={openMeasure}
         onPickForeign={openIn}
+        pillState={pillStateOverride}
+        onPillState={setPillStateOverride}
+        stateOptions={STATE_OPTIONS}
+        stateTarget={STATE_TARGET}
       />
 
       <Resizer panel="registry" layout={layout} onChange={setLayout} label="Resize measures panel" />
 
       <div className="mdl-col mdl-col-editor">
         <div className="mdl-tabs">
+          {/* The strip scrolls, and the current tab is kept in view. Two of the
+              seven documents used to sit past the right edge with no indication
+              they existed. */}
+          <div
+            className="mdl-tabs-wrap"
+            data-overflowing={tabsOverflowing}
+            data-scrolled={tabsScrolled}
+          >
+            <div className="mdl-tabs-scroll" ref={tabStrip}>
           {(Object.keys(docs) as ViewFile[]).map((f) => (
             <button
               key={f}
               type="button"
               className="mdl-tab"
               data-current={f === file}
+              data-file={f}
               onClick={() => {
                 setFile(f);
                 setActive(DEFAULT_MEASURE[f]);
@@ -413,10 +476,24 @@ export default function App() {
               {f}.yaml
             </button>
           ))}
+            </div>
+          </div>
 
-          <span style={{ flex: 1 }} />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px' }}>
+          {/* Four jobs used to share this row — navigation, save status, fixture
+              choice and the pill-state gallery — and it only fitted because the
+              tabs were overflowing invisibly. Now that they scroll, the cluster
+              has to earn its width: nothing wraps, nothing shrinks, and the
+              labels are as short as they can be while still being true. */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '0 12px',
+              flex: 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {saveState.kind === 'conflict' ? (
               /**
                * A conflict has to have a way out.
@@ -457,7 +534,11 @@ export default function App() {
                     ? saveState.message
                     : 'Edits are appended to the registry as revisions'
               }
-              style={{ fontSize: 10, color: saveLabel(connection, saveState).hue }}
+              style={{
+                fontSize: 10,
+                color: saveLabel(connection, saveState).hue,
+                whiteSpace: 'nowrap',
+              }}
             >
               {saveLabel(connection, saveState).text}
             </span>
@@ -476,19 +557,6 @@ export default function App() {
               <option value="stress">Stressed</option>
             </select>
 
-            <span className="mdl-divider" aria-hidden="true" />
-
-            <label className="mdl-eyebrow-quiet" htmlFor="mdl-state">Show {STATE_TARGET} as</label>
-            <select
-              id="mdl-state"
-              className="mdl-select"
-              value={pillStateOverride}
-              onChange={(e) => setPillStateOverride(e.target.value as PillState)}
-            >
-              {STATE_OPTIONS.map(([k, label]) => (
-                <option key={k} value={k}>{label}</option>
-              ))}
-            </select>
           </div>
         </div>
 

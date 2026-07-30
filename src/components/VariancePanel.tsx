@@ -42,11 +42,24 @@ const SEVERITY_HUE: Record<Severity, string> = {
   info: HUE.column,
 };
 
-/** How a basis reads in a sentence. */
+/**
+ * What a threshold compares against, short enough to actually fit.
+ *
+ * The long form — `> $1,000,000`, `> 3σ of trailing 30` — was truncated to
+ * `> $1,…` and `> 3σ …` in the column it lives in, which conveys nothing. These
+ * are the compact forms; `basisTitle` carries the full sentence on hover.
+ */
 function basisLabel(basis: string, limit: number, sigma: number): string {
-  if (basis === 'static_abs') return `> ${fmt(limit, 'currency_usd')}`;
-  if (basis === 'static_pct') return `> ${limit}%`;
-  return `> ${sigma}σ of trailing ${BASIS_WINDOW[basis]}`;
+  if (basis === 'static_abs') return `>${fmt(limit, 'currency_usd_mm')}`;
+  if (basis === 'static_pct') return `>${limit}%`;
+  return `>${sigma}σ/${BASIS_WINDOW[basis]}d`;
+}
+
+function basisTitle(basis: string, limit: number, sigma: number): string {
+  if (basis === 'static_abs') return `Any move above ${fmt(limit, 'currency_usd')}`;
+  if (basis === 'static_pct') return `Any move above ${limit}% of the prior value`;
+  return `Any move above ${sigma}× the standard deviation of the trailing ` +
+    `${BASIS_WINDOW[basis]} daily changes`;
 }
 
 export function VariancePanel({ graph, registry, fixture, docs, onPickThreshold }: Props) {
@@ -181,13 +194,12 @@ export function VariancePanel({ graph, registry, fixture, docs, onPickThreshold 
                     </span>
                     <span
                       className="mono"
+                      title={basisTitle(s.basis, t.limit, t.sigma)}
                       style={{
                         fontSize: 10,
                         color: 'var(--mdl-text-faint)',
                         marginLeft: 6,
                         whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
                       }}
                     >
                       {basisLabel(s.basis, t.limit, t.sigma)}

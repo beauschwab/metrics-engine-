@@ -9,7 +9,7 @@ npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
 npm run test       # 327 unit, conformance and server tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e        # 42 browser checks against the built bundle
+npm run e2e        # 46 browser checks against the built bundle
 npm run verify     # all of the above, plus both typecheck projects
 npm run build      # typecheck + production bundle
 ```
@@ -497,7 +497,63 @@ escalation trigger that has not fired in sixty days may be correctly set — but
 "no alerts" and "no coverage" are indistinguishable from outside, and the author
 should decide which one they have knowingly.
 
-### Conformance
+### What a design review pass found
+
+The surface was drawn for five documents and now holds seven. Most of what the
+last pass turned up was that consequence, not a mistake in the original design.
+
+**Two of seven documents were unreachable from the tab strip.** The row was a
+fixed flex line, so once the labels stopped fitting the last two tabs — including
+the variance monitor — sat past the right edge with nothing to indicate they
+existed. The strip scrolls now, keeps the current tab in view, and fades at
+whichever edge has more behind it. A fixed row of tabs is a design that works
+until it silently stops.
+
+**Fixing that exposed the real crowding.** The 44px row was carrying four
+unrelated jobs — document navigation, save status, fixture choice, and the
+pill-state gallery from §5.7 — and only fitted because the tabs were overflowing
+invisibly. With the tabs constrained, three labels folded onto second lines inside
+a 44px row, which reads as a rendering fault. So the row was given a priority: the
+gallery is a workspace-level *demonstration*, not a per-document control, and it
+moved to the registry panel's footer where the other workspace-level affordances
+live. Navigation went from 2.2 visible tabs to 3.5, and nothing wraps.
+
+**The registry panel said "Measures" over a count of "16 rules".** A header
+contradicting the number beside it reads as a bug. It has held five kinds of thing
+since the classification layer landed and only ever admitted to one — so the
+title, the search placeholder and the footer hint now all name whichever it is.
+The hint mattered most: "Drag a measure into the editor to use it" was shown over
+a rate table, a report and a monitor, none of which have measures or anything
+draggable. An instruction that does not apply makes the reader doubt the ones that
+do.
+
+**Coverage and Assumptions were `div`s posing as tabs**, which put two of the five
+document kinds outside the keyboard order and made the column's chrome change
+shape depending on what was open.
+
+**The per-threshold basis was truncated to `> $1,…` and `> 3σ …`.** Compact forms
+now (`>$1.0M`, `>3σ/30d`) with the full sentence on hover.
+
+Three defects of my own, found while fixing the above and worth recording because
+they are all the same shape — an effect or a rule keyed on the wrong thing:
+
+- A blanket `white-space: nowrap` meant for the tab row hit the class the
+  registry footer's two-line hint also uses, and silently clipped its last two
+  words.
+- The strip-measuring effect was keyed on `[file, layout]`, but the strip does not
+  exist until the workspace has loaded — so it ran once against a null ref and
+  never again, and the fade never appeared. Same class of bug as the editor
+  ignoring an externally-changed document.
+- The inner scroller reused `.mdl-tabs`, putting two of them in one row and making
+  "the tab row" ambiguous to select and to reason about.
+
+And one flake removed rather than hoped about: the conformance legs run real
+engines out of process and vitest runs files concurrently, so the default 5s test
+bound was measuring machine load. A Polars leg that normally takes 200ms timed out
+once in four full runs while the variance suite seeded sixty days into DuckDB
+beside it.
+
+## Conformance
 
 `conformance-variance.test.ts` seeds DuckDB with the filed table day by day —
 running the report 60 times, so what is monitored is genuinely what would have

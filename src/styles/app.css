@@ -170,6 +170,99 @@ body {
   border-bottom: 1px solid var(--mdl-border);
 }
 
+/*
+ * The document strip scrolls.
+ *
+ * With six documents the tabs fitted; with seven they did not, and the last two
+ * sat past the right edge with nothing to indicate they were there — including
+ * the variance monitor. Two of seven documents were simply unreachable from the
+ * strip. A fixed row of tabs is a design that works until it silently stops.
+ *
+ * The scrollbar is hidden because a 3px-tall bar under a 44px strip reads as
+ * damage; the fade on the right edge is what says "there is more", and the
+ * current tab is scrolled into view whenever it changes.
+ */
+.mdl-tabs-scroll {
+  /* Its own element, not a second `.mdl-tabs`. Reusing that class put two of
+     them in one row, which made "the tab row" ambiguous to select and to
+     reason about. */
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  /* Room for the fade, so the last tab's label is never under it. */
+  scroll-padding-inline: 24px;
+}
+
+.mdl-tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.mdl-tabs-wrap {
+  position: relative;
+  /* Absorbs the slack, so it also *shrinks* — with `flex: none` the strip sized
+     itself to its content and pushed the fixture and save controls off-screen
+     instead of scrolling. This is also what right-aligns those controls, so the
+     row needs no spacer. */
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
+/* Both edges, so a tab clipped on the left reads the same way as one clipped on
+   the right: there is more, rather than something is broken. */
+.mdl-tabs-wrap::before,
+.mdl-tabs-wrap::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  width: 40px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.mdl-tabs-wrap::before {
+  left: 0;
+  background: linear-gradient(
+    270deg,
+    rgb(31 34 40 / 0%),
+    rgb(31 34 40 / 85%) 55%,
+    var(--mdl-panel)
+  );
+}
+
+.mdl-tabs-wrap::after {
+  right: 0;
+  background: linear-gradient(
+    90deg,
+    rgb(31 34 40 / 0%),
+    rgb(31 34 40 / 85%) 55%,
+    var(--mdl-panel)
+  );
+}
+
+.mdl-tabs-wrap[data-overflowing='true']::after,
+.mdl-tabs-wrap[data-scrolled='true']::before {
+  opacity: 1;
+}
+
+/*
+ * Nothing in the 44px strip wraps.
+ *
+ * Scoped to the strip rather than to the label class: the same class carries the
+ * registry panel's footer hint, which is two lines on purpose, and a blanket
+ * `nowrap` silently clipped its last two words.
+ */
+.mdl-tabs .mdl-eyebrow-quiet,
+.mdl-tabs label,
+.mdl-tabs .mono {
+  white-space: nowrap;
+}
+
 .mdl-eyebrow {
   font-size: 10px;
   text-transform: uppercase;
