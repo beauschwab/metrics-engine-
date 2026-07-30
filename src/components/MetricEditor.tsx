@@ -10,7 +10,7 @@ import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
 import { closeBrackets } from '@codemirror/autocomplete';
 import { history, historyKeymap, defaultKeymap } from '@codemirror/commands';
 import { lintKeymap } from '@codemirror/lint';
-import { EditorState } from '@codemirror/state';
+import { EditorState, Transaction } from '@codemirror/state';
 import { EditorView, drawSelection, highlightSpecialChars, keymap, lineNumbers } from '@codemirror/view';
 import type { Fix } from '../engine/diagnostics';
 import { ownerAt } from '../engine/parse';
@@ -113,6 +113,34 @@ export function MetricEditor({ doc, context, onChange, onCursorMeasure, handle }
     // The document is seeded once; switching files remounts via `key`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Accept a document that changed from outside the editor.
+   *
+   * CodeMirror owns the text, and React's copy is a mirror kept current by
+   * `onChange` — which is right, and which quietly assumed nothing but the
+   * editor would ever write. The registry breaks that assumption: the workspace
+   * arrives from the API after first paint, so the editor mounts on the shipped
+   * documents and never hears about the real ones. The symptom was worse than a
+   * blank screen — the value panel read from React and showed the *persisted*
+   * number while the visible text was still the shipped one.
+   *
+   * Typing cannot trigger this: `onChange` has already made the two equal by the
+   * time the effect runs, so the comparison holds and nothing is dispatched.
+   */
+  useEffect(() => {
+    const v = view.current;
+    if (!v) return;
+    const current = v.state.doc.toString();
+    if (current === doc) return;
+    v.dispatch({
+      changes: { from: 0, to: current.length, insert: doc },
+      // Not an undoable edit: replacing the document with what the registry
+      // holds is a load, and putting it in the history would let ⌘Z "undo" the
+      // load back to text that exists nowhere.
+      annotations: Transaction.addToHistory.of(false),
+    });
+  }, [doc]);
 
   // Push fresh values, diagnostics and UI state into the editor.
   useEffect(() => {

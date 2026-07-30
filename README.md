@@ -11,7 +11,8 @@ editor.
 ```
 npm install
 npm run dev        # http://localhost:5173
-npm run verify     # typecheck, 203 unit tests, 33 browser checks
+npm run server     # the registry API on :8787 (SQLite by default)
+npm run verify     # typecheck, 267 unit tests, 39 browser checks
 npm run build      # typecheck + production bundle
 ```
 
@@ -64,6 +65,25 @@ Six bugs have come out of that harness so far, every one of them in code that
 had been emitted and read but never run. They are written up in
 `IMPLEMENTATION.md`.
 
+## Persistence
+
+`server/` is the registry: a small HTTP API over **SQLite in development and SQL
+Server in production**, selected by `KEEL_DB` and defaulting to SQLite so a fresh
+clone works with no connection string. Without it the surface still runs — it
+loads the shipped documents, says `not connected · edits are local`, and behaves
+as the static prototype it began as.
+
+**Revisions are append-only.** Saving never updates a row; it adds one. That is
+what lets the registry answer the question that matters about a filed number —
+what were the rules when we filed it — and it completes the bitemporality the
+documents already declared: `effective.from/to` is when a rule *applies*,
+`created_at` is when the registry *knew* it. `GET /api/artifacts?at=<iso>` returns
+the workspace as it stood at an instant.
+
+Two authors saving at once do not merge. The second gets a `409` naming who got
+there first, because silently picking a winner is how a reviewed rule change
+disappears into a stale browser tab.
+
 ## Where to read next
 
 `IMPLEMENTATION.md` covers the architecture, the diagnostic catalogue, the
@@ -74,9 +94,9 @@ and PySpark is parsed rather than executed.
 ## Testing
 
 ```
-npm run test         # 203 unit + conformance tests
+npm run test         # 267 unit, conformance and server tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e          # 33 browser checks against the built bundle
+npm run e2e          # 39 browser checks against the built bundle
 ```
 
 The browser suite resolves Chromium the ordinary way. On a machine that already

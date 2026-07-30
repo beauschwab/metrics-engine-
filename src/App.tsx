@@ -23,8 +23,9 @@ import { parseDoc } from './engine/parse';
 import { buildRegistry, resolveClassification } from './engine/registry';
 import { classificationMigration, runClassification, type Migration } from './engine/rows';
 import { AS_OF, TABLES } from './engine/fixtures';
-import { DOMAINS } from './engine/vocab';
+import { DOMAINS, HUE } from './engine/vocab';
 import { conformance as conformanceOf } from './engine/plan';
+import { loadWorkspace, saveArtifact, type Connection } from './engine/persistence';
 import { plural } from './engine/format';
 import { refactorHints } from './engine/refactors';
 import type { TraceMode } from './engine/trace';
@@ -43,8 +44,49 @@ const STATE_OPTIONS: Array<[PillState, string]> = [
 /** The measure the state switcher demonstrates on. */
 const STATE_TARGET = 'hqla_total';
 
+/** Who a save is attributed to until there is an identity provider to ask. */
+const AUTHOR = 'authoring-surface';
+
+type SaveState =
+  | { kind: 'idle' }
+  | { kind: 'saving' }
+  | { kind: 'saved'; revision: number; at: number }
+  | { kind: 'conflict'; message: string }
+  | { kind: 'offline'; message: string };
+
+/**
+ * What the surface says about where the text is.
+ *
+ * Worth spelling out rather than showing a green dot: "this is a prototype whose
+ * edits die on reload" and "this is a registry and your change is revision 7"
+ * are different products, and an author needs to know which one they are using
+ * before they spend an afternoon in it.
+ */
+function saveLabel(connection: Connection, save: SaveState): { text: string; hue: string } {
+  if (connection.state === 'offline') {
+    return { text: 'not connected · edits are local', hue: 'var(--mdl-text-faint)' };
+  }
+  switch (save.kind) {
+    case 'saving':
+      return { text: 'saving…', hue: 'var(--mdl-text-faint)' };
+    case 'saved':
+      return { text: `saved · r${save.revision}`, hue: HUE.signal };
+    case 'conflict':
+      return { text: 'someone else saved — reload', hue: HUE.unresolved };
+    case 'offline':
+      return { text: 'save failed', hue: HUE.warn };
+    default:
+      return { text: 'registry connected', hue: HUE.signal };
+  }
+}
+
 export default function App() {
   const [docs, setDocs] = useState<Record<ViewFile, string>>({ ...INITIAL_DOCS });
+  const [connection, setConnection] = useState<Connection>({
+    state: 'offline',
+    reason: 'not loaded yet',
+  });
+  const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' });
   const [file, setFile] = useState<ViewFile>('liquidity_pit');
   const [fixture, setFixture] = useState<FixtureName>('nominal');
   const [active, setActive] = useState(DEFAULT_MEASURE.liquidity_pit);
@@ -110,9 +152,76 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file, fixture]);
 
+  // ---- persistence --------------------------------------------------------
+  // The registry is loaded once on mount. A failure is not an error: the surface
+  // was a static prototype before there was a server and still has to work as
+  // one, so it falls back to the shipped documents and says it is offline.
+  // Nothing renders until this resolves. Painting the shipped documents first
+  // and swapping them for the registry's a moment later means the surface shows
+  // rule text that is not what is stored — briefly, but an author reading a
+  // condition during that moment is reading the wrong one.
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    loadWorkspace({ signal: abort.signal }).then((ws) => {
+      if (abort.signal.aborted) return;
+      setDocs(ws.docs);
+      setConnection(ws.connection);
+      setLoaded(true);
+    });
+    return () => abort.abort();
+  }, []);
+
+  /**
+   * Saves are debounced, and only the document that changed is written.
+   *
+   * A revision per keystroke would make the history unreadable, which defeats
+   * the point of having one. The revision number the server returns is kept so
+   * the *next* save can declare what it edited — that is what turns a second tab
+   * from a silent overwrite into a conflict the author is told about.
+   */
+  const pendingSave = useRef<number | undefined>(undefined);
+
+  const scheduleSave = useCallback(
+    (name: ViewFile, body: string) => {
+      if (connection.state !== 'online') return;
+      window.clearTimeout(pendingSave.current);
+      pendingSave.current = window.setTimeout(() => {
+        const expected = connection.state === 'online' ? connection.revisions[name] : undefined;
+        setSaveState({ kind: 'saving' });
+        saveArtifact({
+          name,
+          kind: parseDoc(body).kind,
+          body,
+          author: AUTHOR,
+          message: 'Edited in the authoring surface',
+          ...(expected !== undefined ? { expectedRevision: expected } : {}),
+        }).then((outcome) => {
+          if (outcome.state === 'saved') {
+            setConnection((prev) =>
+              prev.state === 'online'
+                ? { state: 'online', revisions: { ...prev.revisions, [name]: outcome.revision } }
+                : prev);
+            setSaveState({ kind: 'saved', revision: outcome.revision, at: Date.now() });
+          } else {
+            // Nothing is resolved here. A conflict means someone else wrote, and
+            // picking a winner automatically is the failure the history exists
+            // to prevent.
+            setSaveState({ kind: outcome.state, message: outcome.message });
+          }
+        });
+      }, 900);
+    },
+    [connection],
+  );
+
   const setDoc = useCallback(
-    (next: string) => setDocs((prev) => ({ ...prev, [file]: next })),
-    [file],
+    (next: string) => {
+      setDocs((prev) => ({ ...prev, [file]: next }));
+      scheduleSave(file, next);
+    },
+    [file, scheduleSave],
   );
 
   const openMeasure = useCallback((name: string) => {
@@ -236,6 +345,21 @@ export default function App() {
   const errors = diagnostics.filter((d) => d.sev === 'error').length;
   const warns = diagnostics.filter((d) => d.sev === 'warn').length;
 
+  if (!loaded) {
+    // Deliberately almost nothing. With no registry this is a single frame, and
+    // with one it is however long the workspace takes — either way a skeleton
+    // that mimics the surface would just be a second thing to keep in sync.
+    return (
+      <div
+        className="mdl-shell"
+        data-testid="mdl-loading"
+        style={{ gridTemplateColumns: '1fr', placeItems: 'center' }}
+      >
+        <span className="mdl-eyebrow-quiet">Loading the registry…</span>
+      </div>
+    );
+  }
+
   return (
     <div
       className="mdl-shell"
@@ -289,6 +413,23 @@ export default function App() {
           <span style={{ flex: 1 }} />
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px' }}>
+            <span
+              className="mono"
+              data-testid="mdl-save-state"
+              title={
+                connection.state === 'offline'
+                  ? `No registry reachable: ${connection.reason}`
+                  : saveState.kind === 'conflict' || saveState.kind === 'offline'
+                    ? saveState.message
+                    : 'Edits are appended to the registry as revisions'
+              }
+              style={{ fontSize: 10, color: saveLabel(connection, saveState).hue }}
+            >
+              {saveLabel(connection, saveState).text}
+            </span>
+
+            <span className="mdl-divider" aria-hidden="true" />
+
             <label className="mdl-eyebrow-quiet" htmlFor="mdl-fixture">Test data</label>
             <select
               id="mdl-fixture"

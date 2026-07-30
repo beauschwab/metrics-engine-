@@ -6,9 +6,10 @@ React + TypeScript app with a real CodeMirror 6 editor.
 ```
 npm install
 npm run dev        # http://localhost:5173
-npm run test       # 203 engine + conformance tests
+npm run server     # the registry API on :8787 (SQLite by default)
+npm run test       # 267 unit, conformance and server tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e        # 33 browser checks against the built bundle
+npm run e2e        # 39 browser checks against the built bundle
 npm run verify     # all of the above, plus both typecheck projects
 npm run build      # typecheck + production bundle
 ```
@@ -71,9 +72,16 @@ src/
     aperture/                Aperture Risk token files, copied from the bundle
 public/
   fonts/                     Inter, self-hosted — the surface makes no network call
+server/                      the registry API — no React, no browser
+  dialect.ts                 every SQLite/SQL Server difference, in one file
+  db.ts                      the two drivers behind one interface
+  repository.ts              append-only revisions, optimistic concurrency
+  api.ts                     request in, response out — no socket to test
+  index.ts                   config from env, wire, listen
 e2e/
   surface.spec.ts            the three columns, the loop, fixes, plans, layout
   editor.spec.ts             pills, keyboard, completion, gutters
+  persistence.spec.ts        edits survive a reload, against its own registry
 ```
 
 The split that matters: **`engine/` knows nothing about the editor or React.**
@@ -289,6 +297,112 @@ single-row entities); `stress` applies a shock. Calibration is computed against
   “other”, so a segment appearing upstream that nobody has mapped shows up as
   unmapped instead of being silently absorbed. The `edge` fixture carries
   exactly such a segment.
+
+## Persisting rules
+
+Until this layer existed there was no backend at all. The six documents were
+string constants in the bundle held in React state, so every edit died on
+reload — fine for a design prototype, not a registry.
+
+`server/` is a small HTTP API over one of two databases: **SQLite in
+development, SQL Server in production**, chosen by `KEEL_DB` and defaulting to
+SQLite so a fresh clone works with no connection string and no network.
+
+```
+KEEL_DB=sqlite            # default
+KEEL_SQLITE_FILE=keel.db
+
+KEEL_DB=mssql
+KEEL_MSSQL_SERVER=…       # required — a missing value refuses to start rather
+KEEL_MSSQL_DATABASE=…     #   than silently writing to a file nobody backs up
+KEEL_MSSQL_USER=…
+KEEL_MSSQL_PASSWORD=…
+KEEL_MSSQL_ENCRYPT=true
+KEEL_MSSQL_TRUST_CERT=false
+```
+
+### Revisions are append-only
+
+One decision shapes the whole schema: **a revision is never modified.** Saving
+appends. That is not a feature added for auditors — it is what lets the registry
+answer the only question that really matters about a filed number, which is
+*what were the rules when we filed it*. An `UPDATE` destroys the answer and no
+amount of logging afterwards recovers it.
+
+It also closes the bitemporal gap the documents already implied. `effective.from`
+and `effective.to` are **valid time** — when a rule applies. `revision.created_at`
+is **transaction time** — when the registry knew it. Reproducing a submission
+needs both, and before this the second axis lived only in git history, which the
+running application could not read. `GET /api/artifacts?at=<iso>` now returns the
+workspace as it stood at an instant.
+
+Two consequences worth stating. Saving an identical body is not an error but is
+not a revision either — a no-op save would fill the history with entries nobody
+made a decision in, and the history is the thing an auditor reads. And two
+authors saving at once do not merge: `expectedRevision` makes the second one a
+`409` naming who got there first, because silently picking a winner is how a
+reviewed and approved rule change disappears into a stale browser tab.
+
+### One dialect layer, one of which is untested
+
+Every difference between the two engines is in `server/dialect.ts`, because only
+one of them can be executed here — there is no SQL Server in this environment and
+no Docker daemon to start one. So the T-SQL side is held to the strongest checks
+available without a connection: the DDL and DML text is asserted verbatim, and
+every statement is handed to a T-SQL parser. **That is the same posture as the
+PySpark emitter, and the same real gap: the SQL Server path is proved to be valid,
+portable T-SQL and nothing more.** The repository logic above it runs against real
+SQLite, and is written to be dialect-agnostic.
+
+What that layer had to absorb:
+
+- **No `LIMIT`, no `TOP`, no `RETURNING`, no upsert.** "The latest revision" is a
+  correlated `MAX(revision_no)`, which both engines plan off the same index and
+  neither spells differently. A test asserts none of those keywords appear.
+- **Nothing reads back an identity.** That is the single most divergent operation
+  (`lastInsertRowid` / `SCOPE_IDENTITY()` / `OUTPUT INSERTED`), so the revision
+  insert is an `INSERT … SELECT` that computes its own number — which also means
+  two concurrent writers collide on the unique constraint instead of interleaving
+  a stale read.
+- **Timestamps are ISO-8601 UTC strings, not `DATETIME2`.** A native date type
+  indexes better, but `mssql` returns a JS `Date` where `node:sqlite` returns a
+  string, and a repository that returns different types in development and
+  production is a bug waiting for a deployment.
+- **`LENGTH` is not `LEN`.** `LEN` ignores trailing whitespace and would
+  under-report a YAML body; the T-SQL equivalent is `DATALENGTH` halved for
+  `NVARCHAR`. It is the only function needing translation.
+- **`NVARCHAR` throughout, `NVARCHAR(MAX)` for bodies.** `FR 2052a — daily
+  submission` is already not Latin-1.
+
+### What wiring it up found
+
+- **The editor ignored a document it did not write.** "CodeMirror owns the text,
+  React's copy is a mirror" was right and quietly assumed nothing else would ever
+  write. The workspace arrives from the API after first paint, so the editor
+  mounted on the shipped documents and never heard about the stored ones. The
+  symptom was worse than a blank screen: the value panel reads from React, so it
+  showed the *persisted* number while the visible rule text was still the shipped
+  one. `MetricEditor` now accepts an external document change, annotated
+  `addToHistory: false` so ⌘Z cannot "undo" a load into text that exists nowhere.
+- **There was a flash of the wrong rules.** Even with that fixed, the surface
+  painted the shipped documents and swapped them a moment later. Briefly — but an
+  author reading a condition during that moment is reading the wrong one, so the
+  first render is now gated on the load.
+- **A fixed test port made the suite lie.** A registry left listening by an
+  earlier crashed run answered the health check instantly, so the spec read *that*
+  process's database while its own server died on `EADDRINUSE`. It failed with a
+  message about a missing line of YAML. The spec now asks the OS for a free port.
+
+The browser suite still runs the bundle with **no registry behind it**, which is
+deliberate: the static prototype has to keep working standalone, and that is a
+property worth testing rather than assuming. `persistence.spec.ts` brings its own
+registry and its own preview server on ephemeral ports, and proves the rest —
+edit, reload, the edit is still there, revision 1 is still readable, and a stale
+save is refused.
+
+Still open: there is no identity provider, so every save is attributed to
+`authoring-surface`; and a conflict is reported but not resolved — the author is
+told to reload rather than offered a merge.
 
 ## Conformance
 

@@ -17,12 +17,27 @@ import { expect, test, type Page } from '@playwright/test';
 const EDITOR = '.cm-content';
 const VALUE = '.mdl-value';
 
-/** Fail the test on anything the page logs as an error, not just on assertions. */
+/**
+ * Fail the test on anything the page logs as an error, not just on assertions.
+ *
+ * With one exception, and it is not a loosening: this suite runs the bundle with
+ * no registry behind it, so the workspace probe to `/api/artifacts` is *expected*
+ * to fail. That failure is the offline path being taken, which `persistence.spec`
+ * covers from the other side. Everything else — including any page error — still
+ * fails the test.
+ */
 async function watchConsole(page: Page): Promise<string[]> {
   const errors: string[] = [];
+
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(m.text());
+    if (m.type() !== 'error') return;
+    // A resource-load failure does not name the URL in its text, so the filter
+    // has to come off the message's location. Matching on the text alone would
+    // have excused any 500 from anywhere.
+    const url = m.location().url || '';
+    if (/\/api\//.test(url) && /Failed to load resource/.test(m.text())) return;
+    errors.push(`${m.text()} ${url}`.trim());
   });
   return errors;
 }

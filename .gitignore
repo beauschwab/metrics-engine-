@@ -5,3 +5,6 @@ dist/
 test-results/
 playwright-report/
 blob-report/
+keel.db
+keel.db-shm
+keel.db-wal
