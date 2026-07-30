@@ -15,7 +15,7 @@ import { handle } from './api';
 import { migrate, openSqlite, type Db } from './db';
 import { SQLITE } from './dialect';
 import { Repository } from './repository';
-import { shippedDocuments } from './index';
+import { BodyTooLarge, readBody, shippedDocuments } from './index';
 
 const dir = mkdtempSync(join(tmpdir(), 'keel-api-'));
 let n = 0;
@@ -143,5 +143,55 @@ describe('transaction time', () => {
     const nowRes = await get('/api/artifacts');
     expect((nowRes.body as { artifacts: Array<{ body: string }> }).artifacts.map((a) => a.body))
       .toContain('later');
+  });
+});
+
+describe('the request body', () => {
+  async function* chunks(total: number): AsyncGenerator<Buffer> {
+    // Sent in pieces, like a real socket — the cap has to bite mid-stream
+    // rather than after the whole thing is already in memory.
+    for (let sent = 0; sent < total; sent += 64 * 1024) {
+      yield Buffer.alloc(Math.min(64 * 1024, total - sent), 0x20);
+    }
+  }
+
+  it('reads ordinary JSON', async () => {
+    async function* one(): AsyncGenerator<Buffer> {
+      yield Buffer.from('{"body":"hello"}');
+    }
+    expect(await readBody(one())).toEqual({ body: 'hello' });
+  });
+
+  it('refuses a body larger than the limit', async () => {
+    // Unbounded, one unauthenticated request makes the process allocate until
+    // it dies — cheap to send, and the registry is what every author depends on.
+    await expect(readBody(chunks(2 * 1024 * 1024))).rejects.toThrow(BodyTooLarge);
+  });
+
+  it('treats unreadable JSON as absent rather than throwing', async () => {
+    async function* junk(): AsyncGenerator<Buffer> {
+      yield Buffer.from('not json at all');
+    }
+    expect(await readBody(junk())).toBeNull();
+  });
+});
+
+describe('live routes without a warehouse', () => {
+  it('says which variable is missing rather than 404ing', async () => {
+    // A 404 would read as "this build has no live support", which is a
+    // different problem from "nobody configured a warehouse".
+    const res = await handle(repo, { method: 'GET', path: '/api/live/status' });
+    expect(res.status).toBe(503);
+    expect((res.body as { error: string }).error).toContain('KEEL_DREMIO_URI');
+  });
+
+  it('answers the same way for every live route, including POSTs', async () => {
+    for (const path of [
+      '/api/live/report/fr2052a_submission',
+      '/api/live/coverage/fr2052a_outflows',
+      '/api/live/sample/fr2052a_outflows',
+    ]) {
+      expect((await handle(repo, { method: 'POST', path, body: {} })).status).toBe(503);
+    }
   });
 });

@@ -15,11 +15,21 @@ import { createServer } from 'node:http';
 import { handle, type ApiRequest } from './api';
 import { migrate, openMssql, openSqlite, type Db } from './db';
 import { dialectFor, type DialectName } from './dialect';
+import { dremioFromEnv } from './query';
 import { Repository } from './repository';
 import { INITIAL_DOCS, VIEW_FILES } from '../src/engine/documents';
 import { parseDoc } from '../src/engine/parse';
 
 const PORT = Number(process.env.KEEL_PORT || 8787);
+
+/**
+ * The most a request body may be.
+ *
+ * A document is a few kilobytes; a megabyte is already absurd. Without a bound,
+ * one unauthenticated request can make the process allocate until it dies —
+ * cheap to send, and the registry is the thing every author depends on.
+ */
+const MAX_BODY = Number(process.env.KEEL_MAX_BODY || 1_048_576);
 
 function required(name: string): string {
   const v = process.env[name];
@@ -58,9 +68,18 @@ export function shippedDocuments(): Array<{ name: string; kind: string; body: st
   }));
 }
 
-async function readBody(req: import('node:http').IncomingMessage): Promise<unknown> {
+export class BodyTooLarge extends Error {}
+
+export async function readBody(req: AsyncIterable<Buffer>): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    // Stop reading rather than finish and then complain — the point of the
+    // limit is to not hold the bytes.
+    if (size > MAX_BODY) throw new BodyTooLarge(`body exceeds ${MAX_BODY} bytes`);
+    chunks.push(chunk as Buffer);
+  }
   if (!chunks.length) return undefined;
   try {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -75,7 +94,17 @@ export async function main(): Promise<void> {
   const repo = new Repository(db);
   const seeded = await repo.seed(shippedDocuments());
 
+  // Null unless KEEL_DREMIO_URI is set, which is the ordinary way to run this:
+  // the surface falls back to fixtures and the live routes answer 503 saying
+  // exactly which variable is missing.
+  const dremio = dremioFromEnv(process.env as Record<string, string | undefined>);
+
   console.log(`keel registry on ${db.dialect.name}` + (seeded ? `, seeded ${seeded} artifacts` : ''));
+  console.log(
+    dremio
+      ? `warehouse ${dremio.uri} — sampling ${dremio.sampling}, cap ${dremio.rowCap} rows`
+      : 'no warehouse configured — set KEEL_DREMIO_URI to read real data',
+  );
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -87,7 +116,7 @@ export async function main(): Promise<void> {
     // The dev server and the API are separate origins under `vite dev`.
     res.setHeader('Access-Control-Allow-Origin', process.env.KEEL_CORS_ORIGIN || '*');
     res.setHeader('Access-Control-Allow-Headers', 'content-type');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,POST,OPTIONS');
     if (req.method === 'OPTIONS') {
       res.writeHead(204).end();
       return;
@@ -99,17 +128,28 @@ export async function main(): Promise<void> {
     const identityHeader = (process.env.KEEL_IDENTITY_HEADER || '').toLowerCase();
     const asserted = identityHeader ? req.headers[identityHeader] : undefined;
 
+    const method = req.method || 'GET';
+    let body: unknown;
+    try {
+      body = method === 'PUT' || method === 'POST' ? await readBody(req) : undefined;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.writeHead(413, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: message }));
+      return;
+    }
+
     const request: ApiRequest = {
-      method: req.method || 'GET',
+      method,
       path: url.pathname,
       query,
       identity: Array.isArray(asserted) ? asserted[0] : asserted || null,
-      body: req.method === 'PUT' ? await readBody(req) : undefined,
+      body,
     };
 
-    const { status, body } = await handle(repo, request);
+    const { status, body: out } = await handle(repo, request, { dremio });
     res.writeHead(status, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(body));
+    res.end(JSON.stringify(out));
   });
 
   server.listen(PORT, () => console.log(`listening on http://localhost:${PORT}`));

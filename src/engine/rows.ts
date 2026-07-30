@@ -93,6 +93,16 @@ function listItems(raw: string): string[] {
   return (raw || '').replace(/[[\]]/g, '').split(',').map((s) => s.trim()).filter(Boolean);
 }
 
+/**
+ * Key separator for composite map keys.
+ *
+ * A literal control character here would make the file read as binary to grep,
+ * diff and every review tool — which happened, and cost a search. `\u001f` is
+ * the ASCII unit separator: the same guarantee of never appearing in a
+ * parameter-set name or a column value, spelled so the file stays text.
+ */
+const KEY_SEP = '\u001f';
+
 export function derivationsOf(g: Graph): DerivationSpec[] {
   return sectionBlocks(g, 'derivations').map((b) => ({
     name: b.name,
@@ -313,7 +323,7 @@ export function deriveRows(
             row[spec.name] = NaN;
             // A missing rate is not a zero. Zero would quietly report no
             // outflow for a product that has one.
-            paramMissCounts[`${ps.name} ${k}`] = (paramMissCounts[`${ps.name} ${k}`] || 0) + 1;
+            paramMissCounts[`${ps.name}${KEY_SEP}${k}`] = (paramMissCounts[`${ps.name}${KEY_SEP}${k}`] || 0) + 1;
           } else {
             row[spec.name] = v;
           }
@@ -340,7 +350,7 @@ export function deriveRows(
   });
 
   const paramMisses: ParamMiss[] = Object.keys(paramMissCounts).map((k) => {
-    const [parameterSet, key] = k.split(' ');
+    const [parameterSet, key] = k.split(KEY_SEP);
     return { parameterSet, key, records: paramMissCounts[k] };
   });
 
@@ -375,7 +385,7 @@ export function classificationMigration(
     const a = String(beforeRows[i][before.column] ?? '');
     const b = String(afterRows[i][after.column] ?? '');
     if (a === b) continue;
-    const key = `${a} ${b}`;
+    const key = `${a}${KEY_SEP}${b}`;
     const m = (moves[key] ||= {
       from: a || '(unmapped)',
       to: b || '(unmapped)',

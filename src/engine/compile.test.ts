@@ -403,3 +403,38 @@ describe('report diagnostics', () => {
     expect(withCode(d, 'KEEL085')).toHaveLength(1);
   });
 });
+
+describe('a record count per group', () => {
+  const spec = () => ({
+    ...readReport(parseDoc(REPORT)),
+    countAs: 'records',
+    // Coverage regroups to the classified column and files nothing.
+    grouping: ['product_id'],
+    table: '', partitionBy: [],
+  });
+
+  const plan = (backend: Backend) =>
+    compileReport(spec(), parseDoc(VIEW), buildRegistry(workspace()), backend);
+
+  it('is emitted by every backend, in each one’s own idiom', () => {
+    expect(plan('sql')).toContain('COUNT(*) AS records');
+    expect(plan('polars')).toContain('pl.len().alias("records")');
+    expect(plan('pyspark')).toContain('F.count("*").alias("records")');
+  });
+
+  it('sits after the keys, so positional GROUP BY still means the keys', () => {
+    // `GROUP BY 1` counting the count column would be a silent wrong answer
+    // rather than an error, which is the worst kind.
+    const sql = plan('sql');
+    // The final projection, not the `SELECT *` inside the first CTE.
+    const select = sql.slice(sql.lastIndexOf('\nSELECT\n'), sql.lastIndexOf('\nGROUP BY'));
+    expect(select.indexOf('product_id')).toBeLessThan(select.indexOf('COUNT(*)'));
+    expect(sql).toContain('GROUP BY 1');
+    expect(sql).not.toContain('GROUP BY 1, 2');
+  });
+
+  it('is absent unless asked for, because a filed report files amounts', () => {
+    expect(compiled('sql')).not.toContain('COUNT(*)');
+    expect(compiled('polars')).not.toContain('pl.len()');
+  });
+});

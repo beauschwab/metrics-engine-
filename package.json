@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit && tsc -p tsconfig.harness.json --noEmit",
+    "typecheck": "tsc -b --noEmit && tsc -p tsconfig.harness.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "test": "vitest run",
     "conformance": "vitest run src/engine/conformance.test.ts src/engine/conformance-python.test.ts src/engine/conformance-iceberg.test.ts",
     "test:watch": "vitest",
@@ -15,7 +15,8 @@
     "e2e:ui": "playwright test --ui",
     "verify": "npm run typecheck && npm run test && npm run e2e",
     "server": "tsx server/index.ts",
-    "server:watch": "tsx watch server/index.ts"
+    "server:watch": "tsx watch server/index.ts",
+    "mcp": "tsx mcp/server.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",
@@ -23,13 +24,16 @@
     "@codemirror/lint": "^6.8.5",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "mssql": "^12.7.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@duckdb/node-api": "^1.5.5-r.2",
     "@playwright/test": "^1.62.0",
+    "@types/mssql": "^12.3.0",
     "@types/node": "^26.1.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",

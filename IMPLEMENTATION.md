@@ -5,12 +5,14 @@ React + TypeScript app with a real CodeMirror 6 editor.
 
 ```
 npm install
+pip install -r requirements.txt   # only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
-npm run test       # 327 unit, conformance and server tests
+npm run mcp        # the MCP server on stdio (read-only by default)
+npm run test       # 491 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e        # 46 browser checks against the built bundle
-npm run verify     # all of the above, plus both typecheck projects
+npm run e2e        # 62 browser checks against the built bundle
+npm run verify     # all of the above, plus all three typecheck projects
 npm run build      # typecheck + production bundle
 ```
 
@@ -50,8 +52,11 @@ src/
     variance.ts              day-over-day change, trailing dispersion, thresholds
     variance-diagnostics.ts  the KEEL09x family — is the control watching?
     compile-variance.ts      the monitor as window functions, per backend
+    lineage.ts               what each document is *for*, and what feeds what
+    impact.ts                what an edit does, by running both versions
+    semantic.ts              publishing a definition to the layer people read
     conformance.ts           fixture → DDL, plan retargeting, tolerance policy
-    engine.test.ts           82 tests — measures, diagnostics, fixes
+    engine.test.ts           81 tests — measures, diagnostics, fixes
     classification.test.ts   rules, coverage, effective dating
     compile.test.ts          plan emission, report grain, reconciliation
     variance.test.ts         window semantics, thresholds, the KEEL09x family
@@ -59,6 +64,9 @@ src/
     conformance-python.test.ts  the compiled Polars, executed; PySpark, parsed
     conformance-iceberg.test.ts the whole plan, against a real Iceberg catalogue
     conformance-variance.test.ts  same breaches in DuckDB as in the browser
+    lineage.test.ts          stages derived, chains built, nothing hardcoded
+    impact.test.ts           silencing measured, not inferred from a diff
+    conformance-semantic.test.ts  the published view, executed and reconciled
   editor/                    CodeMirror 6 extensions
     context.ts               app state in editor state; live re-parse of the doc
     pills.ts                 replace-widgets, atomic ranges, edit-reveal
@@ -73,6 +81,8 @@ src/
     apply.ts                 document mutations, narrowed to the smallest edit
     theme.ts                 the editor's visual layer
   components/                the React chrome around the editor
+    LineageStrip.tsx         where the open document sits in the chain
+    ChangeImpact.tsx         what this edit does, while it is still an edit
   styles/
     app.css                  surface tokens + layout
     aperture/                Aperture Risk token files, copied from the bundle
@@ -84,6 +94,14 @@ server/                      the registry API — no React, no browser
   repository.ts              append-only revisions, optimistic concurrency
   api.ts                     request in, response out — no socket to test
   index.ts                   config from env, wire, listen
+  readonly.ts                the guard: what may be sent to a warehouse at all
+  query.ts                   the Dremio gateway — cap, timeout, sampling policy
+  live.ts                    the three live reads, built on the same compiler
+  query/dremio.py            ADBC Flight SQL client, stdin JSON → stdout JSON
+  query/flight_sql_stub.py   a real Flight SQL server over DuckDB, for the tests
+mcp/                         the registry as tools an external agent can call
+  tools.ts                   plain functions over a Repository — all the decisions
+  server.ts                  the MCP binding: schemas in, JSON out, no decisions
 e2e/
   surface.spec.ts            the three columns, the loop, fixes, plans, layout
   editor.spec.ts             pills, keyboard, completion, gutters
@@ -96,6 +114,244 @@ Everything in it is a pure function of (document text, fixture), which is why
 the same diagnostic drives the inline squiggle, the gutter glyph, the problems
 strip and the `⌘.` menu without any of them re-deriving it — and why the whole
 catalogue is testable without a DOM.
+
+## The information hierarchy
+
+The registry knew its documents by what they *contained* — rules, rates,
+measures, thresholds. That is a syntactic taxonomy, and it put two very different
+things in the same drawer:
+
+| | `liquidity_pit` | `fr2052a_outflows` |
+| --- | --- | --- |
+| Kind | `metrics_view` | `metrics_view` |
+| Holds | `lcr_pct = 100 × HQLA / net outflows` | classify, rate lookup, weighting |
+| Runs | at query time, in a dashboard | in the nightly pipeline, into a filed table |
+| Was shown as | ⧉, row 1 of 7 | ⧉, row 5 of 7 |
+
+Same kind, same glyph, one flat hardcoded list, nothing between them. `lineage.ts`
+derives the taxonomy an author actually reasons about:
+
+**Prepare** — what is this record? **File** — what goes on the form? **Publish** —
+what does it mean? **Watch** — should anyone look at it?
+
+The first three are a chain; each consumes the last. **Watch is not a fourth
+link — it points at the chain.** That distinction is why a monitor listed as a
+peer of the report it watches reads wrong, and why the fix is not simply a
+fifth glyph.
+
+### Derived, never declared
+
+No document says which stage it is in, and adding a `stage:` field would have
+been the wrong answer — it is a fact about the workspace, not about a document,
+and a hand-maintained one goes stale in a week. Four kinds map straight through;
+`metrics_view` is derived:
+
+> A view is **Prepare** when a report files from it, and **Publish** when none
+> does.
+
+Structural rather than heuristic, and the test is the proof: delete
+`fr2052a_submission` and the same unedited `fr2052a_outflows` becomes Publish.
+Add a report over `liquidity_pit` and it becomes Prepare. Nothing is hardcoded,
+so the picture cannot drift from the workspace.
+
+### Saying where things run
+
+`targets: [duckdb, snowflake, …]` says which engines *could* run a plan. What an
+author needs before editing is what happens tonight, and the compiler is the
+authority: `compileReport` inlines a view's derivations, which inline its rule
+sets and rate tables, into one plan. **Only the report writes.** So a rule set
+reads `Compiled in · writes nothing` rather than "runs nightly", which would have
+been a comfortable lie about the thing most likely to be edited carelessly.
+
+Each node carries a short label for the strip and the full sentence for its
+tooltip — the chain is the content, the runtime is a caption on it, and a test
+holds the short form to 36 characters so it cannot grow back into the chain's
+width.
+
+### Drawing the chain
+
+`LineageStrip` renders the spine above the editor, every document step
+navigable:
+
+```
+alm.fct_2052a_positions › fr2052a_outflows › fr2052a_submission › reg.fr2052a_daily › fr2052a_variance
+```
+
+Two things it deliberately does not do. Real lineage is a DAG, and drawing it as
+one produces a picture nobody reads — so the spine is the path the data travels
+and everything else hangs off a step. And a rule set is **not** drawn as a link:
+`positions → product_id → outflows` is not what runs, and misdescribing the
+pipeline to whoever is judging whether an edit is safe is worse than drawing
+nothing. Rule sets appear as inputs *on* the step that folds them in, and only
+when you are standing on that step.
+
+That last clause was a fix, not a design. The first cut carried the inputs at
+every step, which pushed `fr2052a_variance` off the right edge — so standing on
+the report, the monitor watching it was invisible, and the surface looked like it
+had told you everything. It is the document-strip bug exactly: an element that
+scrolls needs an affordance saying there is more. Both edges now fade and the
+current step scrolls into view, the same treatment and for the same reason.
+
+## What an edit does
+
+`impact.ts` answers a question nothing on the surface previously asked: not *is
+this document well formed* but *what does changing it do to things that already
+exist*. Those come apart most sharply on a control. A monitor with a raised limit
+has no diagnostics, parses cleanly, and has stopped watching sixteen series.
+
+**Loosening a threshold is how a breach disappears.** A wrong number is a data
+error; a control that no longer fires is a control failure, and under SR 11-7
+that is the more serious finding because it is systemic — nobody would have
+caught the next one either. It is also the easiest edit to make for an innocent
+reason (this alert is noisy) and the hardest to see in a diff, because the
+document still says `thresholds:` and still lists the same number of them.
+
+### It runs both versions
+
+The whole design turns on refusing to pattern-match the YAML. A heuristic — the
+number went up, so this is a loosening — is wrong in both directions: it flags a
+widened band that changes nothing, and it misses a narrowed trailing window that
+now spans a calm period and stops flagging a series. So `assessChange` runs the
+monitor over both documents and diffs the breach lists.
+
+| Edit | Reported as |
+| --- | --- |
+| `limit: 1000000` → `5000000` | silences 3 breaches across 1 series · **needs review** |
+| `sigma: 3.0` → `6.0` | silences 32 breaches across 18 series · **needs review** |
+| `limit: 1000000` → `100000` | raises 46 new breaches · no review needed |
+| description reworded | nothing |
+
+That last row matters as much as the first. Prose moving must not produce a
+governance finding, or the finding stops being read — which is how a real one
+gets missed.
+
+### One defect worth recording
+
+The first cut identified a breach by rollup and date. Raising `HARD-USD` from
+$1mm to $5mm reported **nothing** — those same three key-days were still
+breaching under `SIGMA-30`, so the rollup still appeared in the "after" list. The
+rollup looked watched; the specific control that had been weakened was invisible.
+
+That is precisely the blindness the module exists to remove, reproduced inside
+it. A breach is now identified by *which threshold* fired on which rollup on
+which day, and the test that catches it says so.
+
+### Beyond controls
+
+The same pass reports a rule change in records and money — with the prompt the
+effective dating exists to record — a report grain that loses a dimension, a
+measure that stops being filed, a sink that was redirected (which goes stale
+rather than failing), and a rate that moved while its citation did not. That last
+one is what a reviewer is actually looking for: a governed assumption changing
+under an unchanged authority.
+
+`ChangeImpact.tsx` puts it above the editor rather than in the problems strip. A
+problem is something wrong with what you wrote; this is a consequence of what you
+wrote being right, and filing them together would teach people to clear both with
+the same reflex. It does not block — the surface has no maker-checker model and
+inventing a soft one would be worse than saying the thing plainly. **The MCP path
+does block**, because an agent has no eyes to read a banner with.
+
+## Publishing to the semantic layer
+
+The compiler emitted SQL, Polars and PySpark — three ways of running a plan in a
+pipeline, none of which a dashboard consumes. So the last hop of a governed
+number was a human retyping it: `lcr_pct` is defined here under a tier with a
+citation and a revision history, and then somebody writes
+`100.0 * [HQLA] / [Net Outflows]` into a Tableau calculated field, and *that* is
+what the committee sees.
+
+The two then drift — a rounding rule here, a filter there — and the drift is
+undetectable because nothing compares them. **Drift you cannot detect is worse
+than a wrong number you can.**
+
+`semantic.ts` adds two targets from the same AST: a `CREATE OR REPLACE VIEW` any
+BI tool can point at, and a dbt semantic model for stacks that already have a
+metric layer. Simple measures become `measures:` and derived ones become
+`metrics:` of type `derived`, which is dbt's own split and happens to be exactly
+the one the documents already make.
+
+### Refusing rather than guessing
+
+The expression language is SQL-shaped by design, so most of a derived measure
+passes through untouched. Three things do not, and each is refused by name:
+
+- `ema()` is `x * 0.981` in the browser — fine for a sparkline, not a definition
+  anybody should publish. Emitting *something* would be a dashboard that is
+  confidently wrong.
+- `max(a, b)` is scalar here and an aggregate in SQL, so it becomes `GREATEST`.
+  Passing it through would be a syntax error on some engines and a silent
+  aggregate on others, which is worse.
+- A `windowed` measure has no single-row form at all.
+
+A refused measure is **named in the issues list, never dropped** — a measure
+silently missing from a published view is a number that quietly stops existing on
+somebody's dashboard.
+
+### Executed, not asserted
+
+`conformance-semantic.test.ts` creates the view in a real DuckDB over the same
+fixture the browser evaluates, and reconciles every published measure — all ten,
+including the staged chain `net_cash_outflows_30d → lcr_pct → lcr_buffer` — to
+the value on screen. An emitter nobody executes would recreate the drift problem
+one layer further in, and a generated view that is subtly wrong is worse than a
+hand-written one because it carries the authority of having been generated.
+
+Derived measures each get their own CTE stage, for the reason the report compiler
+chains them: SQL cannot reference an alias declared beside it.
+
+## The MCP server
+
+`mcp/` exposes the registry as tools an external agent can call. The split
+mirrors `server/api.ts`: `tools.ts` holds every decision as plain async functions
+over a `Repository`, and `server.ts` is a schema binding with nothing in it —
+so the behaviour is tested without a subprocess, and the protocol is tested
+without re-testing the behaviour.
+
+### The reads return semantics, not YAML
+
+`get_rules` gives every rule in evaluation order with its condition, emitted
+value, citation and share of the book. First-match precedence means a rule's
+position is part of its meaning, and making every caller re-derive that from a
+document body is exactly the work a tool should absorb. `get_lineage` answers the
+question behind most edits — `usedBy` is the list of things that break —
+and `list_artifacts` carries the stage, because otherwise an agent sees several
+`metrics_view`s and cannot tell a dashboard ratio from a pipeline enrichment
+stage. The same collision, one layer out.
+
+### Authoring is a loop, not a PUT
+
+`validate`, `test_rules`, `preview_report`, `compile` and `assess_change` all
+take a proposed **body** and write nothing. An agent can propose a rule set, see
+which records it strands, and iterate without touching the registry. A tool that
+only saved would be a worse `PUT`.
+
+### Three gates on writing
+
+1. **Off by default.** `KEEL_MCP_WRITE=1` or nothing is written. An agent that
+   can silently rewrite a governed rule set is not a capability anybody should
+   acquire by forgetting to disable it.
+2. **New errors block** — the same catalogue a person is held to, but only for
+   errors the change *introduces*. A flat "no errors" gate was implemented first
+   and immediately made an unrelated edit to `liquidity_pit` impossible, because
+   it ships with two KEEL030s. An agent told to fix someone else's problem before
+   it may touch a file will either give up or fix it badly, so pre-existing
+   errors are reported in the outcome and are not this edit's fault.
+3. **A weakening must be acknowledged.** `assessChange` runs before every save,
+   and a change that silences a control is refused unless `acknowledgeReview` is
+   passed. The acknowledgement — with *what* was silenced — is appended to the
+   revision message. Not a veto: a step that cannot happen by accident, and that
+   lands in the history rather than only in the agent's transcript. Six months
+   later the question is not "was this allowed" but "who decided, and did they
+   know what it did".
+
+Identity comes from `KEEL_MCP_IDENTITY`, never from a tool argument — an author
+field the caller can set to any string is not an attribution.
+
+`server.test.ts` drives the real thing over stdio with the SDK's own client, and
+checks the one failure mode that is invisible until it is fatal: the banner goes
+to **stderr**, and stdout holds nothing at all before a request, because every
+byte there is one the client must parse as a protocol message.
 
 ## Pills, per §5.7
 
@@ -121,7 +377,7 @@ way to desync.
 
 ## Diagnostics
 
-All 29 codes in §6.2 are emitted, plus four the prototype added
+All 29 codes in §6.2 are emitted, plus the families this build added
 (`KEEL026`/`KEEL027` for trailing windows, `KEEL035` for deprecated external
 references, `KEEL044` for closed-choice fields, `KEEL050`–`KEEL052` for
 filters). Severity is coupled to governance tier, so the same missing
@@ -412,6 +668,118 @@ Still open: there is no identity provider, so every save is attributed to
 `authoring-surface`; and a conflict is reported but not resolved — the author is
 told to reload rather than offered a merge.
 
+## Reading a real warehouse
+
+Everything above judges a definition against 160 generated positions a day. That is
+enough to answer *is this expressible* and not enough to answer *is this right*,
+because the question an author actually has — **are there records in my book my
+rules do not classify?** — is a question about their book. A fixture cannot have
+the answer, however good it is.
+
+`KEEL_DREMIO_URI` connects the registry to **Dremio over Arrow Flight SQL** and
+offers exactly three reads. The set is small on purpose; each one is there
+because it answers a question the fixture cannot.
+
+| Read | The question |
+| --- | --- |
+| `liveReport` | what would this file, from production, today |
+| `liveCoverage` | which records does no rule match |
+| `liveSample` | show me the rows behind that |
+
+`liveCoverage` is the one worth the connection. It takes the view's own compiled
+plan and regroups it to the classification's emitted column; because the compiler
+emits no `ELSE`, an unmatched record arrives as a group with a blank key. So one
+row of a small aggregate is the completeness of a rule set against production —
+and no position-level data left the warehouse to compute it.
+
+It counts records as well as totalling notional, which is the difference between
+a coverage report and a rounding error: a bucket holding forty positions that net
+to zero is invisible in a column of amounts. The count is not bolted on beside
+the compiler either — `ReportSpec.countAs` makes it something the compiler emits,
+in each backend's own idiom (`COUNT(*)`, `pl.len()`, `F.count("*")`), placed
+after the grouping keys so the positional `GROUP BY` still means the keys. That
+last detail is the kind that fails silently rather than loudly, so it has a test
+of its own.
+
+### Four decisions
+
+**The plan is the compiler's, not a second generator.** `liveReport` calls
+`compileReport` — the same function the conformance harness executes against
+DuckDB, Polars and Iceberg. A dedicated "live preview" emitter would have been
+easier and would have been a second artifact to keep conformant, which is the
+one thing this codebase is organised to avoid. `liveCoverage` goes further and
+synthesises a `ReportSpec` rather than SQL, so even the regrouping is compiled.
+
+**It reads. It cannot write.** Three layers, because one is a suggestion:
+
+1. `splitPlan(...).query` — the materialize half of a compiled plan is never
+   sent. Filing the submission is the pipeline's job, and an authoring surface
+   that can write one is an authoring surface that can be wrong in production.
+2. `isReadOnly` — a verb scan over a *skeleton* with comments and string literals
+   removed, so `SELECT 1 /* x */ ; DROP TABLE t` and `-- x\nDROP TABLE t` are
+   both refused, and `SELECT 'DROP TABLE customers' AS advice` is not. It also
+   refuses a second statement outright, and `SET`/`USE`/`PRAGMA`, which are side
+   effects wearing a read's clothing.
+3. The refusal happens **before the socket opens**. `query.test.ts` proves that
+   by pointing at a closed port and asserting `QueryRefused` rather than a
+   connection error — otherwise "the guard runs first" is a claim about code
+   ordering rather than a property.
+
+**Aggregates by default; rows are a decision someone makes.** Sampling requires
+`KEEL_DREMIO_SAMPLING=allowlist` *and* the view named in
+`KEEL_DREMIO_SAMPLE_VIEWS`. Both are server-side, and both are checked in
+`liveSample` rather than at the route, so there is no second path to the same
+rows. The default is `off` because the failure mode is not a wrong number, it is
+customer positions on a laptop.
+
+**A sample is stratified, not a head-of-table read.** `LIMIT 100` returns the
+common case, which is the case an author already understands. The strata are
+taken from the columns the rule set actually branches on — read off the parsed
+predicates, not a regex — so every combination a rule can distinguish survives
+into the sample. The test makes the difference observable rather than asserted:
+468 rows of which two are `PUBLIC_SECTOR`; the uniform sample misses that segment
+entirely and the stratified one keeps it. That segment is the whole reason to
+look.
+
+### Testing a protocol without the product
+
+There is no Dremio here and no way to start one, so the alternative to mocking
+was to implement the protocol. `server/query/flight_sql_stub.py` is a real Flight
+SQL server — handshake, `CreatePreparedStatement`, `GetFlightInfo`, `DoGet`,
+Arrow IPC over gRPC — backed by DuckDB, so the SQL it answers is real SQL.
+
+`server/live.test.ts` seeds it with the same 2052a fixture the browser evaluates
+and asserts the filed table it returns equals `runReport`'s to the cent. That
+equality is the product claim in one assertion — *the number you verified in the
+surface is the number the warehouse computes* — and it now holds across the
+compiler, the guard, the row cap, gRPC and Arrow, not just in-process DuckDB.
+
+What that does **not** prove is stated in the test's own header rather than left
+for someone to discover: Dremio's catalogue naming, its dialect quirks, its
+access controls and the wording of its auth errors all need a real instance.
+
+Three things this layer cost, all of them dependency archaeology rather than
+design. `flightsql-dbapi` pins `sqlalchemy<2` and installing it silently
+downgraded the SQLAlchemy that PyIceberg's `SqlCatalog` needs — the Iceberg
+conformance leg started failing for a reason that had nothing to do with Iceberg,
+which is why `requirements.txt` now exists and pins exactly. ADBC replaced it:
+same protocol, no pin, and the Arrow batches arrive without a DB-API layer in
+between. ADBC also *always* prepares a statement, so the stub returned `EOF`
+until the prepared-statement actions were implemented — which meant hand-rolling
+protobuf varint encode/decode, since the `Any`-wrapped command messages have no
+Python bindings outside the driver.
+
+Every result carries the exact statement that produced it, capped at
+`KEEL_DREMIO_ROW_CAP` (default 5000) by *wrapping* rather than appending — so an
+existing `LIMIT` is not doubled — and asking for `cap + 1` rows, which is what
+makes `truncated` detectable rather than guessed. A truncated answer presented as
+a complete one is worse than no answer at all.
+
+Still open: no identity flows through to Dremio, so the PAT is the server's and
+every author reads as that principal. Row-level access control in the warehouse
+therefore applies to the service account rather than to the person, which is
+acceptable for aggregates and is the reason sampling is off by default.
+
 ## Day-over-day variance
 
 A report says what is being filed. It cannot say whether a number moved more than
@@ -555,7 +923,7 @@ bound was measuring machine load. A Polars leg that normally takes 200ms timed o
 once in four full runs while the variance suite seeded sixty days into DuckDB
 beside it.
 
-## Conformance
+### Conformance, for a monitor
 
 `conformance-variance.test.ts` seeds DuckDB with the filed table day by day —
 running the report 60 times, so what is monitored is genuinely what would have
@@ -698,7 +1066,8 @@ pipeline would do — but emitting a create-if-absent step is an open question.
 
 ## Testing
 
-`npm run test` runs 203 engine tests covering the calibrated figures, the
+`npm run test` runs 491 tests — 322 in `src/engine/`, 117 in `server/`, 54 in `mcp/` — covering
+the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius
 (including termination on a cyclic graph), completion scoping, and the parser's
@@ -717,8 +1086,8 @@ structurally impossible to detect.
 
 ## End to end
 
-`npm run e2e` drives the built bundle in headless Chromium — 33 checks in
-`e2e/`, split between the surface and the editor. It runs against `vite
+`npm run e2e` drives the built bundle in headless Chromium — 62 checks in
+`e2e/`, split between the surface, the editor and persistence. It runs against `vite
 preview` rather than the dev server, because a production-only failure in
 chunking or CSS ordering is exactly the kind a dev-server test cannot see.
 
@@ -735,7 +1104,10 @@ those has been a real defect in this build, and none is visible from `vitest`.
 An earlier version of these tests could not be committed because it hard-coded
 this environment's Chromium path. The config now reads `CHROMIUM_PATH` and
 falls back to Playwright's own browser resolution, so it behaves like a default
-config anywhere with a normal toolchain:
+config anywhere with a normal toolchain. The escape hatch is also what to reach
+for when an image ships a pre-installed Chromium whose build number does not
+match the pinned `@playwright/test` — the whole suite fails at launch, which
+looks like 62 regressions and is one mismatched path:
 
 ```
 npm run e2e                                    # ordinary machines
@@ -755,5 +1127,21 @@ dense numeric column back to a proportional stack; tabular figures are what
 make a column of currency scannable here, so the typeface is now self-hosted
 and the suite asserts the page makes no external request at all.
 
-`npm run verify` runs the typecheck, the unit and conformance suites, and the
-end-to-end suite in one pass.
+### The server was never typechecked
+
+Found while adding `mcp/`, and worth recording because of how long it survived.
+`tsconfig.json` includes only `src`; the harness project adds `e2e`. Nothing
+included `server/`. A deliberate `const PROOF: number = "not a number"` in
+`server/live.ts` passed `npm run typecheck` cleanly — and vitest transpiles
+without checking, so the 117 server tests could not catch it either. The only
+type errors that would ever have surfaced were the ones that also happened to
+break at run time.
+
+`tsconfig.node.json` now covers `server` and `mcp`, and `npm run typecheck` runs
+all three projects. Turning it on produced three real errors immediately: an
+unused import, a `Diagnostic.msg` that has been `message` all along, and `mssql`
+having no type declarations at all. The lesson is not about TypeScript — it is
+that a check nobody has watched fail is not evidence of anything.
+
+`npm run verify` runs all three typecheck projects, the unit and conformance
+suites, and the end-to-end suite in one pass.

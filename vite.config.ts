@@ -20,7 +20,7 @@ export default defineConfig({
     // `e2e/` belongs to Playwright. Vitest would otherwise collect those specs,
     // load `@playwright/test` outside its own runner and fail on the first
     // `beforeEach` with an error that says nothing about the real cause.
-    include: ['src/**/*.test.ts', 'server/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'server/**/*.test.ts', 'mcp/**/*.test.ts'],
     /*
      * The conformance legs run real engines out of process — a DuckDB instance,
      * a Python subprocess, an Iceberg catalogue over SQLite — and vitest runs

@@ -12,6 +12,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DefinitionCard, type CardTarget } from './components/DefinitionCard';
 import { MetricEditor, type MetricEditorHandle } from './components/MetricEditor';
 import { ProblemsStrip } from './components/ProblemsStrip';
+import { ChangeImpact } from './components/ChangeImpact';
+import { LineageStrip } from './components/LineageStrip';
 import { RegistryPanel } from './components/RegistryPanel';
 import { ValidationColumn } from './components/ValidationColumn';
 import { Resizer, useLayout } from './components/Resizer';
@@ -22,6 +24,8 @@ import { Evaluator } from './engine/evaluate';
 import { parseDoc } from './engine/parse';
 import { buildRegistry, resolveClassification } from './engine/registry';
 import { classificationMigration, runClassification, type Migration } from './engine/rows';
+import { buildLineage, chainFor } from './engine/lineage';
+import { assessChange } from './engine/impact';
 import { AS_OF, TABLES } from './engine/fixtures';
 import { DOMAINS, HUE } from './engine/vocab';
 import { conformance as conformanceOf } from './engine/plan';
@@ -86,6 +90,18 @@ function saveLabel(connection: Connection, save: SaveState): { text: string; hue
 
 export default function App() {
   const [docs, setDocs] = useState<Record<ViewFile, string>>({ ...INITIAL_DOCS });
+
+  /**
+   * The workspace as it stood when this session picked it up.
+   *
+   * The comparison that makes change impact meaningful is against what everyone
+   * else currently sees, not against the previous keystroke. Saves are debounced
+   * and automatic, so "the stored version" moves underneath the author — using
+   * it as the baseline would make the banner blink out a second after it
+   * appeared, which is the one behaviour guaranteed to teach people to ignore it.
+   */
+  const origin = useRef<Record<ViewFile, string>>({ ...INITIAL_DOCS });
+  const [impactOpen, setImpactOpen] = useState(false);
   const [connection, setConnection] = useState<Connection>({
     state: 'offline',
     reason: 'not loaded yet',
@@ -181,6 +197,41 @@ export default function App() {
     };
   }, [docs, file, fixture, shipped]);
 
+  /**
+   * What each document is for, and what feeds what.
+   *
+   * Keyed on the documents alone — the chain does not change when the fixture
+   * does, and recomputing it on every keystroke of an unrelated edit would put
+   * a full workspace parse in the typing loop for no gain.
+   */
+  const lineage = useMemo(() => buildLineage(docs), [docs]);
+  const chain = useMemo(
+    () => chainFor(lineage, graph.docName || file),
+    [lineage, graph.docName, file],
+  );
+
+  /**
+   * What the edits in this session would do.
+   *
+   * Deliberately not in the main evaluation memo: it runs the monitor twice over
+   * sixty days and has no business happening on every keystroke of an unrelated
+   * document. Keyed on the open file's text alone.
+   */
+  const impact = useMemo(
+    () => assessChange(file, origin.current[file], docs[file], docs, fixture),
+    [file, docs, fixture],
+  );
+
+  /** Open a document by the name other documents refer to it by. */
+  const openDoc = useCallback((name: string) => {
+    const node = lineage.byName[name];
+    if (!node) return;
+    setFile(node.file as ViewFile);
+    setActive(DEFAULT_MEASURE[node.file as ViewFile]);
+    setPeek(null);
+    setCollapsed({});
+  }, [lineage]);
+
   // The last value each measure computed successfully. When an edit breaks the
   // arithmetic the panel holds this rather than blanking: an author needs to
   // remember what the number was in order to judge what it becomes.
@@ -220,6 +271,7 @@ export default function App() {
     loadWorkspace({ signal: abort.signal }).then((ws) => {
       if (abort.signal.aborted) return;
       setDocs(ws.docs);
+      origin.current = { ...ws.docs };
       setConnection(ws.connection);
       setLoaded(true);
     });
@@ -419,6 +471,7 @@ export default function App() {
       style={{ gridTemplateColumns: `${layout.registry}px 5px minmax(0, 1fr) 5px ${layout.validation}px` }}
     >
       <RegistryPanel
+        lineage={lineage}
         file={file}
         docs={docs}
         graph={graph}
@@ -515,6 +568,7 @@ export default function App() {
                   navigator.clipboard?.writeText(mine).catch(() => {});
                   loadWorkspace().then((ws) => {
                     setDocs(ws.docs);
+                    origin.current = { ...ws.docs };
                     setConnection(ws.connection);
                     setSaveState({ kind: 'reloaded' });
                   });
@@ -559,6 +613,25 @@ export default function App() {
 
           </div>
         </div>
+
+        {/* Between the tabs and the text: which document you are in is the tab
+            strip's job, where that document sits in the pipeline is this. */}
+        <LineageStrip
+          chain={chain}
+          lineage={lineage}
+          current={graph.docName || file}
+          onOpen={openDoc}
+        />
+
+        {/* Above the editor, and above the text it is about. A problem is
+            something wrong with what you wrote; this is a consequence of what
+            you wrote being right, and filing them together would teach people
+            to clear both with the same reflex. */}
+        <ChangeImpact
+          impact={impact}
+          open={impactOpen}
+          onToggle={() => setImpactOpen((v) => !v)}
+        />
 
         <MetricEditor
           key={file}

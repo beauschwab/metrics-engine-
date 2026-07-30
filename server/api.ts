@@ -12,6 +12,8 @@
  */
 
 import { Conflict, Repository } from './repository';
+import { NotFound as LiveNotFound, Refused, liveCoverage, liveReport, liveSample } from './live';
+import { QueryFailed, QueryRefused, type DremioConfig } from './query';
 
 export interface ApiRequest {
   method: string;
@@ -41,7 +43,22 @@ function asString(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
 
-export async function handle(repo: Repository, req: ApiRequest): Promise<ApiResponse> {
+/**
+ * Everything the API needs beyond the registry itself.
+ *
+ * `dremio` is null when no warehouse is configured, which is the default and a
+ * perfectly good way to run this — the surface falls back to fixtures and says
+ * so, exactly as it does with no registry.
+ */
+export interface ApiDeps {
+  dremio?: DremioConfig | null;
+}
+
+export async function handle(
+  repo: Repository,
+  req: ApiRequest,
+  deps: ApiDeps = {},
+): Promise<ApiResponse> {
   const { method, path } = req;
   const query = req.query || {};
 
@@ -104,9 +121,81 @@ export async function handle(repo: Repository, req: ApiRequest): Promise<ApiResp
         : json(404, { error: `no such artifact: ${hist[1]}` });
     }
 
+    // --- reading real data -------------------------------------------------
+
+    if (path.startsWith('/api/live/')) {
+      if (!deps.dremio) {
+        return json(503, {
+          error: 'no warehouse is configured — set KEEL_DREMIO_URI to read real data',
+        });
+      }
+      const live = await handleLive(repo, req, deps.dremio);
+      if (live) return live;
+    }
+
     return json(404, { error: `no route for ${method} ${path}` });
   } catch (err) {
     if (err instanceof Conflict) return json(409, { error: err.message });
+    // A refused statement and a refused sample are the caller asking for
+    // something the registry will not do — distinct from the warehouse failing,
+    // and distinct again from the registry being broken.
+    if (err instanceof QueryRefused) return json(400, { error: err.message });
+    if (err instanceof Refused) return json(403, { error: err.message });
+    if (err instanceof LiveNotFound) return json(404, { error: err.message });
+    // The warehouse's own words, at a status that says "not our fault".
+    if (err instanceof QueryFailed) return json(502, { error: err.message });
     return json(500, { error: err instanceof Error ? err.message : String(err) });
   }
+}
+
+/**
+ * The live-data routes.
+ *
+ * Split out because they share one thing the registry routes do not: they all
+ * need the current workspace as text, and none of them may write.
+ */
+async function handleLive(
+  repo: Repository,
+  req: ApiRequest,
+  dremio: DremioConfig,
+): Promise<ApiResponse | null> {
+  const { method, path } = req;
+  const query = req.query || {};
+
+  if (method === 'GET' && path === '/api/live/status') {
+    return json(200, {
+      configured: true,
+      uri: dremio.uri,
+      rowCap: dremio.rowCap,
+      timeoutSeconds: dremio.timeoutSeconds,
+      // Whether rows may leave the warehouse is worth stating plainly, so a
+      // client can say "aggregates only" rather than discovering it via a 403.
+      sampling: dremio.sampling,
+      sampleViews: dremio.sampleAllowlist,
+    });
+  }
+
+  const workspace = { docs: Object.fromEntries((await repo.workspace()).map((a) => [a.name, a.body])) };
+
+  const report = /^\/api\/live\/report\/([A-Za-z0-9_.-]+)$/.exec(path);
+  if (report && method === 'POST') {
+    const result = await liveReport(dremio, workspace, report[1]);
+    return json(200, result);
+  }
+
+  const coverage = /^\/api\/live\/coverage\/([A-Za-z0-9_.-]+)$/.exec(path);
+  if (coverage && method === 'POST') {
+    return json(200, await liveCoverage(dremio, workspace, coverage[1]));
+  }
+
+  const sample = /^\/api\/live\/sample\/([A-Za-z0-9_.-]+)$/.exec(path);
+  if (sample && method === 'POST') {
+    const body = (req.body || {}) as Record<string, unknown>;
+    return json(200, await liveSample(dremio, workspace, sample[1], {
+      asOf: typeof body.asOf === 'string' ? body.asOf : String(query.asOf || ''),
+      ...(typeof body.perStratum === 'number' ? { perStratum: body.perStratum } : {}),
+    }));
+  }
+
+  return null;
 }
