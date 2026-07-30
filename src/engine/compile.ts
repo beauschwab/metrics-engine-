@@ -387,6 +387,15 @@ export interface ReportSpec {
   table: string;
   partitionBy: string[];
   mode: string;
+  /**
+   * Emit a record count per group, under this name.
+   *
+   * Off for a filed report — the form asks for amounts — and on for coverage,
+   * where it is the whole point. A bucket holding forty records that net to
+   * zero is invisible in a column of notional and is exactly the kind of gap
+   * someone wants to find before a submission rather than after one.
+   */
+  countAs?: string;
 }
 
 function listItems(raw: string): string[] {
@@ -458,6 +467,7 @@ function compileSql(
 
   const keys = groupingKeys(report);
   const select = keys
+    .concat(report.countAs ? [`COUNT(*) AS ${report.countAs}`] : [])
     .concat(measures.map((m) => emitMeasure(m, 'sql') || `NULL AS ${m.name}`))
     .join(',\n  ');
   const groupBy = keys.map((_, i) => i + 1).join(', ');
@@ -514,9 +524,12 @@ function compilePython(
     ? `  .group_by([${groupingKeys(report).map((g) => `"${g}"`).join(', ')}])`
     : `  .groupBy(${groupingKeys(report).map((g) => `"${g}"`).join(', ')})`;
 
-  const aggs = measures
-    .map((m) => emitMeasure(m, backend))
-    .filter(Boolean)
+  const count = report.countAs
+    ? [polars ? `pl.len().alias("${report.countAs}")` : `F.count("*").alias("${report.countAs}")`]
+    : [];
+
+  const aggs = count
+    .concat(measures.map((m) => emitMeasure(m, backend)).filter((a): a is string => !!a))
     .map((a) => `    ${a},`);
 
   const agg = `  .agg(\n${aggs.join('\n')}\n  )`;

@@ -5,9 +5,10 @@ React + TypeScript app with a real CodeMirror 6 editor.
 
 ```
 npm install
+pip install -r requirements.txt   # only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
-npm run test       # 327 unit, conformance and server tests
+npm run test       # 383 unit, conformance and server tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e        # 46 browser checks against the built bundle
 npm run verify     # all of the above, plus both typecheck projects
@@ -51,7 +52,7 @@ src/
     variance-diagnostics.ts  the KEEL09x family — is the control watching?
     compile-variance.ts      the monitor as window functions, per backend
     conformance.ts           fixture → DDL, plan retargeting, tolerance policy
-    engine.test.ts           82 tests — measures, diagnostics, fixes
+    engine.test.ts           81 tests — measures, diagnostics, fixes
     classification.test.ts   rules, coverage, effective dating
     compile.test.ts          plan emission, report grain, reconciliation
     variance.test.ts         window semantics, thresholds, the KEEL09x family
@@ -84,6 +85,11 @@ server/                      the registry API — no React, no browser
   repository.ts              append-only revisions, optimistic concurrency
   api.ts                     request in, response out — no socket to test
   index.ts                   config from env, wire, listen
+  readonly.ts                the guard: what may be sent to a warehouse at all
+  query.ts                   the Dremio gateway — cap, timeout, sampling policy
+  live.ts                    the three live reads, built on the same compiler
+  query/dremio.py            ADBC Flight SQL client, stdin JSON → stdout JSON
+  query/flight_sql_stub.py   a real Flight SQL server over DuckDB, for the tests
 e2e/
   surface.spec.ts            the three columns, the loop, fixes, plans, layout
   editor.spec.ts             pills, keyboard, completion, gutters
@@ -412,6 +418,118 @@ Still open: there is no identity provider, so every save is attributed to
 `authoring-surface`; and a conflict is reported but not resolved — the author is
 told to reload rather than offered a merge.
 
+## Reading a real warehouse
+
+Everything above judges a definition against 160 generated positions a day. That is
+enough to answer *is this expressible* and not enough to answer *is this right*,
+because the question an author actually has — **are there records in my book my
+rules do not classify?** — is a question about their book. A fixture cannot have
+the answer, however good it is.
+
+`KEEL_DREMIO_URI` connects the registry to **Dremio over Arrow Flight SQL** and
+offers exactly three reads. The set is small on purpose; each one is there
+because it answers a question the fixture cannot.
+
+| Read | The question |
+| --- | --- |
+| `liveReport` | what would this file, from production, today |
+| `liveCoverage` | which records does no rule match |
+| `liveSample` | show me the rows behind that |
+
+`liveCoverage` is the one worth the connection. It takes the view's own compiled
+plan and regroups it to the classification's emitted column; because the compiler
+emits no `ELSE`, an unmatched record arrives as a group with a blank key. So one
+row of a small aggregate is the completeness of a rule set against production —
+and no position-level data left the warehouse to compute it.
+
+It counts records as well as totalling notional, which is the difference between
+a coverage report and a rounding error: a bucket holding forty positions that net
+to zero is invisible in a column of amounts. The count is not bolted on beside
+the compiler either — `ReportSpec.countAs` makes it something the compiler emits,
+in each backend's own idiom (`COUNT(*)`, `pl.len()`, `F.count("*")`), placed
+after the grouping keys so the positional `GROUP BY` still means the keys. That
+last detail is the kind that fails silently rather than loudly, so it has a test
+of its own.
+
+### Four decisions
+
+**The plan is the compiler's, not a second generator.** `liveReport` calls
+`compileReport` — the same function the conformance harness executes against
+DuckDB, Polars and Iceberg. A dedicated "live preview" emitter would have been
+easier and would have been a second artifact to keep conformant, which is the
+one thing this codebase is organised to avoid. `liveCoverage` goes further and
+synthesises a `ReportSpec` rather than SQL, so even the regrouping is compiled.
+
+**It reads. It cannot write.** Three layers, because one is a suggestion:
+
+1. `splitPlan(...).query` — the materialize half of a compiled plan is never
+   sent. Filing the submission is the pipeline's job, and an authoring surface
+   that can write one is an authoring surface that can be wrong in production.
+2. `isReadOnly` — a verb scan over a *skeleton* with comments and string literals
+   removed, so `SELECT 1 /* x */ ; DROP TABLE t` and `-- x\nDROP TABLE t` are
+   both refused, and `SELECT 'DROP TABLE customers' AS advice` is not. It also
+   refuses a second statement outright, and `SET`/`USE`/`PRAGMA`, which are side
+   effects wearing a read's clothing.
+3. The refusal happens **before the socket opens**. `query.test.ts` proves that
+   by pointing at a closed port and asserting `QueryRefused` rather than a
+   connection error — otherwise "the guard runs first" is a claim about code
+   ordering rather than a property.
+
+**Aggregates by default; rows are a decision someone makes.** Sampling requires
+`KEEL_DREMIO_SAMPLING=allowlist` *and* the view named in
+`KEEL_DREMIO_SAMPLE_VIEWS`. Both are server-side, and both are checked in
+`liveSample` rather than at the route, so there is no second path to the same
+rows. The default is `off` because the failure mode is not a wrong number, it is
+customer positions on a laptop.
+
+**A sample is stratified, not a head-of-table read.** `LIMIT 100` returns the
+common case, which is the case an author already understands. The strata are
+taken from the columns the rule set actually branches on — read off the parsed
+predicates, not a regex — so every combination a rule can distinguish survives
+into the sample. The test makes the difference observable rather than asserted:
+468 rows of which two are `PUBLIC_SECTOR`; the uniform sample misses that segment
+entirely and the stratified one keeps it. That segment is the whole reason to
+look.
+
+### Testing a protocol without the product
+
+There is no Dremio here and no way to start one, so the alternative to mocking
+was to implement the protocol. `server/query/flight_sql_stub.py` is a real Flight
+SQL server — handshake, `CreatePreparedStatement`, `GetFlightInfo`, `DoGet`,
+Arrow IPC over gRPC — backed by DuckDB, so the SQL it answers is real SQL.
+
+`server/live.test.ts` seeds it with the same 2052a fixture the browser evaluates
+and asserts the filed table it returns equals `runReport`'s to the cent. That
+equality is the product claim in one assertion — *the number you verified in the
+surface is the number the warehouse computes* — and it now holds across the
+compiler, the guard, the row cap, gRPC and Arrow, not just in-process DuckDB.
+
+What that does **not** prove is stated in the test's own header rather than left
+for someone to discover: Dremio's catalogue naming, its dialect quirks, its
+access controls and the wording of its auth errors all need a real instance.
+
+Three things this layer cost, all of them dependency archaeology rather than
+design. `flightsql-dbapi` pins `sqlalchemy<2` and installing it silently
+downgraded the SQLAlchemy that PyIceberg's `SqlCatalog` needs — the Iceberg
+conformance leg started failing for a reason that had nothing to do with Iceberg,
+which is why `requirements.txt` now exists and pins exactly. ADBC replaced it:
+same protocol, no pin, and the Arrow batches arrive without a DB-API layer in
+between. ADBC also *always* prepares a statement, so the stub returned `EOF`
+until the prepared-statement actions were implemented — which meant hand-rolling
+protobuf varint encode/decode, since the `Any`-wrapped command messages have no
+Python bindings outside the driver.
+
+Every result carries the exact statement that produced it, capped at
+`KEEL_DREMIO_ROW_CAP` (default 5000) by *wrapping* rather than appending — so an
+existing `LIMIT` is not doubled — and asking for `cap + 1` rows, which is what
+makes `truncated` detectable rather than guessed. A truncated answer presented as
+a complete one is worse than no answer at all.
+
+Still open: no identity flows through to Dremio, so the PAT is the server's and
+every author reads as that principal. Row-level access control in the warehouse
+therefore applies to the service account rather than to the person, which is
+acceptable for aggregates and is the reason sampling is off by default.
+
 ## Day-over-day variance
 
 A report says what is being filed. It cannot say whether a number moved more than
@@ -555,7 +673,7 @@ bound was measuring machine load. A Polars leg that normally takes 200ms timed o
 once in four full runs while the variance suite seeded sixty days into DuckDB
 beside it.
 
-## Conformance
+### Conformance, for a monitor
 
 `conformance-variance.test.ts` seeds DuckDB with the filed table day by day —
 running the report 60 times, so what is monitored is genuinely what would have
@@ -698,7 +816,8 @@ pipeline would do — but emitting a create-if-absent step is an open question.
 
 ## Testing
 
-`npm run test` runs 203 engine tests covering the calibrated figures, the
+`npm run test` runs 383 tests — 266 in `src/engine/`, 117 in `server/` — covering
+the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius
 (including termination on a cyclic graph), completion scoping, and the parser's
@@ -717,8 +836,8 @@ structurally impossible to detect.
 
 ## End to end
 
-`npm run e2e` drives the built bundle in headless Chromium — 33 checks in
-`e2e/`, split between the surface and the editor. It runs against `vite
+`npm run e2e` drives the built bundle in headless Chromium — 46 checks in
+`e2e/`, split between the surface, the editor and persistence. It runs against `vite
 preview` rather than the dev server, because a production-only failure in
 chunking or CSS ordering is exactly the kind a dev-server test cannot see.
 
@@ -735,7 +854,10 @@ those has been a real defect in this build, and none is visible from `vitest`.
 An earlier version of these tests could not be committed because it hard-coded
 this environment's Chromium path. The config now reads `CHROMIUM_PATH` and
 falls back to Playwright's own browser resolution, so it behaves like a default
-config anywhere with a normal toolchain:
+config anywhere with a normal toolchain. The escape hatch is also what to reach
+for when an image ships a pre-installed Chromium whose build number does not
+match the pinned `@playwright/test` — the whole suite fails at launch, which
+looks like 46 regressions and is one mismatched path:
 
 ```
 npm run e2e                                    # ordinary machines
