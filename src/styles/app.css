@@ -1152,3 +1152,462 @@ input:focus-visible,
 .mdl-impact-date {
   color: var(--mdl-text-faint);
 }
+
+/* ============================================================
+   Form mode — the same document, edited through controls
+   ============================================================ */
+
+/* The mode toggle. Two segments in the editor header, left of the fixture
+   select — the same cluster, because both change what you are looking at
+   rather than what the document says. */
+.mdl-modes {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
+/* Its own class, not `.mdl-mode` — that one already belongs to the validation
+   column's trace toggle, and sharing it made each component silently restyle
+   the other. This one was rendering in the trace toggle's uppercase. */
+.mdl-modeswitch {
+  padding: 3px 10px;
+  font-size: 11px;
+  border-radius: 1px;
+  border: 1px solid var(--mdl-border);
+  background: transparent;
+  color: var(--mdl-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.mdl-modeswitch:hover {
+  color: var(--mdl-text);
+}
+
+.mdl-modeswitch[data-current='true'] {
+  border-color: rgb(242 179 0 / 50%);
+  color: var(--mdl-signal);
+  background: rgb(242 179 0 / 10%);
+}
+
+/* `min-height: 0` is what keeps the problems strip on screen — without it the
+   scroll container sizes to its content and pushes the strip off the bottom. */
+.mdl-form {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--mdl-canvas);
+}
+
+.mdl-form-card {
+  max-width: 740px;
+  padding: 4px 24px 32px;
+}
+
+.mdl-form-empty {
+  padding: 24px;
+  font-size: 12px;
+  color: var(--mdl-text-faint);
+}
+
+.mdl-form-head {
+  background: var(--mdl-panel);
+  padding: 18px 24px 16px;
+  margin: 0 -24px;
+  border-bottom: 1px solid var(--mdl-border);
+}
+
+.mdl-form-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mdl-form-name {
+  font-size: 17px;
+  color: var(--mdl-measure);
+}
+
+.mdl-form-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 1px;
+  border: 1px solid rgb(69 182 240 / 32%);
+  background: rgb(69 182 240 / 12%);
+  color: var(--mdl-measure);
+  white-space: nowrap;
+}
+
+.mdl-form-clean {
+  font-size: 11px;
+  color: var(--mdl-up);
+  white-space: nowrap;
+}
+
+/* The rule in English. `text-wrap: pretty` stops a one-word last line, which
+   on a sentence this short reads as a truncation. */
+.mdl-form-sentence {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--mdl-text-muted);
+  max-width: 620px;
+  text-wrap: pretty;
+}
+
+.mdl-form-section {
+  padding: 20px 0 22px;
+  border-bottom: 1px solid var(--mdl-border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mdl-form-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mdl-form-section-index {
+  font-size: 11px;
+  color: var(--mdl-signal);
+}
+
+.mdl-form-section-title {
+  font-size: 14px;
+  color: var(--mdl-text);
+}
+
+.mdl-form-section-blurb {
+  font-size: 11.5px;
+  color: var(--mdl-text-faint);
+}
+
+/* --- one field ----------------------------------------------------------- */
+
+.mdl-f {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.mdl-f-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Sentence case, not an uppercase eyebrow: this surface reads as prose and
+   controls rather than as a dense data form. */
+.mdl-f-name {
+  font-size: 12.5px;
+  color: var(--mdl-text);
+}
+
+.mdl-f[data-invalid='true'] .mdl-f-name {
+  color: #f2a0a3;
+}
+
+.mdl-f-hint {
+  font-size: 11.5px;
+  color: var(--mdl-text-faint);
+}
+
+.mdl-f-control {
+  width: 100%;
+}
+
+.mdl-input {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 9px;
+  border-radius: 1px;
+  border: 1px solid var(--mdl-border);
+  background: var(--mdl-canvas);
+  color: var(--mdl-text);
+}
+
+.mdl-input:focus,
+.mdl-select:focus {
+  outline: none;
+  border-color: var(--mdl-signal);
+  box-shadow: 0 0 0 2px rgb(242 179 0 / 25%);
+}
+
+.mdl-input[data-invalid='true'],
+.mdl-select[data-invalid='true'] {
+  border-color: var(--mdl-unresolved);
+}
+
+/* --- validation notes ---------------------------------------------------- */
+
+.mdl-note {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 9px;
+  border-radius: 2px;
+  font-size: 11.5px;
+  border-left: 2px solid var(--mdl-text-faint);
+}
+
+.mdl-note[data-sev='error'] {
+  border-left-color: var(--mdl-unresolved);
+  background: rgb(229 72 77 / 9%);
+  color: #f2a0a3;
+}
+
+.mdl-note[data-sev='warn'] {
+  border-left-color: var(--mdl-warn);
+  background: rgb(224 140 46 / 8%);
+  color: #e8b87a;
+}
+
+.mdl-note[data-sev='info'] {
+  border-left-color: var(--mdl-measure);
+  background: rgb(69 182 240 / 7%);
+  color: #a6d8f5;
+}
+
+.mdl-note-code {
+  font-size: 10px;
+  opacity: 0.75;
+  flex: none;
+}
+
+.mdl-note-text {
+  flex: 1;
+}
+
+/* --- choice cards -------------------------------------------------------- */
+
+.mdl-kinds {
+  display: flex;
+  gap: 8px;
+}
+
+.mdl-kind {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 2px;
+  border: 1px solid var(--mdl-border);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mdl-kind[data-selected='true'] {
+  border-color: rgb(242 179 0 / 55%);
+  background: rgb(242 179 0 / 10%);
+}
+
+.mdl-kind-title {
+  font-size: 12px;
+  color: var(--mdl-text);
+}
+
+.mdl-kind[data-selected='true'] .mdl-kind-title {
+  color: var(--mdl-signal);
+}
+
+.mdl-kind-help {
+  font-size: 11px;
+  color: var(--mdl-text-faint);
+}
+
+/* --- drop zones ---------------------------------------------------------- */
+
+.mdl-drop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 2px;
+  border: 1px dashed rgb(242 179 0 / 45%);
+  background: rgb(242 179 0 / 4%);
+}
+
+.mdl-drop[data-filled='true'] {
+  border-color: var(--mdl-border);
+  background: var(--mdl-panel);
+}
+
+.mdl-drop-hint {
+  font-size: 12px;
+  color: var(--mdl-text-faint);
+}
+
+/* --- chips --------------------------------------------------------------- */
+
+.mdl-chip {
+  font-family: var(--mdl-mono);
+  font-size: 12px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--mdl-text-muted);
+  cursor: grab;
+  white-space: nowrap;
+}
+
+button.mdl-chip {
+  cursor: pointer;
+}
+
+.mdl-chip[data-kind='measure'] {
+  background: rgb(69 182 240 / 14%);
+  border-color: rgb(69 182 240 / 32%);
+  color: var(--mdl-measure);
+}
+
+.mdl-chip[data-kind='function'] {
+  background: rgb(139 124 240 / 14%);
+  border-color: rgb(139 124 240 / 32%);
+  color: var(--mdl-func);
+}
+
+.mdl-chip[data-kind='keyword'] {
+  background: rgb(242 179 0 / 10%);
+  border-color: rgb(242 179 0 / 40%);
+  color: var(--mdl-signal);
+}
+
+.mdl-chip[data-kind='column'] {
+  background: rgb(138 143 152 / 14%);
+  border-color: rgb(138 143 152 / 32%);
+  color: var(--mdl-column);
+}
+
+.mdl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+/* --- formula strip ------------------------------------------------------- */
+
+.mdl-formula {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  min-height: 44px;
+  padding: 9px 10px;
+  border-radius: 2px;
+  border: 1px dashed var(--mdl-border-strong);
+  background: var(--mdl-canvas);
+}
+
+.mdl-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mdl-palette-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mdl-palette-label {
+  flex: none;
+  width: 76px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mdl-text-faint);
+}
+
+.mdl-palette-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+/* --- conditions ---------------------------------------------------------- */
+
+.mdl-conditions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mdl-condition {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mdl-condition .mdl-select,
+.mdl-condition .mdl-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.mdl-condition-lead {
+  flex: none;
+  width: 72px;
+  font-size: 11px;
+  color: var(--mdl-text-faint);
+}
+
+.mdl-icon-btn {
+  flex: none;
+  border: 1px solid var(--mdl-border);
+  background: transparent;
+  color: var(--mdl-text-faint);
+  border-radius: 2px;
+  padding: 4px 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mdl-icon-btn:hover {
+  color: var(--mdl-unresolved);
+  border-color: var(--mdl-unresolved);
+}
+
+.mdl-add-condition {
+  align-self: flex-start;
+}
+
+/* A filter the form cannot represent is shown, not rewritten. */
+.mdl-advanced {
+  font-size: 12px;
+  padding: 7px 9px;
+  border-radius: 2px;
+  border: 1px solid var(--mdl-border);
+  background: var(--mdl-canvas);
+  color: var(--mdl-text-muted);
+}
+
+/* --- footers ------------------------------------------------------------- */
+
+.mdl-form-spare,
+.mdl-form-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 16px;
+}
+
+.mdl-form-footer .mdl-palette-label:first-child {
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  color: var(--mdl-text-muted);
+  width: auto;
+}

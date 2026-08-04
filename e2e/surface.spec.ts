@@ -57,9 +57,22 @@ function line(page: Page, text: string) {
   return page.locator('.cm-line', { hasText: text }).first();
 }
 
+/**
+ * These specs drive the YAML editor, so they say so.
+ *
+ * Form mode is the default now — the mode that needs no YAML is the one a new
+ * author should meet first — and every spec here was implicitly relying on the
+ * text editor being the only surface. Switching explicitly is the honest fix:
+ * a test that reaches for `.cm-content` is a test about the text editor.
+ */
+async function openYaml(page: Page) {
+  await page.locator('.mdl-modeswitch[data-mode="yaml"]').click();
+  await expect(page.locator(EDITOR)).toBeVisible();
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator(EDITOR)).toBeVisible();
+  await openYaml(page);
 });
 
 // ---------------------------------------------------------------------------

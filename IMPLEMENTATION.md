@@ -9,9 +9,9 @@ pip install -r requirements.txt   # only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
 npm run mcp        # the MCP server on stdio (read-only by default)
-npm run test       # 491 unit, conformance, server and MCP tests
+npm run test       # 529 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e        # 62 browser checks against the built bundle
+npm run e2e        # 85 browser checks against the built bundle
 npm run verify     # all of the above, plus all three typecheck projects
 npm run build      # typecheck + production bundle
 ```
@@ -53,6 +53,7 @@ src/
     variance-diagnostics.ts  the KEEL09x family — is the control watching?
     compile-variance.ts      the monitor as window functions, per backend
     lineage.ts               what each document is *for*, and what feeds what
+    form.ts                  form mode as document operations — no parallel model
     impact.ts                what an edit does, by running both versions
     semantic.ts              publishing a definition to the layer people read
     conformance.ts           fixture → DDL, plan retargeting, tolerance policy
@@ -65,6 +66,7 @@ src/
     conformance-iceberg.test.ts the whole plan, against a real Iceberg catalogue
     conformance-variance.test.ts  same breaches in DuckDB as in the browser
     lineage.test.ts          stages derived, chains built, nothing hardcoded
+    form.test.ts             round trips, and the three losses they guard
     impact.test.ts           silencing measured, not inferred from a diff
     conformance-semantic.test.ts  the published view, executed and reconciled
   editor/                    CodeMirror 6 extensions
@@ -83,6 +85,8 @@ src/
   components/                the React chrome around the editor
     LineageStrip.tsx         where the open document sits in the chain
     ChangeImpact.tsx         what this edit does, while it is still an edit
+    form/FormMode.tsx        one measure as a card — the structured authoring mode
+    form/controls.tsx        field, note, picker, drop zone, chip
   styles/
     app.css                  surface tokens + layout
     aperture/                Aperture Risk token files, copied from the bundle
@@ -106,6 +110,7 @@ e2e/
   surface.spec.ts            the three columns, the loop, fixes, plans, layout
   editor.spec.ts             pills, keyboard, completion, gutters
   persistence.spec.ts        edits survive a reload, against its own registry
+  form.spec.ts               the round trip, the builders, inline validation
   (surface.spec also covers the document strip, the panel naming, and variance)
 ```
 
@@ -114,6 +119,121 @@ Everything in it is a pure function of (document text, fixture), which is why
 the same diagnostic drives the inline squiggle, the gutter glyph, the problems
 strip and the `⌘.` menu without any of them re-deriving it — and why the whole
 catalogue is testable without a DOM.
+
+## Form mode
+
+A second authoring surface over the same document, built from the design handoff
+in `design_handoff_form_mode_rule_builder/`. Form is the default: the mode that
+needs no YAML is the one a new author should meet first.
+
+The constraint that shapes everything else is that there is **no parallel
+model**. `form.ts` is a set of document operations — lines in, lines out —
+rather than a state container. Nothing holds a draft of a measure. A form model
+that synced back on save is the design where the two views drift, and drift
+between an author's mental model and the filed artifact is what this whole
+surface exists to prevent.
+
+That also means form mode inherits everything: the same diagnostics, the same
+evaluator, the same trace and blast-radius panel, the same quick-fix
+transformations. There is no second validation path to keep in step.
+
+### The sentence
+
+Each card opens with the rule restated in English, carrying its current value:
+
+> Adds up hqla_eligible_amount, counting only rows where is_encumbered = false.
+> Shown as $284,120,000.
+
+It rewrites itself on every edit, and it is the cheapest check in the product: an
+author who reads *"across every row"* and expected a filter has caught their own
+mistake without running anything. The absence of a filter is stated rather than
+omitted, because a sentence that simply leaves the clause out reads as though a
+filter had been chosen.
+
+### Three losses the tests guard
+
+Each of these leaves a document that still parses and still renders, with
+measures that have quietly stopped computing — which is why each has a test
+named after the failure rather than after the function.
+
+**The list marker.** A measure's first line is `  - name: hqla_total`. Writing it
+back having preserved only the leading whitespace drops the `- `, which deletes
+the measure from the parsed document and causes its remaining fields to be
+absorbed by the measure above it. `parse.ts` already spelled the prefix
+correctly and `diagnostics.ts` already wrote lines through it, so form mode
+reuses both rather than introducing a fourth copy of the regex.
+
+**The block scalar.** `expression:` is a header line plus every indented line
+under it. Replacing only the header leaves the old body in place and the measure
+keeps computing the previous formula underneath the new one.
+
+**The references.** A rename rewrites the `name:` line *and* every occurrence in
+other measures' `requires:` and `expression:` blocks, in one transaction. The
+rewrite is scoped to those blocks so a substring of an unrelated identifier —
+`hqla_us_unencumbered` when renaming `hqla_total` — is never touched.
+
+### Two things made unconstructible
+
+Better than validating against a mistake is arranging that it cannot be made.
+
+**A predicate that matches nothing.** The commonest silent error in metric
+authoring is `segment = 'Retail'` against a book that says `RETAIL`: it returns a
+confident zero rather than an error. The condition builder's value control lists
+the distinct values *actually present in the bound fixture*, quoted the way the
+predicate compiler reads them back. Numeric columns get a text box instead — a
+hundred distinct balances is not a menu, and `> 1000000` is the shape of a
+numeric filter anyway. Changing the column resets the value, because a value from
+the old column is meaningless against the new one.
+
+**`KEEL005`, used in the formula but missing from `requires`.** Dropping a
+measure into the formula strip appends it to the dependency list in the same
+edit, so the form cannot produce the pair that raises it.
+
+### What it refuses to represent
+
+A `where` clause containing parentheses, `in`, `not` or `is null` has no faithful
+row form. It renders read-only with the field hint changed to *"written by hand —
+switch to YAML to change it"*. Round-tripping it through a lossy model would
+change what the measure counts, and it would do so silently — the number would
+still compute.
+
+### Validation, attached rather than announced
+
+Diagnostics are routed to the control they are about by a code table, falling
+back to the measure's own field-to-line map for codes the table has not heard of.
+A banner at the top of the card would make the reader hunt for which field it
+meant. Anything still unplaced renders in a short list at the *bottom* — visible,
+but not competing with the fields for the top of the reader's attention — and the
+test asserts that placed plus unplaced equals every diagnostic in the block, so
+nothing can be dropped on the way through.
+
+The fix button carries the specific action (*Insert stub*, *Add to requires*)
+rather than a generic "Fix", because the label is what tells a reader whether
+they want it. It applies the same pure transformation the editor's `⌘.` menu
+uses, so a fix applied from the form and one applied from the text produce the
+same document.
+
+### One field has a draft
+
+Only the name. Committing per keystroke would rewrite the document on every
+character, re-resolve every dependent, and flash "unknown name" for `lcr_p`,
+`lcr_pc`, `lcr_pct`… A rename is also a transaction across other measures, and
+running it seven times for one edit is both slow and wrong. It commits on blur or
+Enter and reverts on Escape.
+
+### Two defects found while building it
+
+**`.mdl-mode` was already taken.** The editor's new Form/YAML switch and the
+validation column's trace toggle ended up sharing a class, so each silently
+restyled the other — the switch was rendering in the trace toggle's uppercase.
+Caught by reading the computed style rather than by any test, and the fix is a
+distinct class.
+
+**Form as the default broke all 57 browser checks at once.** Every existing spec
+asserted `.cm-content` was visible in its `beforeEach`, having implicitly relied
+on the text editor being the only surface. The honest fix was to make those specs
+switch to YAML explicitly: a test that reaches for `.cm-content` is a test about
+the text editor and should say so.
 
 ## The information hierarchy
 
@@ -1066,7 +1186,7 @@ pipeline would do — but emitting a create-if-absent step is an open question.
 
 ## Testing
 
-`npm run test` runs 491 tests — 322 in `src/engine/`, 117 in `server/`, 54 in `mcp/` — covering
+`npm run test` runs 529 tests — 360 in `src/engine/`, 117 in `server/`, 54 in `mcp/` — covering
 the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius
@@ -1086,7 +1206,7 @@ structurally impossible to detect.
 
 ## End to end
 
-`npm run e2e` drives the built bundle in headless Chromium — 62 checks in
+`npm run e2e` drives the built bundle in headless Chromium — 85 checks in
 `e2e/`, split between the surface, the editor and persistence. It runs against `vite
 preview` rather than the dev server, because a production-only failure in
 chunking or CSS ordering is exactly the kind a dev-server test cannot see.
@@ -1107,7 +1227,7 @@ falls back to Playwright's own browser resolution, so it behaves like a default
 config anywhere with a normal toolchain. The escape hatch is also what to reach
 for when an image ships a pre-installed Chromium whose build number does not
 match the pinned `@playwright/test` — the whole suite fails at launch, which
-looks like 62 regressions and is one mismatched path:
+looks like 85 regressions and is one mismatched path:
 
 ```
 npm run e2e                                    # ordinary machines

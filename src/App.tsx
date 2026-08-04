@@ -13,12 +13,13 @@ import { DefinitionCard, type CardTarget } from './components/DefinitionCard';
 import { MetricEditor, type MetricEditorHandle } from './components/MetricEditor';
 import { ProblemsStrip } from './components/ProblemsStrip';
 import { ChangeImpact } from './components/ChangeImpact';
+import { FormMode } from './components/form/FormMode';
 import { LineageStrip } from './components/LineageStrip';
 import { RegistryPanel } from './components/RegistryPanel';
 import { ValidationColumn } from './components/ValidationColumn';
 import { Resizer, useLayout } from './components/Resizer';
 import type { EditorContext } from './editor/context';
-import { diagnose, type Fix } from './engine/diagnostics';
+import { applyFix, diagnose, type Fix } from './engine/diagnostics';
 import { DEFAULT_MEASURE, INITIAL_DOCS, type ViewFile } from './engine/documents';
 import { Evaluator } from './engine/evaluate';
 import { parseDoc } from './engine/parse';
@@ -119,6 +120,29 @@ export default function App() {
   const [card, setCard] = useState<CardTarget | null>(null);
   const [peek, setPeek] = useState<{ name: string; line: number } | null>(null);
   const [baseline, setBaseline] = useState<Record<string, number>>({});
+
+  /**
+   * Which surface edits the document.
+   *
+   * Form is the default: the mode that needs no YAML is the one a new author
+   * should meet first. The choice persists per user, because switching back on
+   * every reload is a papercut for whichever population is in the minority.
+   */
+  const [mode, setMode] = useState<'form' | 'yaml'>(() => {
+    try {
+      return localStorage.getItem('mdl.mode') === 'yaml' ? 'yaml' : 'form';
+    } catch {
+      return 'form';
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('mdl.mode', mode);
+    } catch {
+      // A surface that will not render because storage is unavailable is worse
+      // than one that forgets a preference.
+    }
+  }, [mode]);
 
   const [layout, setLayout] = useLayout();
   const editor = useRef<MetricEditorHandle>(null);
@@ -599,6 +623,24 @@ export default function App() {
 
             <span className="mdl-divider" aria-hidden="true" />
 
+            <div className="mdl-modes" role="group" aria-label="Editing mode">
+              {(['form', 'yaml'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className="mdl-modeswitch"
+                  data-current={k === mode}
+                  data-mode={k}
+                  aria-pressed={k === mode}
+                  onClick={() => setMode(k)}
+                >
+                  {k === 'form' ? 'Form' : 'YAML'}
+                </button>
+              ))}
+            </div>
+
+            <span className="mdl-divider" aria-hidden="true" />
+
             <label className="mdl-eyebrow-quiet" htmlFor="mdl-fixture">Test data</label>
             <select
               id="mdl-fixture"
@@ -633,14 +675,33 @@ export default function App() {
           onToggle={() => setImpactOpen((v) => !v)}
         />
 
-        <MetricEditor
-          key={file}
-          handle={editor}
-          doc={docs[file]}
-          context={context}
-          onChange={setDoc}
-          onCursorMeasure={setActive}
-        />
+        {mode === 'form' ? (
+          <FormMode
+            graph={graph}
+            lines={docs[file].split('\n')}
+            evaluator={evaluator}
+            diagnostics={diagnostics}
+            fixture={fixture}
+            active={active}
+            onDoc={setDoc}
+            onPickMeasure={setActive}
+            onFix={(fix) => {
+              // Through the same pure transformation the editor's quick fixes
+              // use, so a fix applied from the form and one applied from the
+              // text produce the same document.
+              setDoc(applyFix(docs[file].split('\n'), fix, graph).join('\n'));
+            }}
+          />
+        ) : (
+          <MetricEditor
+            key={file}
+            handle={editor}
+            doc={docs[file]}
+            context={context}
+            onChange={setDoc}
+            onCursorMeasure={setActive}
+          />
+        )}
 
         <ProblemsStrip
           diagnostics={diagnostics}
