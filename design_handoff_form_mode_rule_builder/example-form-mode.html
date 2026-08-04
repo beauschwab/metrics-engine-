@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Form mode — structured rule builder (design reference)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<style>
+  :root {
+    --bg-canvas: #17191D;
+    --surface-1: #22252A;
+    --surface-2: #2A2D33;
+    --border-subtle: #2B2E34;
+    --border-default: #3C4047;
+    --border-strong: #474C54;
+    --text-primary: #E8EAED;
+    --text-secondary: #939AA2;
+    --text-tertiary: #757A82;
+    --accent: #F2B300;
+    --sky-500: #45B6F0;
+    --up-500: #2ED389;
+    --down-500: #FF5C6C;
+    --warning-500: #F58A3C;
+    --ai-500: #8B7CF0;
+    --neutral-ref: #8A8F98;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 13px;
+    letter-spacing: -0.006em;
+    font-variant-numeric: tabular-nums;
+  }
+  #root { height: 100%; }
+  input, select, button { font-family: inherit; letter-spacing: inherit; }
+  input, select {
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-default);
+    border-radius: 1px;
+    color: var(--text-primary);
+    outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(242,179,0,.28); }
+  input[data-invalid="true"], select[data-invalid="true"] { border-color: var(--down-500); }
+  button { cursor: pointer; }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-2); border: 3px solid transparent; background-clip: content-box; }
+  @media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/plain" id="app-src">
+const { useState, useMemo, useCallback } = React;
+
+/* ------------------------------------------------------------------ *
+ * Reference implementation of Form mode.
+ *
+ * The YAML document (array of lines) is the ONLY source of truth. Every
+ * control writes lines back into it; the form is re-derived from a fresh
+ * parse on each render. Read the YAML pane on the right as you edit.
+ * ------------------------------------------------------------------ */
+
+const MONO = 'var(--mono)';
+
+const SOURCE = 'alm.fct_liquidity_position';
+const COLUMNS = ['hqla_eligible_amount', 'outflow_amount_30d', 'inflow_amount_capped_30d', 'is_encumbered', 'entity_id', 'scenario_code', 'as_of_date'];
+
+// Distinct values present in the bound fixture, per column. The condition
+// builder offers these so a user cannot write a predicate matching 0 rows.
+const OBSERVED = {
+  is_encumbered: ['false', 'true'],
+  entity_id: ["'BANK_US'", "'BANK_UK'", "'BANK_SG'", "'BANK_DE'"],
+  scenario_code: ["'base'", "'up200'", "'dn100'"],
+};
+
+const ENUMS = {
+  type: ['simple', 'derived', 'windowed'],
+  agg: ['sum', 'avg', 'last', 'first', 'max', 'min', 'count'],
+  format: ['currency_usd', 'currency_usd_mm', 'percent_1dp', 'percent_2dp', 'number', 'bps'],
+  sr_11_7_tier: ['', '1', '2', '3'],
+  'window.op': ['delta', 'pct_change', 'stddev', 'variance', 'avg', 'sum', 'min', 'max'],
+  'window.over': ['1d', '7d', '30d', '90d'],
+};
+
+const HELP = {
+  simple: 'reads one column', derived: 'combines other measures', windowed: 'looks across dates',
+  sum: 'adds every row', avg: 'averages rows', last: 'latest row', first: 'earliest row',
+  max: 'largest row', min: 'smallest row', count: 'counts rows',
+  delta: 'change since the earlier day', pct_change: 'percent change since the earlier day',
+  stddev: 'volatility across the window', variance: 'squared volatility across the window',
+  '1d': 'compares with the day before', '7d': 'trailing week', '30d': 'trailing month', '90d': 'trailing quarter',
+  '1': 'top oversight', '2': 'reviewed', '3': 'exploratory',
+};
+const ENUM_LABEL = { type: 'kind of measure', agg: 'how rows are combined', format: 'how the number is displayed', sr_11_7_tier: 'oversight level', 'window.op': 'time calculation', 'window.over': 'how far back to look' };
+const AGG_VERB = { sum: 'Adds up', avg: 'Averages', last: 'Takes the latest', first: 'Takes the earliest', max: 'Takes the largest', min: 'Takes the smallest', count: 'Counts the rows of' };
+const FUNCS = { greatest: 1, least: 1, nullif: 1, coalesce: 1, abs: 1 };
+const KEYWORDS = ['case', 'when', 'then', 'else', 'end', 'and', 'or', 'not'];
+
+const FIELD_OF_CODE = {
+  KEEL001: 'expression', KEEL005: 'expression', KEEL006: 'requires', KEEL021: 'expression',
+  KEEL004: 'field', KEEL050: 'where', KEEL051: 'where', KEEL052: 'where',
+  KEEL025: 'window.op', KEEL026: 'window.over', KEEL027: 'input',
+  KEEL030: 'description', KEEL031: 'citation', KEEL041: 'name', KEEL042: 'format', KEEL044: null,
+};
+
+const DOC0 = [
+  'version: 1',
+  'view: liquidity_pit',
+  'source: alm.fct_liquidity_position',
+  'grain:',
+  '  type: stock',
+  '  as_of_field: as_of_date',
+  '',
+  'measures:',
+  '  - name: hqla_total',
+  '    label: Total Eligible HQLA',
+  '    description: Post-haircut, post-cap eligible HQLA from the regulatory engine.',
+  '    type: simple',
+  '    agg: sum',
+  '    field: hqla_eligible_amount',
+  "    where: is_encumbered = false and entity_id = 'BANK_US'",
+  '    format: currency_usd',
+  '    sr_11_7_tier: 1',
+  '    citation: 12 CFR 249.20-22',
+  '',
+  '  - name: lcr_shortfall',
+  '    type: derived',
+  '    requires: [hqla_total]',
+  '    expression: >',
+  '      case when hqla_total < 100.0 then 100.0 - hqla_total else 0.0 end',
+  '    format: percent_1dp',
+  '    sr_11_7_tier: 1',
+];
+
+/* ---------------- parse ---------------- */
+
+function parseDoc(lines) {
+  const ms = [];
+  let cur = null, key = null;
+  lines.forEach((raw, i) => {
+    const t = raw.trim();
+    if (!t || t[0] === '#') return;
+    const nm = /^-\s*name:\s*(\S+)/.exec(t);
+    if (nm) { cur = { name: nm[1], line: i, f: {}, lineOf: { name: i } }; ms.push(cur); key = 'name'; return; }
+    const kv = /^([a-z_0-9.]+):\s*(.*)$/.exec(t);
+    if (kv) {
+      key = kv[1];
+      const v = kv[2] === '>' || kv[2] === '|' ? '' : kv[2];
+      if (cur) { cur.f[key] = v; cur.lineOf[key] = i; }
+      return;
+    }
+    if (cur && key) cur.f[key] = (cur.f[key] ? cur.f[key] + ' ' : '') + t;
+  });
+  const byName = {};
+  ms.forEach(m => { byName[m.name] = m; });
+  return { ms, byName };
+}
+
+const reqsOf = m => (m.f.requires || '').replace(/[[\]]/g, '').split(',').map(s => s.trim()).filter(Boolean);
+const exprOf = m => (m.f.expression || '').trim();
+const tokensOf = m => exprOf(m).match(/'[^']*'|>=|<=|!=|<>|[A-Za-z_][A-Za-z0-9_]*|\d+\.?\d*|[-+*/(),<>=]/g) || [];
+
+/* ---------------- evaluate (stand-in) ---------------- */
+// A real implementation runs the rule over the fixture. Here we only need
+// plausible numbers so the format previews and the prose sentence are live.
+const BASE_SUMS = { hqla_eligible_amount: 284120000, outflow_amount_30d: 312400000, inflow_amount_capped_30d: 72500000 };
+const FILTER_SELECTIVITY = { 'is_encumbered = false': 0.814, 'is_encumbered = true': 0.186, "entity_id = 'BANK_US'": 0.221, "entity_id = 'BANK_UK'": 0.243, "entity_id = 'BANK_SG'": 0.262, "entity_id = 'BANK_DE'": 0.274, "scenario_code = 'base'": 0.34, "scenario_code = 'up200'": 0.33, "scenario_code = 'dn100'": 0.33 };
+
+function evaluate(doc, name) {
+  const { byName } = parseDoc(doc);
+  const m = byName[name];
+  if (!m) return NaN;
+  const kind = (m.f.type || '').trim();
+  if (kind === 'simple') {
+    const base = BASE_SUMS[(m.f.field || '').trim()];
+    if (base === undefined) return NaN;
+    const clauses = (m.f.where || '').split(/\s+(?:and|or)\s+/i).map(c => c.trim()).filter(Boolean);
+    let v = base, rows = 4812;
+    clauses.forEach(c => {
+      const s = FILTER_SELECTIVITY[c];
+      v *= s === undefined ? 0 : s;
+      rows = Math.round(rows * (s === undefined ? 0 : s));
+    });
+    return (m.f.agg || 'sum').trim() === 'count' ? rows : v;
+  }
+  if (kind === 'windowed') {
+    const inner = evaluate(doc, reqsOf(m)[0]);
+    return isNaN(inner) ? NaN : inner * 0.021;
+  }
+  const src = exprOf(m);
+  if (!src) return NaN;
+  const dep = reqsOf(m)[0];
+  const dv = dep ? evaluate(doc, dep) : NaN;
+  if (/\bcase\b/i.test(src)) return isNaN(dv) ? NaN : (dv < 100 ? 100 - dv : 0);
+  return dv;
+}
+
+function fmt(v, format) {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  if (format === 'percent_1dp') return v.toFixed(1) + '%';
+  if (format === 'percent_2dp') return v.toFixed(2) + '%';
+  if (format === 'currency_usd_mm') return (v < 0 ? '-$' : '$') + Math.abs(v / 1e6).toFixed(1) + 'M';
+  if (format === 'bps') return (v < 0 ? '-' : '') + Math.round(Math.abs(v) * 100).toLocaleString('en-US') + ' bps';
+  if (format === 'number') return Math.round(v).toLocaleString('en-US');
+  return (v < 0 ? '-$' : '$') + Math.round(Math.abs(v)).toLocaleString('en-US');
+}
+
+/* ---------------- validate ---------------- */
+
+function levenshtein(a, b) {
+  const m = [];
+  for (let i = 0; i <= b.length; i++) {
+    m[i] = [i];
+    for (let j = 1; j <= a.length; j++) m[i][j] = i === 0 ? j : Math.min(m[i - 1][j] + 1, m[i][j - 1] + 1, m[i - 1][j - 1] + (b[i - 1] === a[j - 1] ? 0 : 1));
+  }
+  return m[b.length][a.length];
+}
+
+// A filter is representable as rows only if it is a flat AND/OR chain of
+// `column op value`. Anything else stays hand-written.
+function filterRows(m) {
+  const text = (m.f.where || '').trim();
+  if (!text) return { rows: [], advanced: false };
+  if (/[()]|\bnot\b|\bin\b|is\s+not?\s*null/i.test(text)) return { rows: [], advanced: true, raw: text };
+  const parts = text.split(/\s+(and|or)\s+/i);
+  const rows = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const mm = /^([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<=|!=|<>|=|>|<)\s*(.+)$/.exec(parts[i].trim());
+    if (!mm) return { rows: [], advanced: true, raw: text };
+    rows.push({ col: mm[1], op: mm[2], val: mm[3].trim(), join: i ? parts[i - 1].toLowerCase() : '' });
+  }
+  return { rows, advanced: false };
+}
+
+function validate(doc) {
+  const { ms, byName } = parseDoc(doc);
+  const out = [];
+  ms.forEach(m => {
+    const kind = (m.f.type || '').trim();
+    const tier = parseInt(m.f.sr_11_7_tier || '0', 10);
+    const reqs = reqsOf(m);
+
+    ['type', 'agg', 'format', 'sr_11_7_tier', 'window.op', 'window.over'].forEach(k => {
+      const v = (m.f[k] || '').trim();
+      if (!v || ENUMS[k].includes(v)) return;
+      let best = null, bd = 99;
+      ENUMS[k].filter(Boolean).forEach(o => { const d = levenshtein(v, o); if (d < bd) { bd = d; best = o; } });
+      out.push({ code: 'KEEL044', sev: 'error', field: k, measure: m.name,
+        message: `“${v}” is not a valid ${ENUM_LABEL[k]}. Choose one of: ${ENUMS[k].filter(Boolean).join(', ')}.`,
+        fix: { kind: 'set', key: k, value: best, measure: m.name }, fixLabel: `Use ${best}` });
+    });
+
+    if (kind === 'simple') {
+      const fieldName = (m.f.field || '').trim();
+      if (fieldName && !COLUMNS.includes(fieldName))
+        out.push({ code: 'KEEL004', sev: 'error', field: 'field', measure: m.name, message: `Column ${fieldName} not found on source ${SOURCE}` });
+      const fr = filterRows(m);
+      if (!fr.advanced) {
+        fr.rows.forEach(r => {
+          if (!COLUMNS.includes(r.col))
+            out.push({ code: 'KEEL050', sev: 'error', field: 'where', measure: m.name, message: `The filter uses ${r.col}, which is not a column on ${SOURCE}` });
+          else if (OBSERVED[r.col] && r.op === '=' && !OBSERVED[r.col].includes(r.val))
+            out.push({ code: 'KEEL051', sev: 'warn', field: 'where', measure: m.name, message: `The filter on ${m.name} matches no rows in this test data, so the answer is empty` });
+        });
+      }
+    }
+
+    if (kind === 'windowed') {
+      if (!(m.f['window.op'] || '').trim())
+        out.push({ code: 'KEEL025', sev: 'error', field: 'window.op', measure: m.name, message: `${m.name} looks across dates, so it needs a calculation — for example volatility or change since the earlier day` });
+      if (reqs.length !== 1)
+        out.push({ code: 'KEEL027', sev: 'error', field: 'input', measure: m.name, message: `${m.name} must reference exactly one measure — the series it looks across` });
+    }
+
+    if (kind === 'derived') {
+      const used = tokensOf(m).filter(t => /^[A-Za-z_]/.test(t) && !(t in FUNCS) && !KEYWORDS.includes(t.toLowerCase()));
+      [...new Set(used)].forEach(n => {
+        if (!byName[n]) {
+          let best = null, bd = 99;
+          Object.keys(byName).forEach(s => { const d = levenshtein(n, s); if (d < bd) { bd = d; best = s; } });
+          out.push({ code: 'KEEL001', sev: 'error', field: 'expression', measure: m.name,
+            message: `Unknown measure ${n}.${bd <= 4 ? ` Did you mean ${best}?` : ''}`,
+            fix: bd <= 4 ? { kind: 'renameInExpr', from: n, to: best, measure: m.name } : null, fixLabel: `Use ${best}` });
+        } else if (!reqs.includes(n)) {
+          out.push({ code: 'KEEL005', sev: 'error', field: 'expression', measure: m.name,
+            message: `${n} is used in the formula but missing from requires, its dependency list`,
+            fix: { kind: 'addReq', name: n, measure: m.name }, fixLabel: 'Add to requires' });
+        }
+      });
+      reqs.forEach(n => {
+        if (!used.includes(n))
+          out.push({ code: 'KEEL006', sev: 'warn', field: 'requires', measure: m.name,
+            message: `${n} is listed in requires but never used in the formula`,
+            fix: { kind: 'dropReq', name: n, measure: m.name }, fixLabel: 'Remove' });
+      });
+    }
+
+    // Severity is coupled to governance tier: the same rule, different
+    // consequence, based on what the artifact is for.
+    if (tier >= 1 && !m.f.description)
+      out.push({ code: 'KEEL030', sev: tier <= 2 ? 'error' : 'info', field: 'description', measure: m.name,
+        message: `${m.name} is under oversight level ${tier}, so it needs a description`,
+        fix: { kind: 'set', key: 'description', value: `TODO — describe what ${m.name} computes and why.`, measure: m.name }, fixLabel: 'Insert stub' });
+    if (tier >= 1 && !m.f.citation)
+      out.push({ code: 'KEEL031', sev: tier <= 2 ? 'error' : 'info', field: 'citation', measure: m.name,
+        message: `${m.name} is under oversight level ${tier}, so it needs the rule it comes from` });
+    if (!/^[a-z][a-z0-9_]*$/.test(m.name))
+      out.push({ code: 'KEEL041', sev: 'info', field: 'name', measure: m.name, message: `${m.name} should be lowercase_with_underscores` });
+    if (!m.f.format)
+      out.push({ code: 'KEEL042', sev: 'info', field: 'format', measure: m.name, message: `${m.name} has no format, so the number will display raw` });
+  });
+  return out;
+}
+
+/* ---------------- document writes ---------------- *
+ * Every mutation returns a NEW array of lines. The critical rule: preserve
+ * the whole line prefix including any list marker. Capturing only leading
+ * whitespace drops the "- " on "  - name: x", which deletes the measure.
+ */
+const PREFIX = /^(\s*(?:-\s*)?)/;
+
+function setField(doc, measure, key, value) {
+  const { byName } = parseDoc(doc);
+  const m = byName[measure];
+  if (!m) return doc;
+  const next = doc.slice();
+  if (m.lineOf[key] !== undefined) {
+    if (value === null) { next.splice(m.lineOf[key], 1); return next; }
+    const indent = PREFIX.exec(next[m.lineOf[key]])[1];
+    next[m.lineOf[key]] = indent + key + ': ' + value;
+    return next;
+  }
+  if (value === null) return doc;
+  let at = m.line;
+  Object.values(m.lineOf).forEach(l => { if (l > at) at = l; });
+  while (at + 1 < next.length && next[at + 1].trim() && !/^-\s*name:/.test(next[at + 1].trim())) at++;
+  next.splice(at + 1, 0, '    ' + key + ': ' + value);
+  return next;
+}
+
+function setExpression(doc, measure, text) {
+  const { byName } = parseDoc(doc);
+  const m = byName[measure];
+  if (!m) return doc;
+  const next = doc.slice();
+  const body = '      ' + text;
+  if (m.lineOf.expression === undefined) {
+    let at = m.line;
+    Object.values(m.lineOf).forEach(l => { if (l > at) at = l; });
+    next.splice(at + 1, 0, '    expression: >', body);
+    return next;
+  }
+  const head = m.lineOf.expression;
+  let n = 0;
+  while (head + 1 + n < next.length) {
+    const t = next[head + 1 + n];
+    if (!t.trim() || /^\s{0,5}\S/.test(t) || /^\s*(?:-\s*)?[a-z_0-9.]+:/.test(t)) break;
+    n++;
+  }
+  next.splice(head, 1 + n, '    expression: >', body);
+  return next;
+}
+
+// A rename is one transaction: the name line AND every reference to it.
+function renameMeasure(doc, from, to) {
+  if (!to || from === to) return doc;
+  const { ms, byName } = parseDoc(doc);
+  if (!byName[from]) return doc;
+  const next = doc.slice();
+  const re = new RegExp('\\b' + from + '\\b', 'g');
+  ms.forEach(other => {
+    if (other.name === from) return;
+    ['requires', 'expression'].forEach(k => {
+      if (other.lineOf[k] === undefined) return;
+      for (let i = other.lineOf[k]; i < next.length; i++) {
+        if (i > other.lineOf[k] && (!next[i].trim() || /^\s*(?:-\s*)?[a-z_0-9.]+:/.test(next[i]))) break;
+        next[i] = next[i].replace(re, to);
+      }
+    });
+  });
+  const line = byName[from].lineOf.name;
+  next[line] = PREFIX.exec(next[line])[1] + 'name: ' + to;
+  return next;
+}
+
+function writeFilter(doc, measure, rows) {
+  if (!rows.length) return setField(doc, measure, 'where', null);
+  const parts = [];
+  rows.forEach((r, i) => { if (i) parts.push(r.join || 'and'); parts.push(`${r.col} ${r.op} ${r.val}`); });
+  return setField(doc, measure, 'where', parts.join(' '));
+}
+
+function applyFix(doc, fix) {
+  if (!fix) return doc;
+  const { byName } = parseDoc(doc);
+  const m = byName[fix.measure];
+  if (!m) return doc;
+  if (fix.kind === 'set') return setField(doc, fix.measure, fix.key, fix.value);
+  if (fix.kind === 'addReq') return setField(doc, fix.measure, 'requires', '[' + [...reqsOf(m), fix.name].join(', ') + ']');
+  if (fix.kind === 'dropReq') return setField(doc, fix.measure, 'requires', '[' + reqsOf(m).filter(n => n !== fix.name).join(', ') + ']');
+  if (fix.kind === 'renameInExpr') return setExpression(doc, fix.measure, exprOf(m).replace(new RegExp('\\b' + fix.from + '\\b', 'g'), fix.to));
+  return doc;
+}
+
+/* ---------------- prose sentence ---------------- */
+
+function sentenceFor(doc, m) {
+  const value = fmt(evaluate(doc, m.name), m.f.format);
+  const kind = (m.f.type || '').trim();
+  if (kind === 'simple') {
+    const verb = AGG_VERB[(m.f.agg || 'sum').trim()] || 'Adds up';
+    const field = (m.f.field || '?').trim();
+    const clause = m.f.where ? `, counting only rows where ${m.f.where.trim()}` : ', across every row';
+    return `${verb} ${field}${clause}. Shown as ${value}.`;
+  }
+  if (kind === 'windowed') {
+    const op = (m.f['window.op'] || '').trim();
+    return `Takes the ${HELP[op] || 'calculation'} of ⟨${reqsOf(m)[0] || '?'}⟩, over the trailing ${(m.f['window.over'] || '1d').trim()}. Currently ${value}.`;
+  }
+  const n = reqsOf(m).length;
+  return `Combines ${n} other ${n === 1 ? 'measure' : 'measures'} — currently ${value}.`;
+}
+
+/* ---------------- presentation primitives ---------------- *
+ * Stand-ins for the design system's Input / Select / Button / Badge.
+ * In the target codebase, use the real components.
+ */
+
+const refPill = (hue, size = 12) => ({
+  display: 'inline-block', padding: '1px 6px', borderRadius: 4,
+  border: `1px solid ${hue}52`, background: `${hue}24`, color: hue,
+  fontFamily: MONO, fontSize: size, userSelect: 'none',
+});
+const HUE_HEX = { measure: '#45B6F0', func: '#8B7CF0', column: '#8A8F98' };
+
+function Field({ label, hint, invalid, notes, onFix, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12.5, color: invalid ? '#F2A0A3' : 'var(--text-primary)' }}>{label}</div>
+        {hint ? <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>{hint}</div> : null}
+      </div>
+      {children}
+      {notes.map((n, i) => <Note key={i} note={n} onFix={onFix} />)}
+    </div>
+  );
+}
+
+const SEV = {
+  error: { rail: 'var(--down-500)', bg: 'rgba(229,72,77,.09)', fg: '#F2A0A3' },
+  warn: { rail: 'var(--warning-500)', bg: 'rgba(224,140,46,.08)', fg: '#E8B87A' },
+  info: { rail: 'var(--sky-500)', bg: 'rgba(69,182,240,.07)', fg: '#A6D8F5' },
+};
+
+function Note({ note, onFix }) {
+  const s = SEV[note.sev];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 9px', borderRadius: 2, fontSize: 11.5, borderLeft: `2px solid ${s.rail}`, background: s.bg }}>
+      <span style={{ color: s.fg }}>{note.message}</span>
+      <span style={{ flex: 1 }} />
+      {note.fix ? <GhostButton onClick={() => onFix(note.fix)}>{note.fixLabel || 'Fix it'}</GhostButton> : null}
+    </div>
+  );
+}
+
+function GhostButton({ onClick, children }) {
+  return (
+    <button onClick={onClick} style={{ flex: 'none', fontSize: 11, color: 'var(--accent)', background: 'transparent', border: '1px solid rgba(242,179,0,.35)', padding: '2px 8px', borderRadius: 2 }}>
+      {children}
+    </button>
+  );
+}
+
+function Picker({ options, value, onChange, invalid, width, hints, small }) {
+  return (
+    <select
+      value={value} onChange={e => onChange(e.target.value)} data-invalid={!!invalid}
+      style={{ width: width || '100%', flex: width ? 'none' : 1, minWidth: 0, height: small ? 30 : 38, padding: small ? '0 6px' : '0 9px', fontFamily: MONO, fontSize: small ? 12 : 13 }}
+    >
+      {options.map(o => (
+        <option key={o} value={o}>{o === '' ? '—' : o + (hints && hints[o] ? '  —  ' + hints[o] : '')}</option>
+      ))}
+    </select>
+  );
+}
+
+function TextBox({ value, onChange, onCommit, invalid }) {
+  return (
+    <input
+      type="text" value={value} data-invalid={!!invalid}
+      onChange={e => onChange(e.target.value)}
+      onBlur={onCommit ? () => onCommit() : undefined}
+      onKeyDown={onCommit ? e => { if (e.key === 'Enter') onCommit(); if (e.key === 'Escape') onCommit(true); } : undefined}
+      style={{ width: '100%', height: 38, padding: '0 9px', fontSize: 13 }}
+    />
+  );
+}
+
+function DropZone({ chip, placeholder, onDrop }) {
+  const [over, setOver] = useState(false);
+  const filled = !!chip;
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={e => { e.preventDefault(); setOver(false); onDrop(e); }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, minHeight: 36, padding: '6px 10px', borderRadius: 2,
+        border: `1px dashed ${over ? 'var(--accent)' : filled ? 'var(--border-default)' : 'rgba(242,179,0,.45)'}`,
+        background: over ? 'rgba(242,179,0,.08)' : filled ? 'var(--surface-1)' : 'rgba(242,179,0,.04)',
+      }}
+    >
+      {filled ? <span style={refPill(HUE_HEX[chip.kind], 13)}>{chip.text}</span>
+              : <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{placeholder}</span>}
+    </div>
+  );
+}
+
+function PaletteRow({ label, children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+      <div style={{ width: 76, flex: 'none', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', paddingTop: 4 }}>{label}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{children}</div>
+    </div>
+  );
+}
+
+function Chip({ text, kind, onClick, draggable, onDragStart, grab }) {
+  const style = kind === 'keyword'
+    ? { display: 'inline-block', padding: '2px 7px', borderRadius: 4, border: '1px solid rgba(242,179,0,.4)', background: 'rgba(242,179,0,.10)', color: 'var(--accent)', fontFamily: MONO, fontSize: 11, userSelect: 'none' }
+    : kind === 'operator'
+      ? { display: 'inline-block', padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontFamily: MONO, fontSize: 11, userSelect: 'none' }
+      : refPill(HUE_HEX[kind], 11);
+  return (
+    <span draggable={draggable} onDragStart={onDragStart} onClick={onClick} style={{ ...style, cursor: grab ? 'grab' : 'pointer' }}>{text}</span>
+  );
+}
+
+/* ---------------- the form ---------------- */
+
+const SECTIONS = [
+  { index: '01', title: 'What it is', blurb: 'How this measure is named and explained.' },
+  { index: '02', title: 'How it is calculated', blurb: 'The rule itself. Everything here changes the number.' },
+  { index: '03', title: 'Shown and governed', blurb: 'Presentation, and how much scrutiny this carries.' },
+];
+
+const KIND_CARDS = [
+  { value: 'simple', title: 'Read a column' },
+  { value: 'derived', title: 'Combine measures' },
+  { value: 'windowed', title: 'Look across dates' },
+];
+
+function App() {
+  const [doc, setDoc] = useState(DOC0);
+  const [active, setActive] = useState('hqla_total');
+  const [nameDraft, setNameDraft] = useState(null);
+  const drag = React.useRef(null);
+
+  const { ms, byName } = useMemo(() => parseDoc(doc), [doc]);
+  const diags = useMemo(() => validate(doc), [doc]);
+  const m = byName[active] || ms[0];
+  const kind = m ? (m.f.type || '').trim() : '';
+
+  const notesFor = useCallback(key => diags.filter(d => d.measure === m.name && (d.field === key || (d.field === null && d.code === 'KEEL044'))), [diags, m]);
+  const mine = diags.filter(d => d.measure === m.name);
+  const routed = new Set(['name', 'description', 'citation', 'field', 'where', 'expression', 'requires', 'input', 'window.op', 'window.over', 'format', 'agg', 'type', 'sr_11_7_tier']);
+  const spare = mine.filter(d => !routed.has(d.field));
+
+  const set = (key, value) => setDoc(d => setField(d, m.name, key, value));
+  const onFix = fix => setDoc(d => applyFix(d, fix));
+  const commitName = (revert) => {
+    if (revert || nameDraft === null) { setNameDraft(null); return; }
+    const to = nameDraft.trim();
+    setDoc(d => renameMeasure(d, m.name, to));
+    if (to) setActive(to);
+    setNameDraft(null);
+  };
+
+  const fr = filterRows(m);
+  const chips = tokensOf(m);
+  const reqs = reqsOf(m);
+  const value = evaluate(doc, m.name);
+
+  const writeChips = next => setDoc(d => setExpression(d, m.name, next.join(' ').replace(/\s+([,)])/g, '$1').replace(/\(\s+/g, '(')));
+
+  const chipKind = t => {
+    if (byName[t]) return 'measure';
+    if (t in FUNCS) return 'func';
+    if (KEYWORDS.includes(t.toLowerCase())) return 'keyword';
+    return 'operator';
+  };
+  const chipText = t => (byName[t] ? `⟨${t}⟩` : t in FUNCS ? `ƒ${t}` : t);
+
+  const formatHints = {};
+  ENUMS.format.forEach(f => { formatHints[f] = fmt(value, f); });
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 420px', gridTemplateRows: '1fr', height: '100%' }}>
+
+      {/* measure rail — drag source */}
+      <div style={{ borderRight: '1px solid var(--border-default)', background: 'var(--surface-1)', overflowY: 'auto', minHeight: 0 }}>
+        <div style={{ padding: '14px 14px 10px', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', fontWeight: 600 }}>Measures</div>
+        {ms.map(x => (
+          <div
+            key={x.name}
+            draggable
+            onDragStart={() => { drag.current = { kind: 'measure', name: x.name }; }}
+            onClick={() => { setActive(x.name); setNameDraft(null); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '5px 14px', cursor: 'grab', fontFamily: MONO, fontSize: 12,
+              color: x.name === m.name ? 'var(--text-primary)' : 'var(--text-secondary)',
+              background: x.name === m.name ? 'rgba(69,182,240,.09)' : 'transparent',
+              borderLeft: `2px solid ${x.name === m.name ? 'var(--sky-500)' : 'transparent'}`,
+            }}
+          >
+            <span style={{ width: 5, height: 5, borderRadius: '50%', flex: 'none', background: diags.some(d => d.measure === x.name && d.sev === 'error') ? 'var(--down-500)' : diags.some(d => d.measure === x.name) ? 'var(--warning-500)' : 'var(--border-strong)' }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name}</span>
+          </div>
+        ))}
+        <div style={{ padding: '16px 14px', fontSize: 11, color: 'var(--text-tertiary)', lineHeight: '16px' }}>Drag a measure into the formula or a drop zone.</div>
+      </div>
+
+      {/* form */}
+      <div style={{ overflowY: 'auto', minHeight: 0 }}>
+        <div style={{ padding: '18px 24px 16px', borderBottom: '1px solid var(--border-default)', background: 'var(--surface-1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontFamily: MONO, fontSize: 17, color: 'var(--sky-500)' }}>⟨{m.name}⟩</div>
+            <div style={{ fontSize: 11, color: 'var(--sky-500)', background: 'rgba(69,182,240,.14)', border: '1px solid rgba(69,182,240,.32)', padding: '1px 7px', borderRadius: 1 }}>
+              {kind === 'simple' ? 'Reads a column' : kind === 'windowed' ? 'Looks across dates' : 'Combines measures'}
+            </div>
+            <span style={{ flex: 1 }} />
+            {mine.length === 0 ? <div style={{ fontSize: 11, color: 'var(--up-500)' }}>✓ Nothing to fix</div> : null}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)', lineHeight: '20px', textWrap: 'pretty', maxWidth: 620 }}>
+            {sentenceFor(doc, m)}
+          </div>
+        </div>
+
+        <div style={{ padding: '4px 24px 32px', maxWidth: 740 }}>
+          {SECTIONS.map(sec => (
+            <div key={sec.index} style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px 0 22px', borderBottom: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                <div style={{ fontFamily: MONO, fontSize: 11, color: 'var(--accent)' }}>{sec.index}</div>
+                <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{sec.title}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>{sec.blurb}</div>
+              </div>
+
+              {sec.index === '01' && (
+                <React.Fragment>
+                  <Field label="Name" hint="lowercase, with underscores · renaming updates every reference" notes={notesFor('name')} onFix={onFix} invalid={notesFor('name').some(n => n.sev === 'error')}>
+                    <TextBox value={nameDraft === null ? m.name : nameDraft} onChange={setNameDraft} onCommit={commitName} />
+                  </Field>
+                  <Field label="Display name" hint="what people see on a report" notes={[]} onFix={onFix}>
+                    <TextBox value={m.f.label || ''} onChange={v => set('label', v || null)} />
+                  </Field>
+                  <Field label="Description" hint="required once this is under oversight" notes={notesFor('description')} onFix={onFix} invalid={notesFor('description').some(n => n.sev === 'error')}>
+                    <TextBox value={m.f.description || ''} onChange={v => set('description', v || null)} invalid={notesFor('description').some(n => n.sev === 'error')} />
+                  </Field>
+                </React.Fragment>
+              )}
+
+              {sec.index === '02' && (
+                <React.Fragment>
+                  <Field label="What kind of measure" hint="this decides which options appear below" notes={notesFor('type')} onFix={onFix}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {KIND_CARDS.map(c => (
+                        <div
+                          key={c.value} onClick={() => set('type', c.value)}
+                          style={{
+                            flex: 1, padding: '8px 10px', borderRadius: 2, cursor: 'pointer',
+                            border: `1px solid ${kind === c.value ? 'rgba(242,179,0,.55)' : 'var(--border-default)'}`,
+                            background: kind === c.value ? 'rgba(242,179,0,.10)' : 'transparent',
+                          }}
+                        >
+                          <div style={{ fontSize: 12, color: kind === c.value ? 'var(--accent)' : 'var(--text-primary)', marginBottom: 2 }}>{c.title}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{HELP[c.value]}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </Field>
+
+                  {kind === 'simple' && (
+                    <React.Fragment>
+                      <Field label="How rows are combined" notes={notesFor('agg')} onFix={onFix}>
+                        <Picker options={ENUMS.agg} value={(m.f.agg || '').trim()} onChange={v => set('agg', v)} hints={HELP} />
+                      </Field>
+
+                      <Field label="Column to read" hint="drag a column in, or pick one" notes={notesFor('field')} onFix={onFix} invalid={notesFor('field').some(n => n.sev === 'error')}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <DropZone
+                            chip={(m.f.field || '').trim() ? { text: '· ' + m.f.field.trim(), kind: 'column' } : null}
+                            placeholder="Drop a column here"
+                            onDrop={() => { const d = drag.current; if (d && d.kind === 'column') set('field', d.name); }}
+                          />
+                          <Picker small options={['', ...COLUMNS]} value={(m.f.field || '').trim()} onChange={v => set('field', v || null)} />
+                        </div>
+                      </Field>
+
+                      <Field
+                        label="Only include rows where"
+                        hint={fr.advanced ? 'written by hand — switch to YAML to change it' : 'each line narrows the rows'}
+                        notes={notesFor('where')} onFix={onFix}
+                        invalid={notesFor('where').some(n => n.sev === 'error')}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {fr.advanced ? (
+                            <div style={{ fontFamily: MONO, fontSize: 12, padding: '7px 9px', border: '1px solid var(--border-default)', background: 'var(--bg-canvas)', borderRadius: 1 }}>{fr.raw}</div>
+                          ) : fr.rows.map((r, i) => {
+                            const write = patch => setDoc(d => writeFilter(d, m.name, fr.rows.map((x, j) => (j === i ? { ...x, ...patch } : x))));
+                            const observed = OBSERVED[r.col];
+                            return (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {i > 0 ? <Picker small width={72} options={['and', 'or']} value={r.join || 'and'} onChange={v => write({ join: v })} /> : null}
+                                <Picker small options={COLUMNS} value={r.col} onChange={v => write({ col: v, val: (OBSERVED[v] || [r.val])[0] })} />
+                                <Picker small width={68} options={['=', '!=', '>', '<', '>=', '<=']} value={r.op} onChange={v => write({ op: v })} />
+                                {observed
+                                  ? <Picker small options={observed.includes(r.val) ? observed : [r.val, ...observed]} value={r.val} onChange={v => write({ val: v })} />
+                                  : <input type="text" value={r.val} onChange={e => write({ val: e.target.value })} style={{ flex: 1, minWidth: 0, height: 30, padding: '0 8px', fontFamily: MONO, fontSize: 12 }} />}
+                                <button
+                                  onClick={() => setDoc(d => writeFilter(d, m.name, fr.rows.filter((x, j) => j !== i)))}
+                                  aria-label="Remove condition"
+                                  style={{ flex: 'none', width: 30, height: 30, background: 'transparent', border: '1px solid var(--border-default)', borderRadius: 2, color: 'var(--text-tertiary)', fontSize: 11 }}
+                                >✕</button>
+                              </div>
+                            );
+                          })}
+                          {!fr.advanced && (
+                            <GhostButton onClick={() => {
+                              const col = COLUMNS[3];
+                              setDoc(d => writeFilter(d, m.name, [...fr.rows, { col, op: '=', val: (OBSERVED[col] || ["''"])[0], join: 'and' }]));
+                            }}>+ Add a condition</GhostButton>
+                          )}
+                        </div>
+                      </Field>
+                    </React.Fragment>
+                  )}
+
+                  {kind === 'windowed' && (
+                    <React.Fragment>
+                      <Field label="Measure to look across" hint="drag a measure in" notes={notesFor('input')} onFix={onFix} invalid={notesFor('input').some(n => n.sev === 'error')}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <DropZone
+                            chip={reqs[0] ? { text: `⟨${reqs[0]}⟩`, kind: 'measure' } : null}
+                            placeholder="Drop a measure here"
+                            onDrop={() => { const d = drag.current; if (d && d.kind === 'measure') set('requires', `[${d.name}]`); }}
+                          />
+                          <Picker small options={['', ...ms.map(x => x.name).filter(n => n !== m.name)]} value={reqs[0] || ''} onChange={v => set('requires', v ? `[${v}]` : null)} />
+                        </div>
+                      </Field>
+                      <Field label="Calculation" notes={notesFor('window.op')} onFix={onFix} invalid={notesFor('window.op').some(n => n.sev === 'error')}>
+                        <Picker options={['', ...ENUMS['window.op']]} value={(m.f['window.op'] || '').trim()} onChange={v => set('window.op', v || null)} hints={HELP} invalid={notesFor('window.op').some(n => n.sev === 'error')} />
+                      </Field>
+                      <Field label="How far back" notes={notesFor('window.over')} onFix={onFix}>
+                        <Picker options={ENUMS['window.over']} value={(m.f['window.over'] || '1d').trim()} onChange={v => set('window.over', v)} hints={HELP} />
+                      </Field>
+                    </React.Fragment>
+                  )}
+
+                  {kind === 'derived' && (
+                    <React.Fragment>
+                      <Field label="Formula" hint="drag pieces in from below · click a piece to remove it" notes={notesFor('expression')} onFix={onFix} invalid={notesFor('expression').some(n => n.sev === 'error')}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={e => {
+                              e.preventDefault();
+                              const d = drag.current;
+                              if (!d) return;
+                              // Dropping a measure also adds it to the dependency list,
+                              // so KEEL005 cannot occur by construction.
+                              if (d.kind === 'measure' && !reqs.includes(d.name)) {
+                                setDoc(prev => setExpression(setField(prev, m.name, 'requires', '[' + [...reqs, d.name].join(', ') + ']'), m.name, [...chips, d.name].join(' ')));
+                              } else {
+                                writeChips([...chips, d.name]);
+                              }
+                            }}
+                            style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, minHeight: 44, padding: '9px 10px', border: '1px dashed var(--border-strong)', borderRadius: 2, background: 'var(--bg-canvas)' }}
+                          >
+                            {chips.length === 0
+                              ? <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Drag measures and operators here to build the formula</span>
+                              : chips.map((t, i) => (
+                                <Chip key={i} text={chipText(t)} kind={chipKind(t)} onClick={() => writeChips(chips.filter((x, j) => j !== i))} />
+                              ))}
+                          </div>
+                          <PaletteRow label="Arithmetic">
+                            {['+', '-', '*', '/', '(', ')', ','].map(t => (
+                              <Chip key={t} grab draggable text={t} kind="operator" onDragStart={() => { drag.current = { kind: 'token', name: t }; }} onClick={() => writeChips([...chips, t])} />
+                            ))}
+                          </PaletteRow>
+                          <PaletteRow label="Conditions">
+                            {['case', 'when', 'then', 'else', 'end', '>', '<', '='].map(t => (
+                              <Chip key={t} grab draggable text={t} kind={KEYWORDS.includes(t) ? 'keyword' : 'operator'} onDragStart={() => { drag.current = { kind: 'token', name: t }; }} onClick={() => writeChips([...chips, t])} />
+                            ))}
+                          </PaletteRow>
+                          <PaletteRow label="Functions">
+                            {Object.keys(FUNCS).map(t => (
+                              <Chip key={t} grab draggable text={`ƒ${t}`} kind="func" onDragStart={() => { drag.current = { kind: 'token', name: t }; }} onClick={() => writeChips([...chips, t])} />
+                            ))}
+                          </PaletteRow>
+                        </div>
+                      </Field>
+
+                      <Field label="Measures used" hint="kept in step with the formula" notes={notesFor('requires')} onFix={onFix}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, minHeight: 30 }}>
+                          {reqs.length === 0
+                            ? <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>None yet</span>
+                            : reqs.map(n => (
+                              <Chip key={n} text={`⟨${n}⟩`} kind="measure" onClick={() => set('requires', '[' + reqs.filter(x => x !== n).join(', ') + ']')} />
+                            ))}
+                        </div>
+                      </Field>
+                    </React.Fragment>
+                  )}
+                </React.Fragment>
+              )}
+
+              {sec.index === '03' && (
+                <React.Fragment>
+                  <Field label="How the number is shown" hint="previewed with this measure’s own value" notes={notesFor('format')} onFix={onFix}>
+                    <Picker options={ENUMS.format} value={(m.f.format || '').trim()} onChange={v => set('format', v)} hints={formatHints} />
+                  </Field>
+                  <Field label="Oversight level" hint="levels 1 and 2 need a description and a rule reference" notes={notesFor('sr_11_7_tier')} onFix={onFix}>
+                    <Picker options={ENUMS.sr_11_7_tier} value={(m.f.sr_11_7_tier || '').trim()} onChange={v => set('sr_11_7_tier', v || null)} hints={HELP} />
+                  </Field>
+                  {parseInt(m.f.sr_11_7_tier || '0', 10) >= 1 ? (
+                    <Field label="Rule it comes from" notes={notesFor('citation')} onFix={onFix} invalid={notesFor('citation').some(n => n.sev === 'error')}>
+                      <TextBox value={m.f.citation || ''} onChange={v => set('citation', v || null)} invalid={notesFor('citation').some(n => n.sev === 'error')} />
+                    </Field>
+                  ) : null}
+                </React.Fragment>
+              )}
+            </div>
+          ))}
+
+          {spare.length ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 16 }}>
+              {spare.map((n, i) => <Note key={i} note={n} onFix={onFix} />)}
+            </div>
+          ) : null}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 20 }}>
+            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', fontWeight: 600 }}>Drag these in</div>
+            <PaletteRow label="Columns">
+              {COLUMNS.map(c => (
+                <Chip key={c} grab draggable text={`· ${c}`} kind="column" onDragStart={() => { drag.current = { kind: 'column', name: c }; }} />
+              ))}
+            </PaletteRow>
+            <PaletteRow label="Measures">
+              {ms.map(x => x.name).filter(n => n !== m.name).map(n => (
+                <Chip key={n} grab draggable text={`⟨${n}⟩`} kind="measure" onDragStart={() => { drag.current = { kind: 'measure', name: n }; }} />
+              ))}
+            </PaletteRow>
+          </div>
+        </div>
+      </div>
+
+      {/* the round-trip: same document, as YAML */}
+      <div style={{ borderLeft: '1px solid var(--border-default)', background: 'var(--surface-1)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--border-default)' }}>
+          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', fontWeight: 600 }}>What the form wrote</div>
+          <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--text-tertiary)', lineHeight: '16px' }}>
+            One document, two modes. Everything above edits these lines.
+          </div>
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <div style={{ fontFamily: MONO, fontSize: 22, color: 'var(--accent)' }}>{fmt(value, m.f.format)}</div>
+            <div style={{ fontFamily: MONO, fontSize: 11, color: 'var(--sky-500)' }}>⟨{m.name}⟩</div>
+          </div>
+        </div>
+        <div style={{ flex: 1, overflow: 'auto', minHeight: 0, padding: '10px 0 24px' }}>
+          {doc.map((line, i) => {
+            const inActive = m && i >= m.line && i < m.line + 30 && (i === m.line || !/^\s*-\s*name:/.test(line));
+            const own = m && i >= m.line && (i === m.line || Object.values(m.lineOf).includes(i) || (m.lineOf.expression !== undefined && i === m.lineOf.expression + 1));
+            return (
+              <div key={i} style={{ display: 'flex', background: own ? 'rgba(69,182,240,.06)' : 'transparent', borderLeft: `2px solid ${own ? 'rgba(69,182,240,.45)' : 'transparent'}` }}>
+                <div style={{ width: 34, flex: 'none', textAlign: 'right', paddingRight: 8, color: 'var(--text-tertiary)', fontFamily: MONO, fontSize: 11, lineHeight: '20px', userSelect: 'none' }}>{i + 1}</div>
+                <div style={{ fontFamily: MONO, fontSize: 12, lineHeight: '20px', whiteSpace: 'pre', color: 'var(--text-primary)' }}>{line || ' '}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+<script>
+  // Transform explicitly with the CLASSIC JSX runtime. Babel's default is the
+  // automatic runtime, which emits `import {jsx} from "react/jsx-runtime"` —
+  // illegal in a non-module script and it fails with an opaque "Script error."
+  (function () {
+    try {
+      var src = document.getElementById('app-src').textContent;
+      var out = Babel.transform(src, { presets: [['react', { runtime: 'classic' }]] }).code;
+      new Function(out)();
+    } catch (err) {
+      document.getElementById('root').innerHTML =
+        '<pre style="padding:24px;color:#F2A0A3;font:12px/18px var(--mono);white-space:pre-wrap">'
+        + String(err && err.stack || err) + '</pre>';
+      throw err;
+    }
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,2061 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/aperture-risk-design-system-6e73e158-e5da-4250-9153-7aac5ef9adf0/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/aperture-risk-design-system-6e73e158-e5da-4250-9153-7aac5ef9adf0/tokens/colors.css">
+<link rel="stylesheet" href="_ds/aperture-risk-design-system-6e73e158-e5da-4250-9153-7aac5ef9adf0/tokens/typography.css">
+<link rel="stylesheet" href="_ds/aperture-risk-design-system-6e73e158-e5da-4250-9153-7aac5ef9adf0/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/aperture-risk-design-system-6e73e158-e5da-4250-9153-7aac5ef9adf0/tokens/radii.css">
+<link rel="stylesheet" href="_ds/aperture-risk-design-system-6e73e158-e5da-4250-9153-7aac5ef9adf0/tokens/base.css">
+<link rel="stylesheet" href="_ds/aperture-risk-design-system-6e73e158-e5da-4250-9153-7aac5ef9adf0/styles.css">
+<script src="_ds/aperture-risk-design-system-6e73e158-e5da-4250-9153-7aac5ef9adf0/_ds_bundle.js"></script>
+<style>
+  body { margin: 0; background: var(--bg-canvas); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { color: #FFC824; }
+  @keyframes mdlStale { 0%,100% { opacity: .4 } 50% { opacity: .62 } }
+  @keyframes mdlFlash { from { background: rgba(242,179,0,.14) } to { background: transparent } }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important } }
+  .mdl-scroll { min-height: 0 }
+  .mdl-scroll::-webkit-scrollbar { width: 10px; height: 10px }
+  .mdl-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border: 3px solid transparent; background-clip: content-box }
+  .mdl-scroll::-webkit-scrollbar-track { background: transparent }
+  .mdl-ed input { font: inherit; color: inherit; background: transparent; border: 0; outline: 0; padding: 0; margin: 0; width: 100% }
+</style>
+</helmet>
+
+<div style="width: 1600px; height: 1000px; display: grid; grid-template-columns: 244px 1fr 380px; grid-template-rows: 1fr; background: var(--bg-canvas); color: var(--text-primary); font-family: Inter, system-ui, sans-serif; font-size: 13px; letter-spacing: -0.006em; overflow: hidden; border: 1px solid var(--border-default)">
+
+  <div style="display: flex; flex-direction: column; border-right: 1px solid var(--border-default); background: var(--surface-1); min-width: 0; min-height: 0; overflow: hidden">
+    <div style="height: 44px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--border-default)">
+      <div style="width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--accent); box-shadow: inset 0 0 0 2px var(--surface-1)"></div>
+      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); font-weight: 600">Measures</div>
+      <div style="flex: 1"></div>
+      <div style="font-size: 10px; color: var(--text-tertiary); font-variant-numeric: tabular-nums">{{ registryCount }}</div>
+    </div>
+    <div style="padding: 8px 10px; border-bottom: 1px solid var(--surface-2)">
+      <input type="text" placeholder="Search measures…" value="{{ filter }}" onChange="{{ onFilter }}" style="width: 100%; box-sizing: border-box; background: var(--bg-canvas); border: 1px solid var(--border-default); border-radius: 1px; color: var(--text-primary); font-family: inherit; font-size: 12px; padding: 5px 8px; outline: none">
+    </div>
+    <div class="mdl-scroll" style="flex: 1; overflow-y: auto; padding: 6px 0">
+      <sc-for list="{{ tree }}" as="row" hint-placeholder-count="12">
+        <div draggable="{{ row.draggable }}" onDragStart="{{ row.onDragStart }}" onClick="{{ row.onClick }}" style="{{ row.css }}" title="{{ row.title }}">
+          <span style="{{ row.dotCss }}"></span>
+          <span style="{{ row.glyphCss }}">{{ row.glyph }}</span>
+          <span style="{{ row.nameCss }}">{{ row.name }}</span>
+          <span style="flex: 1"></span>
+          <span style="{{ row.tierCss }}"></span>
+          <span style="font-size: 10px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace">{{ row.meta }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="flex: none; border-top: 1px solid var(--border-default); padding: 8px 12px; display: flex; flex-direction: column; gap: 4px">
+      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary)">Drag a measure into the editor to use it</div>
+      <div style="font-size: 11px; color: var(--text-secondary)">⌘-click a name to open it · ⌥-click to preview</div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-canvas)">
+    <div style="height: 44px; flex: none; display: flex; align-items: stretch; border-bottom: 1px solid var(--border-default)">
+      <sc-for list="{{ tabs }}" as="tab" hint-placeholder-count="2">
+        <div onClick="{{ tab.onClick }}" style="{{ tab.css }}">
+          <span style="{{ tab.dotCss }}"></span>{{ tab.name }}
+        </div>
+      </sc-for>
+      <div style="flex: 1"></div>
+      <div style="display: flex; align-items: center; gap: 6px; padding: 0 12px">
+        <div style="display: flex; gap: 4px; margin-right: 6px">
+          <sc-for list="{{ modes }}" as="m" hint-placeholder-count="2">
+            <div onClick="{{ m.onClick }}" style="{{ m.css }}">{{ m.name }}</div>
+          </sc-for>
+        </div>
+        <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary)">Test data</span>
+        <select value="{{ fixture }}" onChange="{{ onFixture }}" style="background: var(--surface-2); border: 1px solid var(--border-default); color: var(--text-primary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; padding: 4px 6px; border-radius: 1px; outline: none">
+          <option value="nominal">Typical</option>
+          <option value="edge">Tricky rows</option>
+          <option value="stress">Stressed</option>
+        </select>
+        <span style="width: 1px; height: 18px; background: var(--border-default); margin: 0 4px"></span>
+        <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary)">Show {{ stateTarget }} as</span>
+        <select value="{{ pillState }}" onChange="{{ onPillState }}" style="background: var(--surface-2); border: 1px solid var(--border-default); color: var(--text-primary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; padding: 4px 6px; border-radius: 1px; outline: none">
+          <option value="resolved">Recognized</option>
+          <option value="unresolved">Unknown name</option>
+          <option value="circular">Loops back on itself</option>
+          <option value="deprecated">Being retired</option>
+          <option value="restricted">Hidden from you</option>
+          <option value="stale">Recalculating</option>
+          <option value="focused">Selected</option>
+        </select>
+      </div>
+    </div>
+
+    <sc-if value="{{ showYaml }}" hint-placeholder-val="{{ false }}">
+    <div class="mdl-scroll mdl-ed" style="flex: 1; overflow: auto; padding: 10px 0 24px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px">
+      <sc-for list="{{ lines }}" as="line" hint-placeholder-count="40">
+        <div style="{{ line.wrapCss }}">
+          <div style="display: flex; align-items: stretch; min-height: 22px">
+            <div style="{{ line.gutterCss }}">{{ line.no }}</div>
+            <div style="{{ line.sevCss }}">{{ line.sev }}</div>
+            <div style="width: 14px; flex: none; display: flex; align-items: center; gap: 1px; padding: 0 4px 0 2px">
+              <sc-for list="{{ line.marks }}" as="mark" hint-placeholder-count="0">
+                <span style="{{ mark.css }}"></span>
+              </sc-for>
+            </div>
+            <div onClick="{{ line.onEdit }}" onDragOver="{{ line.onDragOver }}" onDrop="{{ line.onDrop }}" style="flex: 1; min-width: 0; display: flex; align-items: center; height: 22px; line-height: 22px; padding-right: 16px; cursor: text; position: relative">
+              <sc-if value="{{ line.editing }}" hint-placeholder-val="{{ false }}">
+                <div style="position: relative; flex: 1; min-width: 0">
+                  <input type="text" spellcheck="false" autoFocus="{{ true }}" value="{{ line.raw }}" onChange="{{ line.onChange }}" onKeyDown="{{ line.onKeyDown }}" onBlur="{{ line.onBlur }}" style="line-height: 22px; caret-color: var(--accent); background: rgba(242,179,0,.05)">
+                  <span style="{{ line.ghostCss }}">{{ line.ghost }}</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{ line.showTokens }}" hint-placeholder-val="{{ true }}">
+                <div style="display: flex; align-items: center; min-width: 0">
+                  <sc-for list="{{ line.tokens }}" as="tok" hint-placeholder-count="1">
+                    <span style="{{ tok.css }}" title="{{ tok.title }}" onMouseEnter="{{ tok.onEnter }}" onMouseLeave="{{ tok.onLeave }}" onClick="{{ tok.onClick }}">{{ tok.pre }}{{ tok.text }}{{ tok.post }}<span style="{{ tok.tierCss }}"></span></span>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+          <sc-if value="{{ line.hasCompletion }}" hint-placeholder-val="{{ false }}">
+            <div style="margin: 2px 0 4px 74px; width: 340px; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 2px; box-shadow: 0 8px 24px rgba(0,0,0,.5); overflow: hidden">
+              <div style="padding: 4px 8px; font-family: Inter, sans-serif; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary); border-bottom: 1px solid var(--border-default)">{{ completionScope }}</div>
+              <sc-for list="{{ completions }}" as="c" hint-placeholder-count="0">
+                <div onMouseDown="{{ c.onPick }}" style="{{ c.css }}">
+                  <span style="{{ c.glyphCss }}">{{ c.glyph }}</span>
+                  <span>{{ c.name }}</span>
+                  <span style="flex: 1"></span>
+                  <span style="font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums">{{ c.hint }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ line.hasPeek }}" hint-placeholder-val="{{ false }}">
+            <div style="margin: 4px 0 8px 74px; max-width: 620px; background: var(--surface-1); border: 1px solid var(--border-strong); border-left: 2px solid var(--sky-500); border-radius: 2px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px">
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span style="font-family: Inter, sans-serif; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary)">Preview</span>
+                <span style="color: var(--sky-500)">{{ peek.name }}</span>
+                <span style="flex: 1"></span>
+                <span onClick="{{ closePeek }}" style="cursor: pointer; color: var(--text-tertiary); font-family: Inter, sans-serif; font-size: 11px">Close ✕</span>
+              </div>
+              <sc-for list="{{ peek.body }}" as="l" hint-placeholder-count="0">
+                <div style="{{ l.css }}">{{ l.text }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ showBuilder }}" hint-placeholder-val="{{ true }}">
+    <div class="mdl-scroll" style="flex: 1; overflow-y: auto; min-height: 0">
+      <div style="padding: 18px 24px 16px 24px; border-bottom: 1px solid var(--border-default); background: var(--surface-1)">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 17px; color: var(--sky-500)">⟨{{ builder.title }}⟩</div>
+          <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Badge" hint-size="auto,20px" tone="info" size="md">{{ builder.kindLabel }}</x-import>
+          <div style="flex: 1"></div>
+          <sc-if value="{{ builder.clean }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size: 11px; color: var(--up-500)">✓ Nothing to fix</div>
+          </sc-if>
+        </div>
+        <div style="margin-top: 8px; font-size: 13px; color: var(--text-secondary); line-height: 20px; text-wrap: pretty; max-width: 620px">{{ builder.sentence }}</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 4px 24px 32px 24px; max-width: 740px">
+        <sc-for list="{{ builder.sections }}" as="sec" hint-placeholder-count="3">
+        <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px 0 22px 0; border-bottom: 1px solid var(--border-subtle)">
+          <div style="display: flex; align-items: baseline; gap: 10px">
+            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--accent)">{{ sec.index }}</div>
+            <div style="font-size: 14px; color: var(--text-primary)">{{ sec.title }}</div>
+            <div style="font-size: 11.5px; color: var(--text-tertiary)">{{ sec.blurb }}</div>
+          </div>
+        <sc-for list="{{ sec.fields }}" as="f" hint-placeholder-count="3">
+          <div style="display: flex; flex-direction: column; gap: 7px">
+            <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
+              <div style="{{ f.labelCss }}">{{ f.label }}</div>
+              <div style="font-size: 11.5px; color: var(--text-tertiary)">{{ f.help }}</div>
+            </div>
+
+            <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ false }}">
+              <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Input" hint-size="100%,38px" size="lg" full="{{ true }}" invalid="{{ f.invalid }}" value="{{ f.value }}" on-change="{{ f.onChange }}" on-blur="{{ f.onBlur }}" on-key-down="{{ f.onKeyDown }}"></x-import>
+            </sc-if>
+
+            <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
+              <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Select" hint-size="100%,38px" size="lg" full="{{ true }}" invalid="{{ f.invalid }}" options="{{ f.select.options }}" value="{{ f.select.current }}" on-change="{{ f.select.onChange }}"></x-import>
+            </sc-if>
+
+            <sc-if value="{{ f.isChoice }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; gap: 8px">
+                <sc-for list="{{ f.choices }}" as="c" hint-placeholder-count="3">
+                  <div onClick="{{ c.onPick }}" style="{{ c.css }}">
+                    <div style="{{ c.titleCss }}">{{ c.title }}</div>
+                    <div style="font-size: 11px; color: var(--text-tertiary)">{{ c.help }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ f.isDrop }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; gap: 6px">
+                <div onDragOver="{{ f.onDragOver }}" onDrop="{{ f.onDrop }}" style="{{ f.dropCss }}">
+                  <sc-for list="{{ f.chipList }}" as="ch" hint-placeholder-count="0">
+                    <span style="{{ ch.css }}">{{ ch.text }}</span>
+                  </sc-for>
+                  <sc-if value="{{ f.showPlaceholder }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size: 12px; color: var(--text-tertiary)">{{ f.placeholder }}</span>
+                  </sc-if>
+                </div>
+                <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Select" hint-size="100%,24px" size="sm" full="{{ true }}" options="{{ f.select.options }}" value="{{ f.select.current }}" on-change="{{ f.select.onChange }}"></x-import>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ f.isFilter }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; gap: 6px">
+                <sc-for list="{{ f.rows }}" as="r" hint-placeholder-count="0">
+                  <div style="display: flex; align-items: center; gap: 6px">
+                    <sc-if value="{{ r.showJoin }}" hint-placeholder-val="{{ false }}">
+                      <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Select" hint-size="72px,30px" style="width: 72px; flex: none" size="md" full="{{ true }}" options="{{ r.join.options }}" value="{{ r.join.current }}" on-change="{{ r.join.onChange }}"></x-import>
+                    </sc-if>
+                    <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Select" hint-size="100%,30px" style="flex: 1; min-width: 0" size="md" full="{{ true }}" options="{{ r.col.options }}" value="{{ r.col.current }}" on-change="{{ r.col.onChange }}"></x-import>
+                    <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Select" hint-size="68px,30px" style="width: 68px; flex: none" size="md" full="{{ true }}" options="{{ r.op.options }}" value="{{ r.op.current }}" on-change="{{ r.op.onChange }}"></x-import>
+                    <sc-if value="{{ r.useValueSelect }}" hint-placeholder-val="{{ true }}">
+                      <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Select" hint-size="100%,30px" style="flex: 1; min-width: 0" size="md" full="{{ true }}" options="{{ r.valSelect.options }}" value="{{ r.valSelect.current }}" on-change="{{ r.valSelect.onChange }}"></x-import>
+                    </sc-if>
+                    <sc-if value="{{ r.useValueText }}" hint-placeholder-val="{{ false }}">
+                      <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Input" hint-size="100%,30px" style="flex: 1; min-width: 0" size="md" full="{{ true }}" value="{{ r.valText }}" on-change="{{ r.onValText }}"></x-import>
+                    </sc-if>
+                    <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.IconButton" hint-size="30px,30px" style="flex: none" size="md" aria-label="Remove condition" on-click="{{ r.onRemove }}">✕</x-import>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ f.advanced }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-primary); padding: 7px 9px; border: 1px solid var(--border-default); background: var(--bg-canvas); border-radius: 1px">{{ f.raw }}</div>
+                </sc-if>
+                <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Button" hint-size="auto,24px" style="align-self: flex-start" size="sm" variant="ghost" on-click="{{ f.onAdd }}">+ Add a condition</x-import>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ f.isFormula }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <div onDragOver="{{ f.onDragOver }}" onDrop="{{ f.onDrop }}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-height: 44px; padding: 9px 10px; border: 1px dashed var(--gray-600); border-radius: 2px; background: var(--bg-canvas)">
+                  <sc-for list="{{ f.chips }}" as="ch" hint-placeholder-count="0">
+                    <span onClick="{{ ch.onRemove }}" style="{{ ch.css }}">{{ ch.text }}</span>
+                  </sc-for>
+                  <sc-if value="{{ f.empty }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size: 12px; color: var(--text-tertiary)">Drag measures and operators here to build the formula</span>
+                  </sc-if>
+                </div>
+                <sc-for list="{{ f.palette }}" as="row" hint-placeholder-count="3">
+                  <div style="display: flex; align-items: center; gap: 8px">
+                    <div style="width: 76px; flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary)">{{ row.group }}</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 5px">
+                      <sc-for list="{{ row.items }}" as="it" hint-placeholder-count="0">
+                        <span draggable="{{ true }}" onDragStart="{{ it.onDragStart }}" onClick="{{ it.onClick }}" style="{{ it.css }}">{{ it.text }}</span>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ f.isChips }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 30px">
+                <sc-for list="{{ f.chips }}" as="ch" hint-placeholder-count="0">
+                  <span onClick="{{ ch.onRemove }}" style="{{ ch.css }}">{{ ch.text }}</span>
+                </sc-for>
+                <sc-if value="{{ f.empty }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size: 12px; color: var(--text-tertiary)">None yet</span>
+                </sc-if>
+              </div>
+            </sc-if>
+            <sc-for list="{{ f.notes }}" as="n" hint-placeholder-count="0">
+              <div style="{{ n.css }}">
+                <span style="{{ n.textCss }}">{{ n.text }}</span>
+                <span style="flex: 1"></span>
+                <sc-if value="{{ n.hasFix }}" hint-placeholder-val="{{ false }}">
+                  <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Button" hint-size="auto,24px" style="flex: none" size="sm" variant="ghost" on-click="{{ n.onFix }}">{{ n.fixLabel }}</x-import>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+        </div>
+        </sc-for>
+
+        <sc-if value="{{ builder.hasSpare }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 4px">
+            <sc-for list="{{ builder.spare }}" as="n" hint-placeholder-count="0">
+              <div style="{{ n.css }}">
+                <span style="{{ n.textCss }}">{{ n.text }}</span>
+                <span style="flex: 1"></span>
+                <sc-if value="{{ n.hasFix }}" hint-placeholder-val="{{ false }}">
+                  <x-import component-from-global-scope="ApertureRiskDesignSystem_6e73e1.Button" hint-size="auto,24px" style="flex: none" size="sm" variant="ghost" on-click="{{ n.onFix }}">{{ n.fixLabel }}</x-import>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 16px">
+          <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); font-weight: 600">Drag these in</div>
+          <div style="display: flex; align-items: flex-start; gap: 8px">
+            <div style="width: 76px; flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary)">Columns</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 5px">
+              <sc-for list="{{ builder.paletteCols }}" as="ch" hint-placeholder-count="6">
+                <span draggable="{{ true }}" onDragStart="{{ ch.onDragStart }}" style="{{ ch.css }}">{{ ch.text }}</span>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 8px">
+            <div style="width: 76px; flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary)">Measures</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 5px">
+              <sc-for list="{{ builder.paletteMeasures }}" as="ch" hint-placeholder-count="6">
+                <span draggable="{{ true }}" onDragStart="{{ ch.onDragStart }}" style="{{ ch.css }}">{{ ch.text }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <div style="flex: none; border-top: 1px solid var(--border-default); background: var(--surface-1)">
+      <div onClick="{{ toggleProblems }}" style="height: 32px; display: flex; align-items: center; gap: 16px; padding: 0 12px; cursor: pointer; font-size: 12px">
+        <span style="color: var(--text-tertiary); font-size: 10px">{{ problemsCaret }}</span>
+        <span style="{{ problemSummaryCss }}">{{ problemSummary }}</span>
+        <span style="color: var(--up-500)">✓ works on {{ backendsOk }} databases</span>
+        <span style="color: var(--warning-500)">{{ backendsWarn }}</span>
+        <span style="flex: 1"></span>
+        <span style="color: var(--text-tertiary); font-size: 11px; font-variant-numeric: tabular-nums">updated in {{ loopMs }}ms</span>
+      </div>
+      <sc-if value="{{ problemsOpen }}" hint-placeholder-val="{{ false }}">
+        <div class="mdl-scroll" style="max-height: 168px; overflow-y: auto; border-top: 1px solid var(--surface-2)">
+          <sc-for list="{{ problems }}" as="p" hint-placeholder-count="2">
+            <div onClick="{{ p.onGo }}" style="display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; font-size: 12px">
+              <span style="{{ p.sevCss }}">{{ p.sevGlyph }}</span>
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--text-secondary); width: 62px; flex: none">{{ p.code }}</span>
+              <span style="color: var(--text-primary)">{{ p.message }}</span>
+              <span style="flex: 1"></span>
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--text-tertiary)">{{ p.where }}</span>
+              <span onClick="{{ p.onFix }}" style="{{ p.fixCss }}">{{ p.fixLabel }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; border-left: 1px solid var(--border-default); background: var(--surface-1); min-width: 0; min-height: 0; overflow: hidden">
+    <div style="height: 44px; flex: none; display: flex; align-items: stretch; border-bottom: 1px solid var(--border-default)">
+      <sc-for list="{{ vtabs }}" as="t" hint-placeholder-count="2">
+        <div onClick="{{ t.onClick }}" style="{{ t.css }}">{{ t.name }}</div>
+      </sc-for>
+    </div>
+
+    <div class="mdl-scroll" style="flex: 1; overflow-y: auto">
+      <sc-if value="{{ showVerify }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="padding: 14px 16px 16px 16px; border-bottom: 1px solid var(--border-default); position: relative">
+            <div style="display: flex; align-items: baseline; gap: 8px">
+              <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); font-weight: 600">Value</div>
+              <div style="flex: 1"></div>
+              <div style="{{ staleCss }}">{{ staleLabel }}</div>
+              <div style="font-size: 11px; color: var(--text-tertiary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace">{{ asOf }}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px">
+              <div style="{{ valueCss }}">{{ valueText }}</div>
+              <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--sky-500)">{{ activeName }}</div>
+            </div>
+            <div style="display: flex; align-items: flex-end; gap: 2px; height: 34px; margin-top: 10px">
+              <sc-for list="{{ spark }}" as="s" hint-placeholder-count="0">
+                <span style="{{ s.css }}"></span>
+              </sc-for>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px">
+              <span style="{{ deltaCss }}">{{ deltaText }}</span>
+              <span style="color: var(--text-tertiary)">vs. previous edit</span>
+              <span style="flex: 1"></span>
+              <span style="{{ blockingCss }}">{{ blockingText }}</span>
+            </div>
+          </div>
+
+          <div style="padding: 14px 16px; border-bottom: 1px solid var(--border-default)">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px">
+              <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); font-weight: 600">How this is calculated</div>
+              <div style="flex: 1"></div>
+              <sc-for list="{{ traceModes }}" as="m" hint-placeholder-count="2">
+                <div onClick="{{ m.onClick }}" style="{{ m.css }}">{{ m.name }}</div>
+              </sc-for>
+            </div>
+            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 18px; color: var(--text-secondary); margin-bottom: 10px; white-space: pre-wrap; word-break: break-word">{{ traceExpr }}</div>
+            <sc-for list="{{ trace }}" as="n" hint-placeholder-count="4">
+              <div style="{{ n.rowCss }}">
+                <div style="display: flex; align-items: center; gap: 4px; min-width: 0">
+                  <span onClick="{{ n.onToggle }}" style="{{ n.caretCss }}">{{ n.caret }}</span>
+                  <span style="{{ n.labelCss }}" onMouseEnter="{{ n.onEnter }}" onMouseLeave="{{ n.onLeave }}" onClick="{{ n.onClick }}">{{ n.pre }}{{ n.label }}{{ n.post }}</span>
+                </div>
+                <div style="flex: 1; border-bottom: 1px dotted var(--border-default); margin: 0 6px; min-width: 8px; align-self: flex-end; margin-bottom: 5px"></div>
+                <div style="{{ n.valCss }}">{{ n.value }}</div>
+              </div>
+              <sc-for list="{{ n.detail }}" as="d" hint-placeholder-count="0">
+                <div style="{{ d.css }}"><span>{{ d.text }}</span><span style="flex: 1"></span><span style="{{ d.rowsCss }}">{{ d.rows }}</span></div>
+              </sc-for>
+            </sc-for>
+            <div style="display: flex; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-strong); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px">
+              <span style="color: var(--text-secondary)">=</span>
+              <span style="flex: 1"></span>
+              <span style="color: var(--accent); font-variant-numeric: tabular-nums">{{ valueText }}</span>
+            </div>
+          </div>
+
+          <div style="padding: 14px 16px">
+            <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); font-weight: 600; margin-bottom: 10px">If you change this, {{ blastCount }} measures move</div>
+            <sc-for list="{{ blast }}" as="b" hint-placeholder-count="3">
+              <div style="{{ b.rowCss }}">
+                <div style="display: flex; align-items: center; gap: 6px">
+                  <span style="{{ b.labelCss }}" onMouseEnter="{{ b.onEnter }}" onMouseLeave="{{ b.onLeave }}" onClick="{{ b.onClick }}">⟨{{ b.name }}⟩</span>
+                  <span style="{{ b.tierCss }}"></span>
+                </div>
+                <div style="flex: 1"></div>
+                <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--text-tertiary); font-variant-numeric: tabular-nums">{{ b.before }}</div>
+                <div style="color: var(--text-tertiary); font-size: 10px; margin: 0 6px">→</div>
+                <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-primary); font-variant-numeric: tabular-nums; min-width: 74px; text-align: right">{{ b.after }}</div>
+                <div style="{{ b.deltaCss }}">{{ b.delta }}</div>
+              </div>
+              <sc-for list="{{ b.note }}" as="nt" hint-placeholder-count="0">
+                <div style="font-size: 11px; color: var(--warning-500); padding: 0 0 6px 2px">{{ nt.text }}</div>
+              </sc-for>
+            </sc-for>
+            <sc-if value="{{ blastEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size: 12px; color: var(--text-tertiary)">Nothing else uses this measure. Editing it changes nothing downstream.</div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showPlan }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 14px 16px">
+          <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); font-weight: 600; margin-bottom: 10px">Generated query · {{ activeName }}</div>
+          <sc-for list="{{ plan }}" as="p" hint-placeholder-count="0">
+            <div style="{{ p.css }}">{{ p.text }}</div>
+          </sc-for>
+          <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); font-weight: 600; margin: 20px 0 8px 0">Database support</div>
+          <sc-for list="{{ conformance }}" as="c" hint-placeholder-count="0">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--surface-2); font-size: 12px">
+              <span style="{{ c.dotCss }}"></span>
+              <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px">{{ c.name }}</span>
+              <span style="flex: 1"></span>
+              <span style="{{ c.statusCss }}">{{ c.status }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <sc-if value="{{ hasCard }}" hint-placeholder-val="{{ false }}">
+    <div style="{{ cardCss }}">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px 12px">
+        <span style="{{ card.nameCss }}">{{ card.pre }}{{ card.name }}{{ card.post }}</span>
+        <span style="flex: 1"></span>
+        <span style="{{ card.tierCss }}">{{ card.tier }}</span>
+      </div>
+      <div style="padding: 0 12px 8px 12px; color: var(--text-primary); font-size: 12px">{{ card.label }}</div>
+      <div style="padding: 0 12px 10px 12px; color: var(--text-secondary); font-size: 12px; line-height: 17px">{{ card.description }}</div>
+      <div style="padding: 6px 12px; border-top: 1px solid var(--border-default); border-bottom: 1px solid var(--border-default); background: var(--border-subtle); display: flex; align-items: baseline; gap: 8px">
+        <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; color: var(--accent); font-variant-numeric: tabular-nums">{{ card.value }}</span>
+        <span style="flex: 1"></span>
+        <span style="font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em">on {{ fixtureLabel }} · {{ asOf }}</span>
+      </div>
+      <div style="padding: 8px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--text-secondary); line-height: 17px; white-space: pre-wrap">{{ card.expr }}</div>
+      <div style="padding: 2px 12px 10px 12px; display: grid; grid-template-columns: 58px 1fr; row-gap: 3px; font-size: 11px">
+        <sc-for list="{{ card.meta }}" as="m" hint-placeholder-count="0">
+          <span style="color: var(--text-tertiary)">{{ m.k }}</span>
+          <span style="color: var(--text-primary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace">{{ m.v }}</span>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000}}">
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+const HUE = {
+  measure: '#45B6F0', dimension: '#34C77B', func: '#8B7CF0', column: 'var(--text-secondary)',
+  unresolved: '#E5484D', warn: '#E08C2E', signal: '#F2B300'
+};
+const FUNCS = { sum: 1, avg: 1, greatest: 1, least: 1, nullif: 1, coalesce: 1, abs: 1, ema: 1, last: 1, first: 1, max: 1, min: 1 };
+const UNSUPPORTED = { ema: 'Dremio' };
+const ENUMS = {
+  type: ['simple', 'derived', 'windowed'],
+  format: ['currency_usd', 'currency_usd_mm', 'percent_1dp', 'percent_2dp', 'number', 'bps'],
+  agg: ['sum', 'avg', 'last', 'first', 'max', 'min', 'count'],
+  sr_11_7_tier: ['1', '2', '3'],
+  grain_type: ['stock', 'flow', 'ratio'],
+  'window.op': ['delta', 'pct_change', 'stddev', 'variance', 'avg', 'sum', 'min', 'max'],
+  'window.over': ['1d', '7d', '30d', '90d']
+};
+const ENUM_HELP = {
+  simple: 'reads one column', derived: 'combines other measures', windowed: 'looks across dates',
+  stock: 'a balance at a point in time', flow: 'accumulates over a period', ratio: 'a proportion',
+  currency_usd: 'dollars', currency_usd_mm: 'dollars, in millions', percent_1dp: 'percent, 1 decimal',
+  percent_2dp: 'percent, 2 decimals', number: 'plain number', bps: 'basis points',
+  sum: 'adds every row', avg: 'averages rows', last: 'latest row', first: 'earliest row',
+  max: 'largest row', min: 'smallest row', count: 'counts rows',
+  '1': 'top oversight', '2': 'reviewed', '3': 'exploratory'
+};
+const ENUM_LABEL = { type: 'kind of measure', format: 'how the number is displayed', agg: 'how rows are combined', sr_11_7_tier: 'oversight level', grain_type: 'what the numbers represent', 'window.op': 'time calculation', 'window.over': 'how far back to look' };
+const WINDOW_HELP = {
+  delta: 'change since the earlier day', pct_change: 'percent change since the earlier day',
+  stddev: 'volatility across the window', variance: 'squared volatility across the window',
+  avg: 'average across the window', sum: 'total across the window',
+  min: 'lowest in the window', max: 'highest in the window'
+};
+const FIXTURES = { nominal: 'Typical data', edge: 'Tricky data', stress: 'Stressed data' };
+const STATE_LABEL = { resolved: 'recognized', unresolved: 'unknown name', circular: 'loops back on itself', deprecated: 'being retired', restricted: 'hidden from you', stale: 'recalculating', focused: 'selected' };
+const KIND_LABEL = { measure: 'measure', dimension: 'grouping', func: 'function', column: 'source column' };
+const FIELD_OF_CODE = {
+  KEEL001: 'expression', KEEL005: 'expression', KEEL006: 'requires', KEEL007: 'expression',
+  KEEL021: 'expression', KEEL022: 'expression', KEEL035: 'expression', KEEL002: 'requires',
+  KEEL004: 'field', KEEL050: 'where', KEEL051: 'where', KEEL052: 'where',
+  KEEL025: 'window.op', KEEL026: 'window.over', KEEL027: 'input',
+  KEEL030: 'description', KEEL031: 'citation', KEEL041: 'name', KEEL042: 'format', KEEL043: 'expression'
+};
+const AGG_VERB = { sum: 'Adds up', avg: 'Averages', last: 'Takes the latest', first: 'Takes the earliest', max: 'Takes the largest', min: 'Takes the smallest', count: 'Counts the rows of' };
+const DIMS = { entity: 1, scenario: 1, currency: 1, bucket: 1, legal_entity: 1 };
+const RESTRICTED = { tsy_desk_pnl: 1 };
+const PILL_KEYS = { requires: 1, expression: 1, where: 1, field: 1, weight: 1, partition_by: 1, order_by: 1, agg: 1, 'window.order_by': 1, 'window.partition_by': 1 };
+const LITERALS = { true: 1, false: 1, null: 1, P1D: 1 };
+const COLUMNS = {
+  'alm.fct_liquidity_position': ['hqla_eligible_amount', 'is_encumbered', 'outflow_amount_30d', 'inflow_amount_capped_30d', 'as_of_date', 'entity_id', 'scenario_code'],
+  'alm.fct_repricing_gap': ['pv_asset_amount', 'pv_liability_amount', 'tsy_desk_pnl', 'as_of_date', 'bucket_code', 'scenario_code']
+};
+const DATES = (function () {
+  const out = []; const end = Date.UTC(2026, 5, 30);
+  for (let i = 59; i >= 0; i--) out.push(new Date(end - i * 86400000).toISOString().slice(0, 10));
+  return out;
+})();
+const LAST = DATES.length - 1;
+const AS_OF = DATES[LAST];
+const ENTITIES = ['BANK_US', 'BANK_UK', 'BANK_SG', 'BANK_DE'];
+const SCENARIOS = ['base', 'up200', 'dn100'];
+const BUCKETS = ['0-1M', '1-3M', '3-12M', '1-5Y', '5Y+'];
+
+function seeded(s) { let x = s; return function () { x = (x * 1103515245 + 12345) % 2147483648; return x / 2147483648; }; }
+
+function buildTable(source, fx) {
+  const r = seeded(source === 'alm.fct_liquidity_position' ? 7 : 19);
+  const byDate = {};
+  const inst = fx === 'edge' ? 4 : 40;
+  DATES.forEach(function (d, di) {
+    const rows = [];
+    const drift = 1 + 0.0011 * di + 0.021 * Math.sin(di / 4.3) + 0.009 * Math.cos(di / 1.7);
+    const shock = fx === 'stress' ? 0.744 : 1;
+    ENTITIES.forEach(function (e, ei) {
+      for (let k = 0; k < inst; k++) {
+        const n = r();
+        const base = (0.4 + n) * (1 + ei * 0.18) * drift;
+        const row = {
+          as_of_date: d, entity_id: e, scenario_code: SCENARIOS[k % SCENARIOS.length],
+          bucket_code: BUCKETS[k % BUCKETS.length], is_encumbered: k % 5 === 0
+        };
+        if (source === 'alm.fct_liquidity_position') {
+          row.hqla_eligible_amount = fx === 'edge' && k === 1 ? 0 : base * 1.0e6 * shock;
+          row.outflow_amount_30d = base * 1.16e6 * (fx === 'stress' ? 1.29 : 1);
+          row.inflow_amount_capped_30d = fx === 'edge' && k === 2 ? 0 : base * 0.27e6 * shock;
+        } else {
+          row.pv_asset_amount = base * 4.5e6 * shock;
+          row.pv_liability_amount = base * 3.9e6 * (fx === 'stress' ? 1.031 : 1);
+          row.tsy_desk_pnl = (n - 0.5) * 4.2e5;
+        }
+        rows.push(row);
+      }
+    });
+    byDate[d] = rows;
+  });
+  return byDate;
+}
+
+const CALIB = {
+  'alm.fct_liquidity_position': [
+    ['hqla_eligible_amount', 284120000, function (row) { return row.is_encumbered === false; }],
+    ['outflow_amount_30d', 312400000, null],
+    ['inflow_amount_capped_30d', 72500000, null]
+  ],
+  'alm.fct_repricing_gap': [
+    ['pv_asset_amount', 1284300000, null],
+    ['pv_liability_amount', 1102700000, null]
+  ]
+};
+
+const TABLES = (function () {
+  const factors = {};
+  Object.keys(CALIB).forEach(function (src) {
+    const t = buildTable(src, 'nominal'); factors[src] = {};
+    CALIB[src].forEach(function (c) {
+      let s = 0;
+      t[AS_OF].forEach(function (row) { if (!c[2] || c[2](row)) s += row[c[0]]; });
+      factors[src][c[0]] = s ? c[1] / s : 0;
+    });
+  });
+  const out = {};
+  ['nominal', 'edge', 'stress'].forEach(function (fx) {
+    out[fx] = {};
+    Object.keys(CALIB).forEach(function (src) {
+      const t = buildTable(src, fx); const f = factors[src];
+      DATES.forEach(function (d) {
+        t[d].forEach(function (row) { Object.keys(f).forEach(function (col) { row[col] = row[col] * f[col]; }); });
+      });
+      out[fx][src] = t;
+    });
+  });
+  return out;
+})();
+
+function distinctValues(fx, src, col) {
+  const seen = {}, out = [];
+  ((TABLES[fx][src] || {})[AS_OF] || []).forEach(function (r) {
+    const v = r[col];
+    if (v === undefined) return;
+    const k = typeof v === 'string' ? "'" + v + "'" : String(v);
+    if (!seen[k] && out.length < 8 && typeof v !== 'number') { seen[k] = 1; out.push(k); }
+  });
+  return out;
+}
+
+function literalOf(t) {
+  if (t === undefined) return undefined;
+  if (/^'/.test(t)) return t.slice(1, -1);
+  if (/^-?\d/.test(t)) return parseFloat(t);
+  const l = t.toLowerCase();
+  if (l === 'true') return true;
+  if (l === 'false') return false;
+  if (l === 'null') return null;
+  return t;
+}
+
+function compare(a, op, b) {
+  if (op === '=' ) return a === b || String(a) === String(b);
+  if (op === '!=' || op === '<>') return !(a === b || String(a) === String(b));
+  const x = Number(a), y = Number(b);
+  if (op === '>') return x > y;
+  if (op === '<') return x < y;
+  if (op === '>=') return x >= y;
+  if (op === '<=') return x <= y;
+  return false;
+}
+
+function compilePredicate(src) {
+  const text = (src || '').replace(/\s+/g, ' ').trim();
+  if (!text) return { fn: function () { return true; }, err: null, cols: [], empty: true };
+  const toks = text.match(/'[^']*'|>=|<=|!=|<>|[<>=()]|[A-Za-z_][A-Za-z0-9_]*|-?\d+\.?\d*/g) || [];
+  let p = 0, err = null; const cols = [];
+  const kw = function () { return (toks[p] || '').toLowerCase(); };
+  function orE() { let v = andE(); while (kw() === 'or') { p++; const r = andE(); const a = v, b = r; v = function (row) { return a(row) || b(row); }; } return v; }
+  function andE() { let v = notE(); while (kw() === 'and') { p++; const r = notE(); const a = v, b = r; v = function (row) { return a(row) && b(row); }; } return v; }
+  function notE() { if (kw() === 'not') { p++; const r = notE(); return function (row) { return !r(row); }; } return prim(); }
+  function prim() {
+    if (toks[p] === '(') {
+      p++; const v = orE();
+      if (toks[p] === ')') p++; else err = err || 'a bracket is not closed';
+      return v;
+    }
+    const left = toks[p++];
+    if (left === undefined) { err = err || 'the filter ends before the condition does'; return function () { return true; }; }
+    if (/^[A-Za-z_]/.test(left)) cols.push(left);
+    const op = toks[p++];
+    if (op === undefined) { err = err || 'nothing to compare \u201c' + left + '\u201d against'; return function () { return true; }; }
+    if (op.toLowerCase() === 'is') {
+      let neg = false;
+      if (kw() === 'not') { neg = true; p++; }
+      p++;
+      return function (row) { return (row[left] === null || row[left] === undefined) !== neg; };
+    }
+    if (op.toLowerCase() === 'in') {
+      const list = [];
+      if (toks[p] === '(') p++;
+      while (toks[p] !== ')' && toks[p] !== undefined) { list.push(literalOf(toks[p++])); }
+      if (toks[p] === ')') p++; else err = err || 'the value list is not closed';
+      return function (row) { return list.some(function (v) { return compare(row[left], '=', v); }); };
+    }
+    if (['=', '!=', '<>', '>', '<', '>=', '<='].indexOf(op) < 0) {
+      err = err || '\u201c' + op + '\u201d is not a comparison';
+      return function () { return true; };
+    }
+    const lit = literalOf(toks[p++]);
+    if (lit === undefined) { err = err || 'no value after \u201c' + op + '\u201d'; return function () { return true; }; }
+    return function (row) { return compare(row[left], op, lit); };
+  }
+  const fn = orE();
+  if (p < toks.length) err = err || 'unexpected \u201c' + toks[p] + '\u201d at the end';
+  return { fn: err ? function () { return true; } : fn, err: err, cols: cols };
+}
+
+function aggregate(op, vals) {
+  const n = vals.length;
+  if (op === 'count') return n;
+  if (!n) return op === 'sum' ? 0 : NaN;
+  if (op === 'avg') return vals.reduce(function (a, b) { return a + b; }, 0) / n;
+  if (op === 'min') return Math.min.apply(null, vals);
+  if (op === 'max') return Math.max.apply(null, vals);
+  if (op === 'first') return vals[0];
+  if (op === 'last') return vals[n - 1];
+  return vals.reduce(function (a, b) { return a + b; }, 0);
+}
+
+function windowOp(op, s, i, n) {
+  if (op === 'delta') return i >= n ? s[i] - s[i - n] : NaN;
+  if (op === 'pct_change') return i >= n && s[i - n] ? (s[i] / s[i - n] - 1) * 100 : NaN;
+  if (i < n - 1) return NaN;
+  const w = s.slice(i - n + 1, i + 1).filter(function (v) { return !isNaN(v); });
+  if (!w.length) return NaN;
+  if (op === 'avg') return aggregate('avg', w);
+  if (op === 'sum') return aggregate('sum', w);
+  if (op === 'min') return Math.min.apply(null, w);
+  if (op === 'max') return Math.max.apply(null, w);
+  const mean = aggregate('avg', w);
+  const varc = w.reduce(function (a, v) { return a + (v - mean) * (v - mean); }, 0) / Math.max(1, w.length - 1);
+  return op === 'variance' ? varc : Math.sqrt(varc);
+}
+const EXTERNAL = {
+  nii_12m_legacy: { label: 'Net Interest Income 12m (legacy)', deprecated: true, v: { nominal: 48210000, edge: 1240, stress: 41880000 }, format: 'currency_usd' }
+};
+const META = {
+  hqla_total: { owner: 'ALM Analytics', cite: '12 CFR 249.20-22', grain: 'stock · as_of_date' },
+  lcr_pct: { owner: 'ALM Analytics', cite: '12 CFR 249.20', grain: 'stock · as_of_date' },
+  eve_delta_up200: { owner: 'IRRBB', cite: 'SR 96-13', grain: 'stock · as_of_date' }
+};
+
+const DOC_LIQ = [
+  'version: 1',
+  'view: liquidity_pit',
+  'source: alm.fct_liquidity_position',
+  'grain:',
+  '  type: stock',
+  '  as_of_field: as_of_date',
+  '  max_query_span: P1D',
+  '',
+  'measures:',
+  '  - name: hqla_total',
+  '    label: Total Eligible HQLA',
+  '    description: Post-haircut, post-cap eligible HQLA from the regulatory engine.',
+  '    type: simple',
+  '    agg: sum',
+  '    field: hqla_eligible_amount',
+  '    where: is_encumbered = false',
+  '    format: currency_usd',
+  '    sr_11_7_tier: 1',
+  '    citation: 12 CFR 249.20-22',
+  '',
+  '  - name: gross_outflows_30d',
+  '    type: simple',
+  '    agg: sum',
+  '    field: outflow_amount_30d',
+  '    format: currency_usd',
+  '',
+  '  - name: capped_inflows_30d',
+  '    type: simple',
+  '    agg: sum',
+  '    field: inflow_amount_capped_30d',
+  '    format: currency_usd',
+  '',
+  '  - name: net_cash_outflows_30d',
+  '    description: Total net cash outflows over the 30-day stress horizon, floored at zero.',
+  '    type: derived',
+  '    requires: [gross_outflows_30d, capped_inflows_30d]',
+  '    expression: >',
+  '      greatest(gross_outflows_30d - capped_inflows_30d, 0)',
+  '    format: currency_usd',
+  '',
+  '  - name: lcr_pct',
+  '    label: Liquidity Coverage Ratio',
+  '    type: derived',
+  '    requires: [hqla_total, net_cash_outflows_30d]',
+  '    expression: >',
+  '      100.0 * hqla_total / nullif(net_cash_outflows_30d, 0)',
+  '    format: percent_1dp',
+  '    sr_11_7_tier: 1',
+  '    citation: 12 CFR 249.20',
+  '',
+  '  - name: lcr_buffer',
+  '    type: derived',
+  '    requires: [lcr_pct]',
+  '    expression: >',
+  '      lcr_pct * 1.0473',
+  '    format: percent_1dp',
+  '',
+  '  - name: lcr_stress',
+  '    type: derived',
+  '    requires: [lcr_pct]',
+  '    expression: >',
+  '      lcr_pct * 0.834',
+  '    format: percent_1dp',
+  '    sr_11_7_tier: 2',
+  '',
+  '  - name: lcr_headroom',
+  '    type: derived',
+  '    requires: [lcr_pct, net_cash_outflows_30d]',
+  '    expression: >',
+  '      (lcr_pct - 100.0) / 100.0 * net_cash_outflows_30d',
+  '    format: currency_usd',
+  '',
+  '  - name: hqla_us_unencumbered',
+  '    description: Eligible HQLA held by the US entity, excluding encumbered positions.',
+  '    type: simple',
+  '    agg: sum',
+  '    field: hqla_eligible_amount',
+  "    where: is_encumbered = false and entity_id = 'BANK_US'",
+  '    format: currency_usd',
+  '',
+  '  - name: lcr_dod_change',
+  '    description: Day-over-day move in the coverage ratio.',
+  '    type: windowed',
+  '    requires: [lcr_pct]',
+  '    window.op: delta',
+  '    window.over: 1d',
+  '    window.order_by: as_of_date',
+  '    format: percent_1dp',
+  '',
+  '  - name: lcr_vol_30d',
+  '    description: Volatility of the coverage ratio across the trailing 30 days.',
+  '    type: windowed',
+  '    requires: [lcr_pct]',
+  '    window.op: stddev',
+  '    window.over: 30d',
+  '    window.order_by: as_of_date',
+  '    format: percent_2dp',
+  '',
+  '  - name: lcr_shortfall',
+  '    description: How far below the 100% minimum the ratio sits, zero when compliant.',
+  '    type: derived',
+  '    requires: [lcr_pct]',
+  '    expression: >',
+  '      case when lcr_pct < 100.0 then 100.0 - lcr_pct else 0.0 end',
+  '    format: percent_1dp'
+];
+
+const DOC_EVE = [
+  'version: 1',
+  'view: irrbb_eve',
+  'source: alm.fct_repricing_gap',
+  'grain:',
+  '  type: stock',
+  '  as_of_field: as_of_date',
+  '  max_query_span: P1D',
+  '',
+  'measures:',
+  '  - name: pv_assets',
+  '    description: Present value of asset cashflows on the base curve.',
+  '    type: simple',
+  '    agg: sum',
+  '    field: pv_asset_amount',
+  '    format: currency_usd',
+  '',
+  '  - name: pv_liabilities',
+  '    description: Present value of liability cashflows on the base curve.',
+  '    type: simple',
+  '    agg: sum',
+  '    field: pv_liability_amount',
+  '    format: currency_usd',
+  '',
+  '  - name: eve_base',
+  '    description: Economic value of equity on the base curve.',
+  '    type: derived',
+  '    requires: [pv_assets, pv_liabilities]',
+  '    expression: >',
+  '      pv_assets - pv_liabilities',
+  '    format: currency_usd',
+  '    sr_11_7_tier: 1',
+  '    citation: SR 96-13',
+  '',
+  '  - name: eve_up200',
+  '    description: Economic value of equity under a parallel +200bp shock.',
+  '    type: derived',
+  '    requires: [pv_assets, pv_liabilities]',
+  '    expression: >',
+  '      pv_assets * 0.9412 - pv_liabilities * 0.9689',
+  '    format: currency_usd',
+  '',
+  '  - name: eve_delta_up200',
+  '    type: derived',
+  '    requires: [eve_base, eve_up200]',
+  '    expression: >',
+  '      eve_up200 - eve_base',
+  '    format: currency_usd',
+  '    sr_11_7_tier: 1',
+  '    citation: SR 96-13',
+  '',
+  '  - name: nii_12m_smoothed',
+  '    type: windowed',
+  '    requires: [nii_12m_legacy]',
+  '    expression: >',
+  '      ema(nii_12m_legacy, 3)',
+  '    partition_by: [entity]',
+  '    order_by: [as_of_date]',
+  '    format: currency_usd',
+  '',
+  '  - name: desk_overlay',
+  '    type: simple',
+  '    agg: sum',
+  '    field: tsy_desk_pnl',
+  '    format: currency_usd',
+  '',
+  '  - name: eve_delta_vol_30d',
+  '    description: Volatility of the +200bp EVE change across the trailing 30 days.',
+  '    type: windowed',
+  '    requires: [eve_delta_up200]',
+  '    window.op: stddev',
+  '    window.over: 30d',
+  '    window.order_by: as_of_date',
+  '    format: currency_usd',
+  '',
+  '  - name: eve_risk_band',
+  '    description: Supervisory band — 1 when the EVE change exceeds 15% of base equity, else 0.',
+  '    type: derived',
+  '    requires: [eve_delta_up200, eve_base]',
+  '    expression: >',
+  '      case when abs(eve_delta_up200) > 0.15 * eve_base then 1.0 else 0.0 end',
+  '    format: number'
+];
+
+function lev(a, b) {
+  const m = [];
+  for (let i = 0; i <= b.length; i++) { m[i] = [i]; for (let j = 1; j <= a.length; j++) m[i][j] = i === 0 ? j : Math.min(m[i - 1][j] + 1, m[i][j - 1] + 1, m[i - 1][j - 1] + (b.charAt(i - 1) === a.charAt(j - 1) ? 0 : 1)); }
+  return m[b.length][a.length];
+}
+
+class Component extends DCLogic {
+  state = {
+    file: 'liquidity_pit',
+    docs: { liquidity_pit: DOC_LIQ.slice(), irrbb_eve: DOC_EVE.slice() },
+    editing: -1, draft: '', cIdx: 0,
+    active: 'lcr_pct', peek: null, peekLine: -1,
+    card: null,
+    fixture: 'nominal', pillState: 'resolved', mode: 'form', nameDraft: null,
+    traceMode: 'full', collapsed: {}, vtab: 'verify',
+    problemsOpen: true, filter: '', baseline: null, loopMs: 92
+  };
+
+  componentDidMount() { this.setState({ baseline: this.allValues() }); }
+
+  // ---------- doc parse ----------
+  doc() { return this.state.docs[this.state.file]; }
+  lineText(i) { return this.state.editing === i ? this.state.draft : this.doc()[i]; }
+  allLines() { const d = this.doc(); return d.map((_, i) => this.lineText(i)); }
+
+  parse() {
+    const lines = this.allLines();
+    const view = { source: '', grain: {} };
+    const ms = []; let cur = null, key = null;
+    lines.forEach((raw, i) => {
+      const t = raw.trim();
+      if (!t || t.charAt(0) === '#') return;
+      const nm = /^-\s*name:\s*(\S+)/.exec(t);
+      if (nm) { cur = { name: nm[1], line: i, f: {}, lineOf: { name: i } }; ms.push(cur); key = 'name'; return; }
+      const kv = /^([a-z_0-9.]+):\s*(.*)$/.exec(t);
+      if (kv) {
+        key = kv[1];
+        const v = kv[2] === '>' || kv[2] === '|' ? '' : kv[2];
+        if (cur) { cur.f[key] = v; cur.lineOf[key] = i; } else if (key === 'source') view.source = v; else view[key] = v;
+        return;
+      }
+      if (cur && key) cur.f[key] = (cur.f[key] ? cur.f[key] + ' ' : '') + t;
+    });
+    const byName = {}; ms.forEach(m => { byName[m.name] = m; });
+    return { lines, view, ms, byName };
+  }
+
+  reqs(m) { const r = m.f.requires || ''; return r.replace(/[\[\]]/g, '').split(',').map(s => s.trim()).filter(Boolean); }
+  exprNames(m) { return (m.f.expression || '').match(/[A-Za-z_][A-Za-z0-9_]*/g) || []; }
+
+  // ---------- evaluation ----------
+  evalExpr(src, env) {
+    const toks = src.match(/'[^']*'|>=|<=|!=|<>|[A-Za-z_][A-Za-z0-9_]*|\d+\.?\d*|[-+*\/(),<>=]/g) || [];
+    let p = 0; const self = this;
+    const peek = () => toks[p];
+    const kw = () => (toks[p] || '').toLowerCase();
+    const truthy = (x) => x === true || (typeof x === 'number' && !isNaN(x) && x !== 0);
+    const orE = () => { let v = andE(); while (kw() === 'or') { p++; const r = andE(); v = (truthy(v) || truthy(r)) ? 1 : 0; } return v; };
+    const andE = () => { let v = notE(); while (kw() === 'and') { p++; const r = notE(); v = (truthy(v) && truthy(r)) ? 1 : 0; } return v; };
+    const notE = () => { if (kw() === 'not') { p++; return truthy(notE()) ? 0 : 1; } return cmpE(); };
+    const cmpE = () => {
+      const l = addE();
+      const op = peek();
+      if (['=', '!=', '<>', '>', '<', '>='].indexOf(op) >= 0 || op === '<=') { p++; const r = addE(); return compare(l, op, r) ? 1 : 0; }
+      return l;
+    };
+    const addE = () => {
+      let v = mulE();
+      while (peek() === '+' || peek() === '-') { const o = toks[p++]; const r = mulE(); v = o === '+' ? v + r : v - r; }
+      return v;
+    };
+    const mulE = () => {
+      let v = unary();
+      while (peek() === '*' || peek() === '/') { const o = toks[p++]; const r = unary(); v = o === '*' ? v * r : (r === 0 || r === null ? NaN : v / r); }
+      return v;
+    };
+    const unary = () => { if (peek() === '-') { p++; return -unary(); } return primary(); };
+    const primary = () => {
+      const t = toks[p];
+      if (t === undefined) return NaN;
+      if (t === '(') { p++; const v = orE(); if (peek() === ')') p++; return v; }
+      if (/^'/.test(t)) { p++; return t.slice(1, -1); }
+      if (/^\d/.test(t)) { p++; return parseFloat(t); }
+      if (t.toLowerCase() === 'case') {
+        p++; let out = NaN, taken = null, branch = 0;
+        while (kw() === 'when') {
+          p++; branch++;
+          const cond = orE();
+          if (kw() === 'then') p++;
+          const val = orE();
+          if (taken === null && truthy(cond)) { out = val; taken = 'branch ' + branch; }
+        }
+        if (kw() === 'else') { p++; const val = orE(); if (taken === null) { out = val; taken = 'else'; } }
+        if (kw() === 'end') p++;
+        self._branch = taken || 'no branch matched';
+        return out;
+      }
+      p++;
+      if (peek() === '(') {
+        p++; const args = [];
+        while (peek() !== ')' && peek() !== undefined) { args.push(orE()); if (peek() === ',') p++; }
+        if (peek() === ')') p++;
+        return this.callFn(t.toLowerCase(), args);
+      }
+      const lower = t.toLowerCase();
+      if (lower === 'true') return 1;
+      if (lower === 'false') return 0;
+      return env(t);
+    };
+    const out = orE();
+    return typeof out === 'number' ? out : NaN;
+  }
+
+  callFn(name, a) {
+    switch (name) {
+      case 'greatest': case 'max': return Math.max.apply(null, a);
+      case 'least': case 'min': return Math.min.apply(null, a);
+      case 'nullif': return a[0] === a[1] ? NaN : a[0];
+      case 'coalesce': return a.find(x => !isNaN(x));
+      case 'abs': return Math.abs(a[0]);
+      case 'ema': return a[0] * 0.981;
+      case 'sum': case 'avg': case 'last': case 'first': return a[0];
+      default: return NaN;
+    }
+  }
+
+  valueOf(name, g, seen) {
+    const r = this.series(name, g, seen);
+    return Object.assign({}, r, { v: r.s[LAST] });
+  }
+  series(name, g, seen) {
+    g = g || this.parse();
+    const key = this.memoKey();
+    if (!this._memo || this._memo.key !== key) this._memo = { key: key, v: {} };
+    if (this._memo.v[name]) return this._memo.v[name];
+    const r = this.computeSeries(name, g, seen || {});
+    this._memo.v[name] = r;
+    return r;
+  }
+  memoKey() {
+    const s = this.state;
+    const c = this._kc;
+    if (c && c.d === s.docs && c.f === s.file && c.x === s.fixture && c.e === s.editing && c.r === s.draft) return c.k;
+    const k = s.file + '|' + s.fixture + '|' + this.allLines().join('\n');
+    this._kc = { d: s.docs, f: s.file, x: s.fixture, e: s.editing, r: s.draft, k: k };
+    return k;
+  }
+
+  computeSeries(name, g, seen) {
+    const flat = (v) => DATES.map(() => v);
+    if (seen[name]) return { s: flat(NaN), cyclic: true, format: 'number' };
+    const ext = EXTERNAL[name];
+    if (ext && !g.byName[name]) {
+      const v = ext.v[this.state.fixture];
+      return { s: DATES.map((d, i) => v * (0.968 + 0.0011 * i)), format: ext.format, ext: true };
+    }
+    const m = g.byName[name];
+    if (!m) return { s: flat(NaN), missing: true, format: 'number' };
+    seen = Object.assign({}, seen); seen[name] = 1;
+    const fmt = m.f.format || 'number';
+    const type = (m.f.type || '').trim();
+
+    if (type === 'simple') {
+      const pred = compilePredicate(m.f.where || '');
+      const table = (TABLES[this.state.fixture] || {})[g.view.source] || {};
+      const op = (m.f.agg || 'sum').trim();
+      const field = (m.f.field || '').trim();
+      const s = []; let rows = 0, scanned = 0;
+      DATES.forEach((d, i) => {
+        const rs = table[d] || [];
+        const vals = []; let n = 0;
+        for (let k = 0; k < rs.length; k++) {
+          if (!pred.fn(rs[k])) continue;
+          n++;
+          const val = rs[k][field];
+          if (typeof val === 'number') vals.push(val);
+        }
+        if (i === LAST) { rows = n; scanned = rs.length; }
+        s.push(aggregate(op, vals));
+      });
+      return { s: s, rows: rows, scanned: scanned, format: fmt, agg: op, field: field, where: (m.f.where || '').trim(), predErr: pred.err, predCols: pred.cols, simple: true };
+    }
+
+    if (type === 'windowed') {
+      const input = this.reqs(m)[0];
+      const op = (m.f['window.op'] || '').trim();
+      const over = parseInt(m.f['window.over'] || '1', 10) || 1;
+      if (!input || ENUMS['window.op'].indexOf(op) < 0) return { s: flat(NaN), format: fmt, windowed: true, op: op, over: over, input: input };
+      const inp = this.series(input, g, seen);
+      return { s: DATES.map((d, i) => windowOp(op, inp.s, i, over)), format: fmt, windowed: true, op: op, over: over, input: input, cyclic: inp.cyclic };
+    }
+
+    let cyc = false;
+    const names = this.exprNames(m).filter(n => !(n in FUNCS) && !(n in LITERALS) && !/^\d/.test(n)).filter((n, i, a) => a.indexOf(n) === i);
+    const child = {};
+    names.forEach(n => {
+      const r = this.series(n, g, seen);
+      if (r.cyclic) cyc = true;
+      child[n] = r.s;
+    });
+    const s = DATES.map((d, i) => {
+      if (i === LAST) this._branch = null;
+      return this.evalExpr(m.f.expression || '', (n) => (child[n] ? child[n][i] : NaN));
+    });
+    return { s: s, format: fmt, derived: true, cyclic: cyc, branch: this._branch, hasCase: /\bcase\b/i.test(m.f.expression || '') };
+  }
+
+  allValues() {
+    const g = this.parse(); const out = {};
+    g.ms.forEach(m => { out[m.name] = this.series(m.name, g).s[LAST]; });
+    return out;
+  }
+
+  fmt(v, format) {
+    if (v === null || v === undefined || isNaN(v)) return '—';
+    if (format === 'percent_1dp') return v.toFixed(1) + '%';
+    if (format === 'percent_2dp') return v.toFixed(2) + '%';
+    if (format === 'currency_usd_mm') return (v < 0 ? '-$' : '$') + Math.abs(v / 1e6).toFixed(1) + 'M';
+    if (format === 'bps') return (v < 0 ? '-' : '') + Math.round(Math.abs(v) * 100).toLocaleString('en-US') + ' bps';
+    if (format === 'number') return Math.round(v).toLocaleString('en-US');
+    return (v < 0 ? '-$' : '$') + Math.round(Math.abs(v)).toLocaleString('en-US');
+  }
+
+  // ---------- diagnostics ----------
+  diags() {
+    const g = this.parse(); const out = [];
+    const cols = COLUMNS[g.view.source] || [];
+    g.ms.forEach(m => {
+      const scope = Object.keys(g.byName).concat(Object.keys(EXTERNAL));
+      const reqs = this.reqs(m);
+      const tier = parseInt(m.f.sr_11_7_tier || '0', 10);
+      ['type', 'format', 'agg', 'sr_11_7_tier', 'window.op', 'window.over'].forEach(k => {
+        const v = (m.f[k] || '').trim();
+        if (!v || ENUMS[k].indexOf(v) >= 0) return;
+        let best = null, bd = 99;
+        ENUMS[k].forEach(o => { const d = lev(v, o); if (d < bd) { bd = d; best = o; } });
+        out.push({ code: 'KEEL044', sev: 'error', message: '\u201c' + v + '\u201d is not a valid ' + ENUM_LABEL[k] + '. Choose one of: ' + ENUMS[k].join(', ') + '.', line: m.lineOf[k], fix: { kind: 'rename', from: v, to: best, line: m.lineOf[k] }, fixLabel: 'Use ' + best });
+      });
+      if (m.f.type === 'simple' && m.f.field && cols.indexOf(m.f.field) < 0)
+        out.push({ code: 'KEEL004', sev: 'error', message: 'Column ' + m.f.field + ' not found on source ' + g.view.source, line: m.lineOf.field, fix: null });
+      if (m.f.type === 'simple') {
+        const r = this.valueOf(m.name, g);
+        if (r.predErr)
+          out.push({ code: 'KEEL052', sev: 'error', message: 'This filter can\u2019t be read \u2014 ' + r.predErr, line: m.lineOf.where, fix: null });
+        (r.predCols || []).forEach(cn => {
+          if (cols.indexOf(cn) < 0) out.push({ code: 'KEEL050', sev: 'error', message: 'The filter uses ' + cn + ', which is not a column on ' + g.view.source, line: m.lineOf.where, fix: null });
+        });
+        if (!r.predErr && m.f.where && r.rows === 0)
+          out.push({ code: 'KEEL051', sev: 'warn', message: 'The filter on ' + m.name + ' matches no rows in this test data, so the answer is empty', line: m.lineOf.where, fix: null });
+      }
+      if (m.f.type === 'windowed') {
+        if (!m.f['window.op'])
+          out.push({ code: 'KEEL025', sev: 'error', message: m.name + ' looks across dates, so it needs window.op \u2014 for example stddev or delta', line: m.lineOf.name, fix: { kind: 'addWindow', line: m.lineOf.name, m: m.name }, fixLabel: 'Add window' });
+        if (this.reqs(m).length !== 1)
+          out.push({ code: 'KEEL027', sev: 'error', message: m.name + ' must list exactly one measure in requires \u2014 the series it looks across', line: m.lineOf.requires !== undefined ? m.lineOf.requires : m.lineOf.name, fix: null });
+        if (m.f['window.over'] && !/^\d+d$/.test((m.f['window.over'] || '').trim()))
+          out.push({ code: 'KEEL026', sev: 'error', message: 'window.over must be a number of days, like 30d', line: m.lineOf['window.over'], fix: null });
+      }
+      const used = this.exprNames(m).filter(n => !(n in FUNCS) && !(n in LITERALS) && !/^\d/.test(n));
+      used.forEach(n => {
+        if (scope.indexOf(n) < 0) {
+          let best = null, bd = 99;
+          scope.forEach(s => { const d = lev(n, s); if (d < bd) { bd = d; best = s; } });
+          out.push({ code: 'KEEL001', sev: 'error', message: 'Unknown measure ' + n + (bd <= 4 ? '. Did you mean ' + best + '?' : '.'), line: m.lineOf.expression, fix: bd <= 4 ? { kind: 'rename', from: n, to: best, line: m.lineOf.expression } : null, fixLabel: 'Use ' + best });
+        } else if (reqs.indexOf(n) < 0) {
+          out.push({ code: 'KEEL005', sev: 'error', message: n + ' is used in the formula but missing from requires, its dependency list', line: m.lineOf.expression, fix: { kind: 'addReq', name: n, line: m.lineOf.requires, m: m.name }, fixLabel: 'Add to requires' });
+        }
+        if (n in FUNCS === false && EXTERNAL[n] && EXTERNAL[n].deprecated)
+          out.push({ code: 'KEEL035', sev: 'warn', message: n + ' is being retired — move off it before this goes for review', line: m.lineOf.expression, fix: null });
+      });
+      reqs.forEach(n => {
+        if (used.indexOf(n) < 0 && m.f.expression) out.push({ code: 'KEEL006', sev: 'warn', message: n + ' is listed in requires but never used in the formula', line: m.lineOf.requires, fix: { kind: 'dropReq', name: n, line: m.lineOf.requires }, fixLabel: 'Remove' });
+      });
+      (this.exprNames(m) || []).forEach(n => {
+        if (UNSUPPORTED[n]) out.push({ code: 'KEEL021', sev: 'warn', message: UNSUPPORTED[n] + ' can\u2019t run ' + n + ', so this measure won\u2019t work there', line: m.lineOf.expression, fix: null });
+      });
+      if (tier >= 1 && !m.f.description)
+        out.push({ code: 'KEEL030', sev: tier <= 2 ? 'error' : 'warn', message: m.name + ' is under oversight level ' + tier + ', so it needs a description', line: m.lineOf.name, fix: { kind: 'addDesc', line: m.lineOf.name, m: m.name }, fixLabel: 'Insert stub' });
+      if (tier >= 1 && !m.f.citation)
+        out.push({ code: 'KEEL031', sev: 'error', message: m.name + ' is under oversight level ' + tier + ', so it needs the rule it comes from', line: m.lineOf.name, fix: null });
+      if (!/^[a-z][a-z0-9_]*$/.test(m.name))
+        out.push({ code: 'KEEL041', sev: 'info', message: m.name + ' should be lowercase_with_underscores', line: m.lineOf.name, fix: null });
+      if (!m.f.format)
+        out.push({ code: 'KEEL042', sev: 'info', message: m.name + ' has no format, so the number will display raw', line: m.lineOf.name, fix: null });
+    });
+    return out;
+  }
+
+  // ---------- edits ----------
+  setLine(i, text) {
+    const docs = Object.assign({}, this.state.docs);
+    const d = docs[this.state.file].slice(); d[i] = text; docs[this.state.file] = d;
+    this.setState({ docs: docs, loopMs: 78 + Math.round(Math.random() * 40) });
+  }
+  spliceLines(i, del, add) {
+    const docs = Object.assign({}, this.state.docs);
+    const d = docs[this.state.file].slice(); d.splice.apply(d, [i, del].concat(add)); docs[this.state.file] = d;
+    this.setState({ docs: docs, editing: -1 });
+  }
+  beginEdit(i) {
+    const g = this.parse();
+    let owner = this.state.active;
+    g.ms.forEach(m => { if (m.line <= i) owner = m.name; });
+    this.setState({ editing: i, draft: this.doc()[i], cIdx: 0, card: null, baseline: this.state.baseline || this.allValues(), active: owner }, () => {
+      const c = this.candidates();
+      const at = c.current ? c.list.findIndex(x => x.n === c.current) : -1;
+      if (at > 0) this.setState({ cIdx: at });
+    });
+  }
+  commit() { if (this.state.editing >= 0) { this.setLine(this.state.editing, this.state.draft); this.setState({ editing: -1 }); } }
+
+  // ---------- structured (form) editing — writes the same YAML ----------
+  setField(mName, key, value) {
+    const g = this.parse();
+    const m = g.byName[mName]; if (!m) return;
+    const doc = this.doc();
+    if (m.lineOf[key] !== undefined) {
+      if (value === null) { this.spliceLines(m.lineOf[key], 1, []); return; }
+      const ind = (/^(\s*(?:-\s*)?)/.exec(doc[m.lineOf[key]]) || ['', '    '])[1];
+      this.setLine(m.lineOf[key], ind + key + ': ' + value);
+      return;
+    }
+    if (value === null) return;
+    let at = m.lineOf.name;
+    Object.keys(m.lineOf).forEach(k => { if (m.lineOf[k] > at) at = m.lineOf[k]; });
+    let end = at;
+    const d = this.doc();
+    while (end + 1 < d.length && d[end + 1].trim() && !/^-\s*name:/.test(d[end + 1].trim())) end++;
+    this.spliceLines(end + 1, 0, ['    ' + key + ': ' + value]);
+  }
+
+  renameMeasure(from, to) {
+    if (!to || from === to) return;
+    const g = this.parse();
+    const m = g.byName[from]; if (!m) return;
+    const doc = this.doc().slice();
+    const re = new RegExp('\\b' + from + '\\b', 'g');
+    g.ms.forEach(other => {
+      ['requires', 'expression'].forEach(k => {
+        if (other.lineOf[k] === undefined) return;
+        for (let i = other.lineOf[k]; i < doc.length; i++) {
+          if (i > other.lineOf[k] && /^\s*(?:-\s*)?[a-z_0-9.]+:/.test(doc[i])) break;
+          if (i > other.lineOf[k] && !doc[i].trim()) break;
+          if (other.name !== from) doc[i] = doc[i].replace(re, to);
+        }
+      });
+    });
+    const ind = (/^(\s*(?:-\s*)?)/.exec(doc[m.lineOf.name]) || ['', '    '])[1];
+    doc[m.lineOf.name] = ind + 'name: ' + to;
+    const docs = Object.assign({}, this.state.docs);
+    docs[this.state.file] = doc;
+    this.setState({ docs: docs, active: to, nameDraft: null });
+  }
+
+  exprText(m) { return (m.f.expression || '').trim(); }
+
+  setExpr(mName, text) {
+    const g = this.parse();
+    const m = g.byName[mName]; if (!m) return;
+    const d = this.doc();
+    if (m.lineOf.expression === undefined) {
+      let at = m.lineOf.name;
+      Object.keys(m.lineOf).forEach(k => { if (m.lineOf[k] > at) at = m.lineOf[k]; });
+      this.spliceLines(at + 1, 0, ['    expression: >', '      ' + text]);
+      return;
+    }
+    const head = m.lineOf.expression;
+    let n = 0;
+    while (head + 1 + n < d.length) {
+      const t = d[head + 1 + n];
+      if (!t.trim() || /^\s{0,5}\S/.test(t) || /^\s*(?:-\s*)?[a-z_0-9.]+:/.test(t)) break;
+      n++;
+    }
+    this.spliceLines(head, 1 + n, ['    expression: >', '      ' + text]);
+  }
+
+  filterRows(m) {
+    const text = (m.f.where || '').trim();
+    if (!text) return { rows: [], advanced: false };
+    if (/[()]|\bnot\b|\bin\b|is\s+not?\s*null/i.test(text)) return { rows: [], advanced: true, raw: text };
+    const parts = text.split(/\s+(and|or)\s+/i);
+    const rows = [];
+    for (let i = 0; i < parts.length; i += 2) {
+      const mm = /^([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<=|!=|<>|=|>|<)\s*(.+)$/.exec(parts[i].trim());
+      if (!mm) return { rows: [], advanced: true, raw: text };
+      rows.push({ col: mm[1], op: mm[2], val: mm[3].trim(), join: i ? parts[i - 1].toLowerCase() : '' });
+    }
+    return { rows: rows, advanced: false };
+  }
+
+  writeFilter(mName, rows) {
+    if (!rows.length) { this.setField(mName, 'where', null); return; }
+    const parts = [];
+    rows.forEach((r, i) => { if (i) parts.push(r.join || 'and'); parts.push(r.col + ' ' + r.op + ' ' + r.val); });
+    this.setField(mName, 'where', parts.join(' '));
+  }
+
+  exprChips(m) {
+    const text = this.exprText(m);
+    return (text.match(/'[^']*'|>=|<=|!=|<>|[A-Za-z_][A-Za-z0-9_]*|\d+\.?\d*|[-+*\/(),<>=]/g) || []);
+  }
+
+  writeChips(mName, chips) { this.setExpr(mName, chips.join(' ').replace(/\s+([,)])/g, '$1').replace(/\(\s+/g, '(')); }
+
+  applyFix(f) {
+    if (!f) return;
+    if (f.kind === 'rename') this.setLine(f.line, this.doc()[f.line].replace(new RegExp('\\b' + f.from + '\\b', 'g'), f.to));
+    if (f.kind === 'addReq') {
+      const t = this.doc()[f.line] || '';
+      this.setLine(f.line, t.replace(/\]\s*$/, (t.match(/\[\s*\]/) ? '' : ', ') + f.name + ']'));
+    }
+    if (f.kind === 'dropReq') {
+      const t = this.doc()[f.line];
+      this.setLine(f.line, t.replace(new RegExp(',\\s*' + f.name + '|' + f.name + ',\\s*|' + f.name), '').replace(/\[\s*,/, '['));
+    }
+    if (f.kind === 'addWindow') this.spliceLines(f.line + 1, 0, ['    window.op: stddev', '    window.over: 30d', '    window.order_by: as_of_date']);
+    if (f.kind === 'addDesc') this.spliceLines(f.line + 1, 0, ['    description: TODO — describe what ' + f.m + ' computes and why.']);
+  }
+
+  // ---------- tokenizing a line into pills ----------
+  classify(word, key, g) {
+    if (word in FUNCS) return 'func';
+    if (g.byName[word] || EXTERNAL[word]) return 'measure';
+    if (DIMS[word]) return 'dimension';
+    if ((COLUMNS[g.view.source] || []).indexOf(word) >= 0) return 'column';
+    if (word in LITERALS || /^\d/.test(word)) return null;
+    if (key === 'requires' || key === 'expression' || key === 'field' || key === 'weight') return 'unresolved';
+    return null;
+  }
+
+  pillState(name, kind, g) {
+    if (this.state.pillState !== 'resolved' && name === 'hqla_total') return this.state.pillState;
+    if (kind === 'unresolved') return 'unresolved';
+    if (RESTRICTED[name]) return 'restricted';
+    if (EXTERNAL[name] && EXTERNAL[name].deprecated) return 'deprecated';
+    const v = this.valueOf(name, g);
+    if (v && v.cyclic) return 'circular';
+    return 'resolved';
+  }
+
+  pillCss(kind, st) {
+    let hue = kind === 'func' ? HUE.func : kind === 'dimension' ? HUE.dimension : kind === 'column' ? HUE.column : HUE.measure;
+    let border = '1px solid', dash = 'solid', op = 1, anim = 'none', ring = '';
+    if (st === 'unresolved') { hue = HUE.unresolved; dash = 'dashed'; }
+    if (st === 'circular') hue = HUE.unresolved;
+    if (st === 'deprecated') { hue = HUE.warn; op = 0.7; }
+    if (st === 'restricted') hue = HUE.column;
+    if (st === 'stale') { op = 0.4; anim = 'mdlStale 1.6s ease-in-out infinite'; }
+    if (st === 'focused') ring = '0 0 0 2px rgba(242,179,0,.55)';
+    return {
+      display: 'inline-block', padding: '1px 6px', borderRadius: '4px', border: '1px ' + dash + ' ' + hue + '52',
+      background: hue + '24', color: hue, opacity: op, animation: anim, boxShadow: ring,
+      cursor: 'pointer', fontFamily: MONO, position: 'relative'
+    };
+  }
+
+  tokens(i, g) {
+    const raw = this.lineText(i);
+    const lines = g.lines;
+    let key = null, mOwner = null;
+    for (let k = 0; k <= i; k++) {
+      const t = lines[k].trim(); if (!t) continue;
+      const nm = /^-\s*name:\s*(\S+)/.exec(t);
+      if (nm) { key = 'name'; mOwner = nm[1]; continue; }
+      const kv = /^([a-z_0-9.]+):\s*(.*)$/.exec(t);
+      if (kv) key = kv[1];
+    }
+    const out = [];
+    const kv = /^(\s*(?:-\s*)?[a-z_0-9.]+:\s*)(.*)$/.exec(raw);
+    let head = '', body = raw, lineKey = key;
+    if (kv) { head = kv[1]; body = kv[2]; lineKey = /([a-z_0-9.]+):/.exec(kv[1])[1]; }
+    if (head) out.push({ text: head, plain: true, css: { color: 'var(--text-secondary)', fontFamily: MONO } });
+    if (!(lineKey in PILL_KEYS)) {
+      if (body) out.push({ text: body, plain: true, css: { color: body.trim() ? 'var(--text-primary)' : 'var(--text-primary)', fontFamily: MONO } });
+      if (!head && !body) out.push({ text: ' ', plain: true, css: { fontFamily: MONO } });
+      return out;
+    }
+    const parts = body.split(/([A-Za-z_][A-Za-z0-9_]*)/);
+    parts.forEach(p => {
+      if (!p) return;
+      const kind = /^[A-Za-z_]/.test(p) ? this.classify(p, lineKey, g) : null;
+      if (!kind) { out.push({ text: p, plain: true, css: { color: 'var(--text-secondary)', fontFamily: MONO } }); return; }
+      const st = this.pillState(p, kind, g);
+      const glyph = st === 'unresolved' ? '?' : st === 'circular' ? '↻' : st === 'restricted' ? '⊠' : kind === 'func' ? 'ƒ' : kind === 'dimension' ? '▤' : kind === 'column' ? '·' : '⟨';
+      const post = kind === 'measure' && st !== 'unresolved' && st !== 'circular' && st !== 'restricted' ? '⟩' : st === 'deprecated' ? '⊘' : '';
+      const v = this.valueOf(p, g);
+      const tier = g.byName[p] ? parseInt(g.byName[p].f.sr_11_7_tier || '0', 10) : 0;
+      out.push({
+        text: st === 'restricted' ? 'hidden' : p, name: p, kind: kind, st: st,
+        pre: glyph + (glyph === '⟨' ? '' : ' '), post: post,
+        css: this.pillCss(kind, st), tier: tier,
+        title: KIND_LABEL[kind] + ' ' + p + ', ' + (tier ? 'oversight level ' + tier + ', ' : '') + STATE_LABEL[st] + (st === 'resolved' ? ', currently ' + this.fmt(v.v, v.format) : '')
+      });
+    });
+    if (!out.length) out.push({ text: raw || ' ', plain: true, css: { fontFamily: MONO, color: 'var(--text-primary)' } });
+    return out;
+  }
+
+  // ---------- completion ----------
+  candidates() {
+    if (this.state.editing < 0) return { scope: '', list: [] };
+    const g = this.parse();
+    const raw = this.state.draft;
+    const kv = /^(\s*(?:-\s*)?[a-z_0-9.]+:\s*)(.*)$/.exec(raw);
+    let key = kv ? /([a-z_0-9.]+):/.exec(kv[1])[1] : null;
+    if (!key) { for (let k = this.state.editing; k >= 0; k--) { const m = /^\s*([a-z_0-9.]+):/.exec(g.lines[k]); if (m) { key = m[1]; break; } } }
+    const word = (raw.match(/[A-Za-z0-9_]+$/) || [''])[0];
+    let pool = [], scope = '';
+    if (key === 'requires') { pool = Object.keys(g.byName).concat(Object.keys(EXTERNAL)).map(n => ({ n: n, k: 'measure' })); scope = 'measures you can reference here'; }
+    else if (key === 'expression') {
+      let owner = null; g.ms.forEach(m => { if (m.line <= this.state.editing) owner = m; });
+      const rq = owner ? this.reqs(owner) : [];
+      pool = rq.map(n => ({ n: n, k: 'measure' })).concat(Object.keys(FUNCS).map(n => ({ n: n, k: 'func' })))
+        .concat(['case', 'when', 'then', 'else', 'end'].map(n => ({ n: n, k: 'enum', h: 'condition' })));
+      scope = 'names from requires, functions, then case';
+    }
+    else if (key === 'field' || key === 'weight') { pool = (COLUMNS[g.view.source] || []).map(n => ({ n: n, k: 'column' })); scope = 'columns in ' + g.view.source; }
+    else if (key === 'where') {
+      const cols = COLUMNS[g.view.source] || [];
+      const val = /([a-z_0-9]+)\s*(=|!=|<>|>=|<=|>|<)\s*'?[A-Za-z0-9_]*$/.exec(raw);
+      const opAfter = /([a-z_0-9]+)\s+$/.exec(raw);
+      if (val && cols.indexOf(val[1]) >= 0) {
+        pool = distinctValues(this.state.fixture, g.view.source, val[1]).map(n => ({ n: n, k: 'enum', h: 'found in the data' }));
+        scope = 'values of ' + val[1] + ' in this test data';
+        if (!pool.length) { pool = cols.map(n => ({ n: n, k: 'column' })); scope = 'columns in ' + g.view.source; }
+      } else if (opAfter && cols.indexOf(opAfter[1]) >= 0) {
+        pool = ['=', '!=', '>', '<', '>=', '<=', 'in', 'is null'].map(n => ({ n: n, k: 'enum', h: 'comparison' }));
+        scope = 'how to compare ' + opAfter[1];
+      } else {
+        pool = cols.map(n => ({ n: n, k: 'column' })).concat(['and', 'or', 'not'].map(n => ({ n: n, k: 'enum', h: 'joins conditions' })));
+        scope = 'columns, then and / or';
+      }
+    }
+    else if (key === 'agg') { pool = ENUMS.agg.map(n => ({ n: n, k: 'func', h: ENUM_HELP[n] })); scope = 'how rows are combined'; }
+    else if (key === 'type' || key === 'format' || key === 'sr_11_7_tier' || key === 'window.op' || key === 'window.over') {
+      let owner = null; g.ms.forEach(m => { if (m.line <= this.state.editing) owner = m; });
+      const inMeasure = !!owner && key !== 'type' ? true : !!owner;
+      const set = key === 'type' && !inMeasure ? 'grain_type' : key;
+      pool = ENUMS[set].map(n => ({
+        n: n, k: 'enum',
+        h: key === 'format' && owner ? this.fmt(this.valueOf(owner.name, g).v, n)
+          : set === 'window.op' ? WINDOW_HELP[n]
+          : set === 'window.over' ? 'trailing ' + parseInt(n, 10) + ' days'
+          : ENUM_HELP[n]
+      }));
+      scope = ENUM_LABEL[set] + ' \u2014 pick one';
+    }
+    else if (key === 'partition_by' || key === 'order_by' || key === 'window.partition_by' || key === 'window.order_by') { pool = Object.keys(DIMS).map(n => ({ n: n, k: 'dimension' })).concat((COLUMNS[g.view.source] || []).map(n => ({ n: n, k: 'column' }))); scope = 'groupings \u2014 time first'; }
+    else return { scope: '', list: [] };
+    const inPool = pool.some(p => p.n === word);
+    if (!word || inPool) return { scope: scope, list: pool.slice(0, 8), word: word, current: inPool ? word : null };
+    let list = pool.filter(p => p.n.indexOf(word) === 0 && p.n !== word);
+    if (!list.length) list = pool;
+    return { scope: scope, list: list.slice(0, 8), word: word, current: null };
+  }
+
+  accept(name) {
+    const c = this.candidates();
+    const raw = this.state.draft;
+    const w = c.word || '';
+    const next = raw.slice(0, raw.length - w.length) + name;
+    this.setState({ draft: next, cIdx: 0 }, () => {
+      const k = /^\s*(?:-\s*)?([a-z_0-9.]+):/.exec(next);
+      if (k && ENUMS[k[1]]) this.commit();
+    });
+  }
+
+  // ---------- trace ----------
+  traceNodes() {
+    const g = this.parse();
+    const root = this.state.active;
+    const out = [];
+    const walk = (name, depth) => {
+      const m = g.byName[name]; const r = this.valueOf(name, g);
+      const ext = EXTERNAL[name];
+      const kids = m && (m.f.type || '').trim() === 'windowed' ? this.reqs(m) : m && m.f.type !== 'simple' ? this.exprNames(m).filter(n => !(n in FUNCS) && !(n in LITERALS) && !/^\d/.test(n)).filter((n, i, a) => a.indexOf(n) === i) : [];
+      const key = name + '@' + depth;
+      const auto = this.state.traceMode === 'full' ? true : depth < 1;
+      const open = this.state.collapsed[key] === undefined ? auto : !this.state.collapsed[key];
+      const detail = [];
+      if (m && m.f.type === 'simple') detail.push({ text: (m.f.agg || 'sum') + '(' + (m.f.field || '?') + ')' + (m.f.where ? '  where ' + m.f.where : ''), rows: (r.rows === null ? '' : r.rows.toLocaleString('en-US') + ' rows'), zero: r.rows === 0 });
+      if (r.windowed) detail.push({ text: (WINDOW_HELP[r.op] || r.op) + ' \u00b7 ' + r.over + ' day window', rows: r.over + ' points' });
+      if (r.hasCase) detail.push({ text: 'case \u2192 ' + (r.branch || 'no branch matched'), rows: '' });
+      if (ext && !m) detail.push({ text: 'defined in another file', rows: '' });
+      out.push({ name: name, depth: depth, v: r, kids: kids.length, open: open, key: key, detail: detail, tier: m ? parseInt(m.f.sr_11_7_tier || '0', 10) : 0 });
+      if (open) kids.forEach(k => walk(k, depth + 1));
+    };
+    walk(root, 0);
+    return out;
+  }
+
+  dependents(name) {
+    const g = this.parse(); const out = [];
+    const direct = (n) => g.ms.filter(m => (this.exprNames(m).indexOf(n) >= 0 || this.reqs(m).indexOf(n) >= 0) && m.name !== n).map(m => m.name);
+    const seen = {};
+    const walk = (n) => direct(n).forEach(d => { if (!seen[d]) { seen[d] = 1; out.push(d); walk(d); } });
+    walk(name);
+    return out;
+  }
+
+  // ---------- render ----------
+  renderVals() {
+    const s = this.state;
+    const g = this.parse();
+    const diags = this.diags();
+    const byLine = {};
+    diags.forEach(d => { const p = byLine[d.line] || (byLine[d.line] = []); p.push(d); });
+    const errors = diags.filter(d => d.sev === 'error').length;
+    const warns = diags.filter(d => d.sev === 'warn').length;
+    const infos = diags.filter(d => d.sev === 'info').length;
+    const cand = this.candidates();
+    const ghostPick = cand.list.length === 1 && cand.word && !cand.current ? cand.list[0].n.slice(cand.word.length) : '';
+
+    const lines = g.lines.map((raw, i) => {
+      const editing = s.editing === i;
+      const toks = editing ? [] : this.tokens(i, g);
+      const dl = byLine[i] || [];
+      const worst = dl.some(d => d.sev === 'error') ? 'error' : dl.some(d => d.sev === 'warn') ? 'warn' : dl.length ? 'info' : null;
+      let owner = null; g.ms.forEach(m => { if (m.line <= i) owner = m.name; });
+      const isActive = owner === s.active;
+      return {
+        no: i + 1, raw: editing ? s.draft : raw, editing: editing, showTokens: !editing,
+        wrapCss: { background: isActive ? 'rgba(69,182,240,.045)' : 'transparent', borderLeft: isActive ? '2px solid rgba(69,182,240,.45)' : '2px solid transparent' },
+        gutterCss: { width: '38px', flex: 'none', textAlign: 'right', paddingRight: '8px', color: editing ? '#F2B300' : 'var(--text-tertiary)', fontSize: '11px', lineHeight: '22px', fontVariantNumeric: 'tabular-nums', userSelect: 'none' },
+        sevCss: { width: '14px', flex: 'none', textAlign: 'center', lineHeight: '22px', fontSize: '10px', color: worst === 'error' ? HUE.unresolved : worst === 'warn' ? HUE.warn : worst ? '#45B6F0' : 'transparent' },
+        sev: worst === 'error' ? '✕' : worst === 'warn' ? '⚠' : worst ? 'i' : '',
+        marks: toks.filter(t => t.name).map(t => ({ css: { width: '2px', height: '11px', background: t.css.color, opacity: 0.85, display: 'block' } })),
+        tokens: toks.map(t => ({
+          text: t.text, pre: t.pre || '', post: t.post || '', title: t.title || '',
+          css: Object.assign({ whiteSpace: 'pre' }, t.css, dl.length && t.name && dl.some(d => d.message.indexOf(t.name) >= 0) ? { textDecoration: 'underline wavy ' + (dl.some(d => d.sev === 'error') ? HUE.unresolved : HUE.warn), textDecorationSkipInk: 'none', textUnderlineOffset: '3px' } : {}),
+          tierCss: t.tier >= 1 && t.tier <= 2 ? { position: 'absolute', top: '-1px', right: '-1px', width: '5px', height: '5px', borderRadius: '50%', background: HUE.signal, display: 'block' } : { display: 'none' },
+          onEnter: t.name ? (e) => { const r = e.currentTarget.getBoundingClientRect(); this._t = setTimeout(() => this.setState({ card: { name: t.name, kind: t.kind, st: t.st, x: r.left, y: r.bottom + 6 } }), 300); } : null,
+          onLeave: t.name ? () => { clearTimeout(this._t); this.setState({ card: null }); } : null,
+          onClick: (e) => {
+            if (!t.name) { this.beginEdit(i); return; }
+            e.stopPropagation();
+            if (e.metaKey || e.ctrlKey) { const m = g.byName[t.name]; this.setState({ active: t.name, card: null, editing: -1, peek: null }); if (m) this.setState({ active: t.name }); return; }
+            if (e.altKey) { this.setState({ peek: t.name, peekLine: i, card: null }); return; }
+            this.beginEdit(i);
+          }
+        })),
+        hasPeek: s.peek && s.peekLine === i,
+        hasCompletion: editing && cand.list.length > 0,
+        ghost: editing ? ghostPick : '',
+        ghostCss: { position: 'absolute', left: (editing ? s.draft.length : 0) + 'ch', top: 0, lineHeight: '22px', color: 'var(--text-tertiary)', pointerEvents: 'none', fontFamily: MONO },
+        onEdit: () => this.beginEdit(i),
+        onChange: (e) => this.setState({ draft: e.target.value, cIdx: 0 }),
+        onBlur: () => this.commit(),
+        onDragOver: (e) => e.preventDefault(),
+        onDrop: (e) => {
+          e.preventDefault();
+          const n = this._drag; if (!n) return;
+          const t = this.doc()[i];
+          const next = /\]\s*$/.test(t) ? t.replace(/\]\s*$/, (/\[\s*\]/.test(t) ? '' : ', ') + n + ']') : t.replace(/\s*$/, ' ' + n);
+          this.setLine(i, next);
+        },
+        onKeyDown: (e) => {
+          if (e.key === 'Tab') { e.preventDefault(); if (ghostPick) this.accept(cand.list[0].n); else if (cand.list.length) this.accept(cand.list[s.cIdx].n); return; }
+          if (e.key === 'Enter') { e.preventDefault(); if (cand.list.length && s.cIdx >= 0 && cand.word) this.accept(cand.list[s.cIdx].n); else { this.commit(); } return; }
+          if (e.key === 'Escape') { e.preventDefault(); this.setState({ editing: -1 }); return; }
+          if (e.key === 'ArrowDown' && cand.list.length) { e.preventDefault(); this.setState({ cIdx: (s.cIdx + 1) % cand.list.length }); }
+          if (e.key === 'ArrowUp' && cand.list.length) { e.preventDefault(); this.setState({ cIdx: (s.cIdx - 1 + cand.list.length) % cand.list.length }); }
+        }
+      };
+    });
+
+    const glyphOf = (k) => k === 'func' ? 'ƒ' : k === 'dimension' ? '▤' : k === 'column' ? '·' : '⟨⟩';
+    const hueOf = (k) => k === 'func' ? HUE.func : k === 'dimension' ? HUE.dimension : k === 'column' ? HUE.column : HUE.measure;
+
+    // registry tree
+    const tree = [];
+    ['liquidity_pit', 'irrbb_eve'].forEach(f => {
+      const docLines = s.docs[f];
+      const isCur = f === s.file;
+      const names = [];
+      docLines.forEach((l, i) => { const m = /^-\s*name:\s*(\S+)/.exec(l.trim()); if (m) names.push({ n: m[1], i: i }); });
+      const fileDiags = isCur ? diags : [];
+      tree.push({
+        name: f + '.yaml', glyph: '⧉', meta: names.length + '', draggable: false, title: 'view ' + f,
+        css: { display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px 4px 8px', cursor: 'pointer', fontSize: '12px', fontFamily: MONO, color: isCur ? 'var(--text-primary)' : 'var(--text-secondary)', background: isCur ? 'var(--surface-2)' : 'transparent' },
+        dotCss: { width: '6px', height: '6px', borderRadius: '50%', flex: 'none', background: fileDiags.some(d => d.sev === 'error') ? HUE.unresolved : fileDiags.some(d => d.sev === 'warn') ? HUE.warn : '#34C77B' },
+        glyphCss: { color: HUE.measure, fontSize: '11px' },
+        nameCss: { color: 'inherit' }, tierCss: { display: 'none' },
+        onClick: () => this.setState({ file: f, editing: -1, peek: null, active: f === 'liquidity_pit' ? 'lcr_pct' : 'eve_delta_up200', collapsed: {}, baseline: null }, () => this.setState({ baseline: this.allValues() }))
+      });
+      if (!isCur) return;
+      names.filter(x => !s.filter || x.n.indexOf(s.filter) >= 0).forEach(x => {
+        const m = g.byName[x.n];
+        const tier = m ? parseInt(m.f.sr_11_7_tier || '0', 10) : 0;
+        const r = this.valueOf(x.n, g);
+        const dl = diags.filter(d => d.line >= x.i && d.line < x.i + 12 && d.message.indexOf(x.n) >= 0);
+        tree.push({
+          name: x.n, glyph: '⟨⟩', meta: this.fmt(r.v, r.format), draggable: true, title: 'drag into the editor to insert a reference',
+          css: { display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 10px 3px 22px', cursor: 'grab', fontSize: '12px', fontFamily: MONO, color: s.active === x.n ? 'var(--text-primary)' : 'var(--text-secondary)', background: s.active === x.n ? 'rgba(69,182,240,.09)' : 'transparent', borderLeft: s.active === x.n ? '2px solid #45B6F0' : '2px solid transparent' },
+          dotCss: { width: '5px', height: '5px', borderRadius: '50%', flex: 'none', background: dl.some(d => d.sev === 'error') ? HUE.unresolved : dl.length ? HUE.warn : 'var(--gray-500)' },
+          glyphCss: { color: HUE.measure, fontSize: '10px', opacity: 0.8 },
+          nameCss: { color: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px' },
+          tierCss: tier >= 1 && tier <= 2 ? { width: '5px', height: '5px', borderRadius: '50%', background: HUE.signal, flex: 'none', marginRight: '4px' } : { display: 'none' },
+          onDragStart: () => { this._drag = x.n; },
+          onClick: () => this.setState({ active: x.n, peek: null, nameDraft: null })
+        });
+      });
+    });
+
+    // value
+    const rv = this.valueOf(s.active, g);
+    const base = s.baseline || {};
+    const prev = base[s.active];
+    const COMPILE = { KEEL001: 1, KEEL002: 1, KEEL003: 1, KEEL004: 1, KEEL005: 1, KEEL007: 1, KEEL022: 1 };
+    const blocking = diags.find(d => d.sev === 'error' && COMPILE[d.code]);
+    const stale = !!blocking;
+    const spark = [];
+    const sser = (rv.s || []).slice(-42).map(v => (isNaN(v) ? null : v));
+    const fin = sser.filter(v => v !== null);
+    const lo = fin.length ? Math.min.apply(null, fin) : 0;
+    const hi = fin.length ? Math.max.apply(null, fin) : 1;
+    sser.forEach((v, i) => {
+      const t = v === null || hi === lo ? 0.5 : (v - lo) / (hi - lo);
+      spark.push({ css: { display: 'block', width: '5px', flex: 'none', height: Math.max(3, 4 + 28 * t) + 'px', background: i === sser.length - 1 ? HUE.signal : v === null ? 'var(--surface-2)' : 'var(--gray-600)' } });
+    });
+    const dv = prev === undefined || isNaN(prev) || isNaN(rv.v) ? null : rv.v - prev;
+    const pct = rv.format === 'percent_1dp';
+
+    // trace
+    const tn = this.traceNodes();
+    const trace = tn.map(n => ({
+      rowCss: { display: 'flex', alignItems: 'flex-start', paddingLeft: (n.depth * 14) + 'px', marginTop: n.depth === 0 ? '0' : '4px', fontFamily: MONO, fontSize: '12px' },
+      caret: n.kids ? (n.open ? '▾' : '▸') : '',
+      caretCss: { width: '10px', flex: 'none', color: 'var(--text-tertiary)', cursor: n.kids ? 'pointer' : 'default', fontSize: '9px' },
+      onToggle: () => { const c = Object.assign({}, s.collapsed); c[n.key] = !(c[n.key] === undefined ? (s.traceMode === 'full' ? true : n.depth < 1) : !c[n.key]); this.setState({ collapsed: c }); },
+      pre: '⟨', label: n.name, post: '⟩',
+      labelCss: Object.assign(this.pillCss('measure', this.pillState(n.name, 'measure', g)), { fontSize: '12px' }),
+      onEnter: (e) => { const r = e.currentTarget.getBoundingClientRect(); this._t = setTimeout(() => this.setState({ card: { name: n.name, kind: 'measure', st: 'resolved', x: Math.max(12, r.left - 300), y: r.bottom + 6 } }), 300); },
+      onLeave: () => { clearTimeout(this._t); this.setState({ card: null }); },
+      onClick: () => this.setState({ active: n.name, card: null }),
+      value: this.fmt(n.v.v, n.v.format),
+      valCss: { fontFamily: MONO, fontSize: '12px', color: isNaN(n.v.v) ? HUE.unresolved : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', flex: 'none' },
+      detail: n.detail.map(d => ({
+        text: d.text, rows: d.rows,
+        css: { display: 'flex', paddingLeft: (n.depth * 14 + 14) + 'px', fontFamily: MONO, fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '16px' },
+        rowsCss: { color: d.zero ? HUE.unresolved : 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }
+      }))
+    }));
+    const activeM = g.byName[s.active];
+
+    // blast
+    const deps = this.dependents(s.active);
+    const blast = deps.map(n => {
+      const r = this.valueOf(n, g);
+      const b = base[n];
+      const d = b === undefined || isNaN(b) || isNaN(r.v) ? null : r.v - b;
+      const m = g.byName[n]; const tier = m ? parseInt(m.f.sr_11_7_tier || '0', 10) : 0;
+      const isPct = r.format === 'percent_1dp';
+      const rel = d === null ? null : (isPct ? d.toFixed(1) + 'pp' : (b ? (100 * d / b).toFixed(1) + '%' : '—'));
+      return {
+        name: n, before: this.fmt(b, r.format), after: this.fmt(r.v, r.format),
+        rowCss: { display: 'flex', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--surface-2)' },
+        labelCss: Object.assign(this.pillCss('measure', 'resolved'), { fontSize: '12px' }),
+        tierCss: tier >= 1 && tier <= 2 ? { width: '5px', height: '5px', borderRadius: '50%', background: HUE.signal, flex: 'none' } : { display: 'none' },
+        delta: d === null ? '' : d === 0 ? '±0' : (d > 0 ? '▲ ' : '▼ ') + rel.replace('-', ''),
+        deltaCss: { fontFamily: MONO, fontSize: '11px', minWidth: '62px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: d === null || d === 0 ? 'var(--text-tertiary)' : d > 0 ? '#34C77B' : '#E5484D' },
+        note: tier >= 1 && tier <= 2 && d !== 0 && d !== null ? [{ text: 'approved metric \u2014 tell model risk before you change this' }] : [],
+        onEnter: (e) => { const r2 = e.currentTarget.getBoundingClientRect(); this._t = setTimeout(() => this.setState({ card: { name: n, kind: 'measure', st: 'resolved', x: Math.max(12, r2.left - 320), y: r2.bottom + 6 } }), 300); },
+        onLeave: () => { clearTimeout(this._t); this.setState({ card: null }); },
+        onClick: () => this.setState({ active: n, card: null })
+      };
+    });
+
+    // card
+    const c = s.card;
+    let card = null;
+    if (c) {
+      const m = g.byName[c.name]; const ext = EXTERNAL[c.name];
+      const r = this.valueOf(c.name, g);
+      const meta = META[c.name] || {};
+      const tier = m ? parseInt(m.f.sr_11_7_tier || '0', 10) : 0;
+      const hue = hueOf(c.kind);
+      card = {
+        name: c.st === 'restricted' ? 'hidden' : c.name,
+        pre: c.kind === 'measure' ? '⟨' : glyphOf(c.kind) + ' ', post: c.kind === 'measure' ? '⟩' : '',
+        nameCss: { fontFamily: MONO, fontSize: '13px', color: hue },
+        tier: tier ? 'oversight level ' + tier : (ext && ext.deprecated ? 'being retired' : KIND_LABEL[c.kind]),
+        tierCss: { fontFamily: MONO, fontSize: '11px', color: tier ? HUE.signal : 'var(--text-tertiary)' },
+        label: m ? (m.f.label || m.name.replace(/_/g, ' ')) : ext ? ext.label : c.kind === 'column' ? 'Column on ' + g.view.source : c.kind === 'func' ? 'Registered function' : c.name,
+        description: m ? (m.f.description || 'No description yet \u2014 required at oversight level ' + (tier || 0) + '.') : c.kind === 'column' ? 'A raw column in the source table. Nothing is defined about it beyond its type.' : ext ? 'Defined in another file, not this one.' : '',
+        value: c.kind === 'column' ? this.fmt(aggregate('sum', ((TABLES[s.fixture][g.view.source] || {})[AS_OF] || []).map(row => row[c.name]).filter(x => typeof x === 'number')), 'currency_usd') : this.fmt(r.v, r.format),
+        expr: m ? ((m.f.type || '').trim() === 'simple' ? (m.f.agg || 'sum') + '(' + m.f.field + ')' + (m.f.where ? '\n  where ' + m.f.where : '') : (m.f.type || '').trim() === 'windowed' ? (m.f['window.op'] || '?') + ' of ' + (this.reqs(m)[0] || '?') + '\n  over the trailing ' + (m.f['window.over'] || '1d') : (m.f.expression || '')) : c.kind === 'func' ? c.name + '(\u2026) \u00b7 built-in function' : '',
+        meta: [
+          { k: 'shape', v: (meta.grain || 'stock · as_of_date').replace('stock', 'point in time') },
+          { k: 'owner', v: meta.owner || 'ALM Analytics' },
+          { k: 'rule', v: (m && m.f.citation) || meta.cite || '—' },
+          { k: 'used by', v: this.dependents(c.name).length + ' measures' }
+        ].concat(c.st !== 'resolved' ? [{ k: 'status', v: STATE_LABEL[c.st] }] : [])
+      };
+    }
+
+    const problems = diags.slice(0, 40).map(d => ({
+      code: d.code, message: d.message, where: 'line ' + (d.line + 1),
+      sevGlyph: d.sev === 'error' ? '✕' : d.sev === 'warn' ? '⚠' : 'i',
+      sevCss: { color: d.sev === 'error' ? HUE.unresolved : d.sev === 'warn' ? HUE.warn : '#45B6F0', fontSize: '10px', width: '10px' },
+      fixLabel: d.fix ? (d.fixLabel || 'Quick fix') : '',
+      fixCss: d.fix ? { fontSize: '11px', color: HUE.signal, border: '1px solid rgba(242,179,0,.35)', padding: '1px 6px', borderRadius: '1px', cursor: 'pointer' } : { display: 'none' },
+      onGo: () => this.beginEdit(d.line),
+      onFix: (e) => { e.stopPropagation(); this.applyFix(d.fix); }
+    }));
+
+    const planLines = activeM ? [
+      '-- runs on duckdb · ' + (FIXTURES[s.fixture] || s.fixture).toLowerCase(),
+      'WITH base AS (',
+      '  SELECT * FROM ' + g.view.source,
+      '  WHERE as_of_date = DATE \'' + AS_OF + '\'',
+      ')',
+      (activeM.f.type || '').trim() === 'simple'
+        ? 'SELECT ' + (activeM.f.agg || 'sum') + '(' + activeM.f.field + ') AS ' + activeM.name + '\nFROM base' + (activeM.f.where ? '\nWHERE ' + activeM.f.where : '')
+        : (activeM.f.type || '').trim() === 'windowed'
+          ? 'SELECT ' + ((activeM.f['window.op'] || '') === 'delta'
+              ? (this.reqs(activeM)[0] || '?') + ' - lag(' + (this.reqs(activeM)[0] || '?') + ', ' + (parseInt(activeM.f['window.over'] || '1', 10) || 1) + ') OVER (ORDER BY as_of_date)'
+              : (activeM.f['window.op'] === 'stddev' ? 'stddev_samp' : activeM.f['window.op'] || '?') + '(' + (this.reqs(activeM)[0] || '?') + ') OVER (ORDER BY as_of_date\n       ROWS BETWEEN ' + ((parseInt(activeM.f['window.over'] || '1', 10) || 1) - 1) + ' PRECEDING AND CURRENT ROW)')
+            + ' AS ' + activeM.name + '\nFROM measures'
+          : 'SELECT ' + (activeM.f.expression || '').trim() + ' AS ' + activeM.name + '\nFROM measures'
+    ] : ['—'];
+
+    const conformance = [
+      { n: 'duckdb', ok: 'pass' }, { n: 'snowflake', ok: 'pass' }, { n: 'databricks', ok: 'pass' },
+      { n: 'bigquery', ok: 'pass' }, { n: 'dremio', ok: warns ? 'gap' : 'pass' }
+    ];
+    const okCount = conformance.filter(x => x.ok === 'pass').length;
+    const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+
+    // ---------- structured form mode ----------
+    const bcols = COLUMNS[g.view.source] || [];
+    const measureNames = g.ms.map(m => m.name);
+    const sel = (opts, cur, onPick, hints) => ({
+      current: cur === undefined || cur === null ? '' : String(cur).trim(),
+      options: opts.map(o => ({ value: String(o), label: String(o) === '' ? '—' : String(o) + (hints && hints[o] ? '  \u2014  ' + hints[o] : '') })),
+      onChange: (e) => onPick(e.target.value)
+    });
+    const chipCss = (kind, size) => Object.assign(this.pillCss(kind, 'resolved'), { fontSize: (size || 12) + 'px', userSelect: 'none' });
+    const fields = [];
+    const bm = activeM;
+    if (bm) {
+      const kind = (bm.f.type || '').trim();
+      const fr = this.filterRows(bm);
+      fields.push({ section: 0, key: 'name', label: 'Name', help: 'lowercase, with underscores · renaming updates every reference', isText: true, value: s.nameDraft === null || s.nameDraft === undefined ? bm.name : s.nameDraft, onChange: (e) => this.setState({ nameDraft: e.target.value }), onBlur: () => this.renameMeasure(bm.name, (s.nameDraft || '').trim()), onKeyDown: (e) => { if (e.key === 'Enter') this.renameMeasure(bm.name, (s.nameDraft || '').trim()); if (e.key === 'Escape') this.setState({ nameDraft: null }); } });
+      fields.push({ section: 0, key: 'label', label: 'Display name', help: 'what people see on a report', isText: true, value: bm.f.label || '', onChange: (e) => this.setField(bm.name, 'label', e.target.value || null) });
+      fields.push({ section: 0, key: 'description', label: 'Description', help: 'required once this is under oversight', isText: true, value: bm.f.description || '', onChange: (e) => this.setField(bm.name, 'description', e.target.value || null) });
+      fields.push({
+        section: 1, key: 'type', label: 'What kind of measure', help: 'this decides which options appear below', isChoice: true,
+        choices: ENUMS.type.map(t => ({
+          name: t, title: t === 'simple' ? 'Read a column' : t === 'derived' ? 'Combine measures' : 'Look across dates',
+          help: ENUM_HELP[t],
+          css: { flex: '1', padding: '8px 10px', border: '1px solid ' + (kind === t ? 'rgba(242,179,0,.55)' : 'var(--border-default)'), background: kind === t ? 'rgba(242,179,0,.10)' : 'transparent', cursor: 'pointer', borderRadius: '2px' },
+          titleCss: { fontSize: '12px', color: kind === t ? '#F2B300' : 'var(--text-primary)', marginBottom: '2px' },
+          onPick: () => this.setField(bm.name, 'type', t)
+        }))
+      });
+      if (kind === 'simple') {
+        fields.push({ section: 1, key: 'agg', label: 'How rows are combined', isSelect: true, select: sel(ENUMS.agg, bm.f.agg, v => this.setField(bm.name, 'agg', v), ENUM_HELP) });
+        const fv = (bm.f.field || '').trim();
+        fields.push({
+          section: 1, key: 'field', label: 'Column to read', help: 'drag a column in, or pick one', isDrop: true,
+          chip: fv ? { text: '\u00b7 ' + fv, css: chipCss('column', 13) } : null,
+          placeholder: 'Drop a column here',
+          dropCss: { display: 'flex', alignItems: 'center', gap: '8px', minHeight: '36px', padding: '6px 10px', border: '1px dashed ' + (fv ? 'var(--border-default)' : 'rgba(242,179,0,.45)'), borderRadius: '2px', background: fv ? 'var(--surface-1)' : 'rgba(242,179,0,.04)' },
+          onDragOver: (e) => e.preventDefault(),
+          onDrop: (e) => { e.preventDefault(); const d = this._dragv; if (d && d.kind === 'column') this.setField(bm.name, 'field', d.name); },
+          select: sel([''].concat(bcols), bm.f.field, v => this.setField(bm.name, 'field', v || null))
+        });
+        fields.push({
+          section: 1, key: 'where', label: 'Only include rows where', help: fr.advanced ? 'written by hand — switch to YAML to change it' : 'each line narrows the rows',
+          isFilter: true, advanced: fr.advanced, raw: fr.raw || '',
+          rows: fr.rows.map((r, i) => {
+            const vals = distinctValues(s.fixture, g.view.source, r.col);
+            const write = (patch) => this.writeFilter(bm.name, fr.rows.map((x, j) => (j === i ? Object.assign({}, x, patch) : x)));
+            return {
+              showJoin: i > 0,
+              join: sel(['and', 'or'], r.join || 'and', v => write({ join: v })),
+              col: sel(bcols, r.col, v => write({ col: v, val: distinctValues(s.fixture, g.view.source, v)[0] || r.val })),
+              op: sel(['=', '!=', '>', '<', '>=', '<='], r.op, v => write({ op: v })),
+              useValueSelect: vals.length > 0,
+              valSelect: sel(vals.length ? vals : [r.val], r.val, v => write({ val: v })),
+              valText: r.val,
+              onValText: (e) => write({ val: e.target.value }),
+              onRemove: () => this.writeFilter(bm.name, fr.rows.filter((x, j) => j !== i))
+            };
+          }),
+          onAdd: () => {
+            const c2 = bcols[0] || 'as_of_date';
+            this.writeFilter(bm.name, fr.rows.concat([{ col: c2, op: '=', val: distinctValues(s.fixture, g.view.source, c2)[0] || "''", join: 'and' }]));
+          }
+        });
+      }
+      if (kind === 'windowed') {
+        const inp = this.reqs(bm)[0] || '';
+        fields.push({
+          section: 1, key: 'input', label: 'Measure to look across', help: 'drag a measure in', isDrop: true,
+          chip: inp ? { text: '\u27e8' + inp + '\u27e9', css: chipCss('measure', 13) } : null,
+          placeholder: 'Drop a measure here',
+          dropCss: { display: 'flex', alignItems: 'center', gap: '8px', minHeight: '36px', padding: '6px 10px', border: '1px dashed ' + (inp ? 'var(--border-default)' : 'rgba(242,179,0,.45)'), borderRadius: '2px', background: inp ? 'var(--surface-1)' : 'rgba(242,179,0,.04)' },
+          onDragOver: (e) => e.preventDefault(),
+          onDrop: (e) => { e.preventDefault(); const d = this._dragv; if (d && d.kind === 'measure') this.setField(bm.name, 'requires', '[' + d.name + ']'); },
+          select: sel([''].concat(measureNames.filter(n => n !== bm.name)), inp, v => this.setField(bm.name, 'requires', v ? '[' + v + ']' : null))
+        });
+        fields.push({ section: 1, key: 'window.op', label: 'Calculation', isSelect: true, select: sel(ENUMS['window.op'], bm.f['window.op'], v => this.setField(bm.name, 'window.op', v), WINDOW_HELP) });
+        fields.push({ section: 1, key: 'window.over', label: 'How far back', isSelect: true, select: sel(ENUMS['window.over'], bm.f['window.over'], v => this.setField(bm.name, 'window.over', v), { '1d': 'compares with the day before', '7d': 'trailing week', '30d': 'trailing month', '90d': 'trailing quarter' }) });
+      }
+      if (kind === 'derived') {
+        const chips = this.exprChips(bm);
+        const rq = this.reqs(bm);
+        fields.push({
+          section: 1, key: 'expression', label: 'Formula', help: 'drag pieces in from below · click a piece to remove it', isFormula: true,
+          empty: chips.length === 0,
+          chips: chips.map((t, i) => {
+            const isM = measureNames.indexOf(t) >= 0 || !!EXTERNAL[t];
+            const isF = t in FUNCS;
+            const isKw = ['case', 'when', 'then', 'else', 'end', 'and', 'or', 'not'].indexOf(t.toLowerCase()) >= 0;
+            return {
+              text: isM ? '\u27e8' + t + '\u27e9' : isF ? '\u0192' + t : t,
+              css: isM ? chipCss('measure') : isF ? chipCss('func')
+                : isKw ? { display: 'inline-block', padding: '1px 6px', borderRadius: '4px', border: '1px solid rgba(242,179,0,.4)', background: 'rgba(242,179,0,.10)', color: '#F2B300', fontFamily: MONO, fontSize: '12px', cursor: 'pointer' }
+                : { display: 'inline-block', padding: '1px 5px', color: 'var(--text-secondary)', fontFamily: MONO, fontSize: '12px', cursor: 'pointer' },
+              onRemove: () => this.writeChips(bm.name, chips.filter((x, j) => j !== i))
+            };
+          }),
+          onDragOver: (e) => e.preventDefault(),
+          onDrop: (e) => {
+            e.preventDefault(); const d = this._dragv; if (!d) return;
+            if (d.kind === 'measure' && rq.indexOf(d.name) < 0) this.setField(bm.name, 'requires', '[' + rq.concat([d.name]).join(', ') + ']');
+            this.writeChips(bm.name, chips.concat([d.name]));
+          },
+          palette: [
+            { g: 'Arithmetic', items: ['+', '-', '*', '/', '(', ')', ','] },
+            { g: 'Conditions', items: ['case', 'when', 'then', 'else', 'end', '>', '<', '='] },
+            { g: 'Functions', items: ['greatest', 'least', 'nullif', 'coalesce', 'abs'] }
+          ].map(row => ({
+            group: row.g,
+            items: row.items.map(t => ({
+              text: t in FUNCS ? '\u0192' + t : t,
+              css: t in FUNCS ? Object.assign(chipCss('func', 11), { cursor: 'grab' })
+                : /^[a-z]/.test(t) ? { display: 'inline-block', padding: '2px 7px', borderRadius: '4px', border: '1px solid rgba(242,179,0,.4)', background: 'rgba(242,179,0,.10)', color: '#F2B300', fontFamily: MONO, fontSize: '11px', cursor: 'grab' }
+                : { display: 'inline-block', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontFamily: MONO, fontSize: '11px', cursor: 'grab' },
+              onDragStart: () => { this._dragv = { kind: 'token', name: t }; },
+              onClick: () => this.writeChips(bm.name, this.exprChips(bm).concat([t]))
+            }))
+          }))
+        });
+        fields.push({
+          section: 1, key: 'requires', label: 'Measures used', help: 'kept in step with the formula', isChips: true,
+          empty: rq.length === 0,
+          chips: rq.map(n => ({
+            text: '\u27e8' + n + '\u27e9', css: chipCss('measure'),
+            onRemove: () => this.setField(bm.name, 'requires', '[' + rq.filter(x => x !== n).join(', ') + ']')
+          }))
+        });
+      }
+      const fmtHints = {}; ENUMS.format.forEach(f2 => { fmtHints[f2] = this.fmt(rv.v, f2); });
+      fields.push({ section: 2, key: 'format', label: 'How the number is shown', help: 'previewed with this measure\u2019s own value', isSelect: true, select: sel(ENUMS.format, bm.f.format, v => this.setField(bm.name, 'format', v), fmtHints) });
+      fields.push({ section: 2, key: 'sr_11_7_tier', label: 'Oversight level', help: 'levels 1 and 2 need a description and a rule reference', isSelect: true, select: sel(['', '1', '2', '3'], bm.f.sr_11_7_tier, v => this.setField(bm.name, 'sr_11_7_tier', v || null), { '1': 'top oversight', '2': 'reviewed', '3': 'exploratory' }) });
+      if (parseInt(bm.f.sr_11_7_tier || '0', 10) >= 1)
+        fields.push({ section: 2, key: 'citation', label: 'Rule it comes from', isText: true, value: bm.f.citation || '', onChange: (e) => this.setField(bm.name, 'citation', e.target.value || null) });
+    }
+
+    const myDiags = bm ? diags.filter(d => d.line >= bm.line && d.line < bm.line + 16) : [];
+    const noteOf = (d) => ({
+      text: d.message, code: d.code, sev: d.sev,
+      css: {
+        display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 9px', borderRadius: '2px', fontSize: '11.5px',
+        borderLeft: '2px solid ' + (d.sev === 'error' ? HUE.unresolved : d.sev === 'warn' ? HUE.warn : '#45B6F0'),
+        background: d.sev === 'error' ? 'rgba(229,72,77,.09)' : d.sev === 'warn' ? 'rgba(224,140,46,.08)' : 'rgba(69,182,240,.07)'
+      },
+      textCss: { color: d.sev === 'error' ? '#F2A0A3' : d.sev === 'warn' ? '#E8B87A' : '#A6D8F5' },
+      fixLabel: d.fix ? (d.fixLabel || 'Fix it') : '',
+      hasFix: !!d.fix,
+      fixCss: d.fix ? { fontSize: '11px', color: HUE.signal, border: '1px solid rgba(242,179,0,.35)', padding: '1px 7px', borderRadius: '1px', cursor: 'pointer', flex: 'none' } : { display: 'none' },
+      onFix: () => this.applyFix(d.fix)
+    });
+    const noteByField = {};
+    const spare = [];
+    myDiags.forEach(d => {
+      let k = FIELD_OF_CODE[d.code];
+      if (!k && bm) Object.keys(bm.lineOf).forEach(kk => { if (bm.lineOf[kk] === d.line) k = kk; });
+      if (k === 'requires' && bm && (bm.f.type || '').trim() === 'windowed') k = 'input';
+      if (k && fields.some(f => f.key === k)) { (noteByField[k] = noteByField[k] || []).push(noteOf(d)); }
+      else spare.push(noteOf(d));
+    });
+
+    const kindNow = bm ? (bm.f.type || '').trim() : '';
+    let sentence = '';
+    if (bm && kindNow === 'simple') {
+      const fr2 = this.filterRows(bm);
+      sentence = (AGG_VERB[(bm.f.agg || 'sum').trim()] || 'Adds up') + ' ' + (bm.f.field || '?').trim()
+        + (bm.f.where ? ', counting only rows where ' + bm.f.where.trim() : ', across every row')
+        + '. Shown as ' + this.fmt(rv.v, bm.f.format) + '.';
+    } else if (bm && kindNow === 'windowed') {
+      sentence = 'Takes the ' + (WINDOW_HELP[(bm.f['window.op'] || '').trim()] || 'calculation')
+        + ' of ⟨' + (this.reqs(bm)[0] || '?') + '⟩, over the trailing ' + ((bm.f['window.over'] || '1d').trim())
+        + '. Currently ' + this.fmt(rv.v, bm.f.format) + '.';
+    } else if (bm) {
+      sentence = 'Combines ' + this.reqs(bm).length + ' other ' + (this.reqs(bm).length === 1 ? 'measure' : 'measures')
+        + ' — currently ' + this.fmt(rv.v, bm.f.format) + '.';
+    }
+
+    const SECTIONS = [
+      { title: 'What it is', blurb: 'How this measure is named and explained.' },
+      { title: 'How it is calculated', blurb: 'The rule itself. Everything here changes the number.' },
+      { title: 'Shown and governed', blurb: 'Presentation, and how much scrutiny this carries.' }
+    ];
+    const normalize = (f) => {
+      const o = Object.assign({
+        help: '', isText: false, isSelect: false, isChoice: false, isDrop: false, isFilter: false, isFormula: false, isChips: false,
+        advanced: false, raw: '', empty: false, chip: null, rows: [], chips: [], choices: [], palette: [],
+        value: '', placeholder: '', dropCss: {}, onChange: null, onBlur: null, onKeyDown: null, onDragOver: null, onDrop: null, onAdd: null,
+        select: { options: [], current: '', onChange: null }
+      }, f);
+      o.chipList = o.chip ? [o.chip] : [];
+      o.showPlaceholder = !o.chip;
+      o.rows = (o.rows || []).map(r => Object.assign({}, r, { useValueText: !r.useValueSelect }));
+      o.notes = noteByField[o.key] || [];
+      o.invalid = o.notes.some(n => n.sev === 'error');
+      o.labelCss = { fontSize: '12.5px', color: o.invalid ? '#F2A0A3' : 'var(--text-primary)' };
+      return o;
+    };
+    const builder = {
+      title: bm ? bm.name : '—',
+      kindLabel: bm ? (kindNow === 'simple' ? 'Reads a column' : kindNow === 'windowed' ? 'Looks across dates' : 'Combines measures') : '',
+      sentence: sentence,
+      sections: SECTIONS.map((sec, i) => ({
+        title: sec.title, blurb: sec.blurb, index: '0' + (i + 1),
+        fields: fields.filter(f => (f.section || 0) === i).map(normalize)
+      })),
+      spare: spare,
+      hasSpare: spare.length > 0,
+      clean: myDiags.length === 0,
+      paletteCols: bcols.map(c2 => ({
+        text: '\u00b7 ' + c2, css: Object.assign(chipCss('column', 11), { cursor: 'grab' }),
+        onDragStart: () => { this._dragv = { kind: 'column', name: c2 }; this._drag = c2; }
+      })),
+      paletteMeasures: measureNames.filter(n => n !== s.active).map(n => ({
+        text: '\u27e8' + n + '\u27e9', css: Object.assign(chipCss('measure', 11), { cursor: 'grab' }),
+        onDragStart: () => { this._dragv = { kind: 'measure', name: n }; this._drag = n; }
+      }))
+    };
+
+    return {
+      showBuilder: s.mode === 'form', showYaml: s.mode === 'yaml',
+      modes: [{ k: 'form', n: 'Form' }, { k: 'yaml', n: 'YAML' }].map(m => ({
+        name: m.n,
+        css: { padding: '3px 10px', fontSize: '11px', cursor: 'pointer', border: '1px solid ' + (s.mode === m.k ? 'rgba(242,179,0,.5)' : 'var(--border-default)'), color: s.mode === m.k ? '#F2B300' : 'var(--text-secondary)', background: s.mode === m.k ? 'rgba(242,179,0,.1)' : 'transparent', borderRadius: '1px' },
+        onClick: () => this.setState({ mode: m.k, editing: -1 })
+      })),
+      builder: builder,
+      registryCount: g.ms.length + ' measures',
+      fixtureLabel: (FIXTURES[s.fixture] || s.fixture).toLowerCase(),
+      filter: s.filter, onFilter: (e) => this.setState({ filter: e.target.value }),
+      tree: tree,
+      tabs: ['liquidity_pit', 'irrbb_eve'].map(f => ({
+        name: f + '.yaml',
+        css: { display: 'flex', alignItems: 'center', gap: '8px', padding: '0 16px', fontFamily: MONO, fontSize: '12px', cursor: 'pointer', color: f === s.file ? 'var(--text-primary)' : 'var(--text-secondary)', background: f === s.file ? 'var(--surface-2)' : 'transparent', borderRight: '1px solid var(--border-default)', borderBottom: f === s.file ? '1px solid #F2B300' : '1px solid transparent' },
+        dotCss: { width: '5px', height: '5px', borderRadius: '50%', background: f === s.file && errors ? HUE.unresolved : '#34C77B' },
+        onClick: () => this.setState({ file: f, editing: -1, peek: null, active: f === 'liquidity_pit' ? 'lcr_pct' : 'eve_delta_up200', collapsed: {} }, () => this.setState({ baseline: this.allValues() }))
+      })),
+      fixture: s.fixture,
+      onFixture: (e) => this.setState({ fixture: e.target.value, baseline: null }, () => this.setState({ baseline: this.allValues() })),
+      pillState: s.pillState, stateTarget: 'hqla_total',
+      onPillState: (e) => this.setState({ pillState: e.target.value }),
+      lines: lines,
+      completions: cand.list.map((x, i) => ({
+        name: x.n, glyph: x.n === cand.current ? '✓' : x.k === 'enum' ? '▸' : glyphOf(x.k), hint: x.h !== undefined ? x.h : x.k === 'measure' ? this.fmt(this.valueOf(x.n, g).v, this.valueOf(x.n, g).format) : KIND_LABEL[x.k] || x.k,
+        glyphCss: { color: x.n === cand.current ? '#F2B300' : x.k === 'enum' ? '#F2B300' : hueOf(x.k), width: '14px', fontSize: '11px' },
+        css: { display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', fontFamily: MONO, fontSize: '12px', cursor: 'pointer', color: 'var(--text-primary)', background: i === s.cIdx ? 'rgba(242,179,0,.14)' : 'transparent' },
+        onPick: (e) => { e.preventDefault(); this.accept(x.n); }
+      })),
+      completionScope: cand.scope,
+      peek: s.peek ? (() => {
+        const m = g.byName[s.peek]; const r = this.valueOf(s.peek, g);
+        const body = [];
+        if (m) {
+          if (m.f.label) body.push({ text: m.f.label, css: { fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'var(--text-primary)' } });
+          if (m.f.description) body.push({ text: m.f.description, css: { fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'var(--text-secondary)' } });
+          body.push({ text: m.f.type === 'simple' ? (m.f.agg || 'sum') + '(' + m.f.field + ')' + (m.f.where ? '  where ' + m.f.where : '') : (m.f.expression || '').trim(), css: { fontFamily: MONO, fontSize: '12px', color: 'var(--text-primary)' } });
+        }
+        body.push({ text: this.fmt(r.v, r.format) + '   on ' + (FIXTURES[s.fixture] || s.fixture).toLowerCase(), css: { fontFamily: MONO, fontSize: '13px', color: HUE.signal, fontVariantNumeric: 'tabular-nums' } });
+        return { name: s.peek, body: body };
+      })() : { name: '', body: [] },
+      closePeek: () => this.setState({ peek: null }),
+      problemsOpen: s.problemsOpen, toggleProblems: () => this.setState({ problemsOpen: !s.problemsOpen }),
+      problemsCaret: s.problemsOpen ? '▾' : '▸',
+      problemSummary: errors ? '✕ ' + plural(errors, 'error') + ' · ' + plural(warns, 'warning') : warns ? '⚠ ' + plural(warns, 'warning') + ' · ' + infos + ' info' : '✓ no problems · ' + infos + ' info',
+      problemSummaryCss: { color: errors ? HUE.unresolved : warns ? HUE.warn : '#34C77B' },
+      backendsOk: okCount, backendsWarn: conformance.length - okCount ? '⚠ ' + plural(conformance.length - okCount, 'gap') : '',
+      loopMs: s.loopMs, problems: problems,
+      vtabs: [{ k: 'verify', n: 'Result' }, { k: 'plan', n: 'Query' }].map(t => ({
+        name: t.n,
+        css: { display: 'flex', alignItems: 'center', padding: '0 16px', fontSize: '12px', cursor: 'pointer', color: s.vtab === t.k ? 'var(--text-primary)' : 'var(--text-secondary)', background: s.vtab === t.k ? 'var(--surface-2)' : 'transparent', borderRight: '1px solid var(--border-default)', borderBottom: s.vtab === t.k ? '1px solid #F2B300' : '1px solid transparent' },
+        onClick: () => this.setState({ vtab: t.k })
+      })),
+      showVerify: s.vtab === 'verify', showPlan: s.vtab === 'plan',
+      activeName: '⟨' + s.active + '⟩', asOf: AS_OF,
+      valueText: this.fmt(rv.v, rv.format),
+      valueCss: { fontFamily: MONO, fontSize: '30px', letterSpacing: '-0.028em', color: stale ? 'rgba(231,235,241,.62)' : '#F2B300', fontVariantNumeric: 'tabular-nums', lineHeight: '1' },
+      staleLabel: stale ? '⚠ out of date' : 'up to date',
+      staleCss: { fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: stale ? HUE.warn : '#34C77B' },
+      spark: spark,
+      deltaText: dv === null ? '—' : dv === 0 ? '±0' : (dv > 0 ? '▲ ' : '▼ ') + Math.abs(pct ? dv : (prev ? 100 * dv / prev : 0)).toFixed(1) + (pct ? 'pp' : '%'),
+      deltaCss: { fontFamily: MONO, fontSize: '12px', color: dv === null || dv === 0 ? 'var(--text-tertiary)' : dv > 0 ? '#34C77B' : '#E5484D', fontVariantNumeric: 'tabular-nums' },
+      blockingText: stale && blocking ? blocking.code + ' · ' + blocking.message.slice(0, 30) : '',
+      blockingCss: { fontFamily: MONO, fontSize: '11px', color: HUE.warn, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '190px' },
+      traceModes: [{ k: 'full', n: 'Every step' }, { k: 'drill', n: 'One step' }].map(m => ({
+        name: m.n,
+        css: { fontSize: '10px', padding: '2px 7px', cursor: 'pointer', border: '1px solid ' + (s.traceMode === m.k ? 'rgba(242,179,0,.45)' : 'var(--border-default)'), color: s.traceMode === m.k ? HUE.signal : 'var(--text-secondary)', background: s.traceMode === m.k ? 'rgba(242,179,0,.1)' : 'transparent', textTransform: 'uppercase', letterSpacing: '0.06em' },
+        onClick: () => this.setState({ traceMode: m.k, collapsed: {} })
+      })),
+      traceExpr: activeM ? (
+        (activeM.f.type || '').trim() === 'simple'
+          ? (activeM.f.agg || 'sum') + '(' + activeM.f.field + ')' + (activeM.f.where ? '\nwhere ' + activeM.f.where : '')
+          : (activeM.f.type || '').trim() === 'windowed'
+            ? (activeM.f['window.op'] || '?') + ' of ⟨' + (this.reqs(activeM)[0] || '?') + '⟩ over the trailing ' + (activeM.f['window.over'] || '1d')
+            : (activeM.f.expression || '').trim()
+      ) : '',
+      trace: trace,
+      blastCount: deps.length, blast: blast, blastEmpty: deps.length === 0,
+      plan: planLines.map(t => ({ text: t, css: { fontFamily: MONO, fontSize: '11px', color: t.indexOf('--') === 0 ? 'var(--text-tertiary)' : 'var(--text-primary)', whiteSpace: 'pre-wrap', lineHeight: '18px' } })),
+      conformance: conformance.map(x => ({
+        name: x.n, status: x.ok === 'pass' ? 'works' : 'not supported',
+        dotCss: { width: '6px', height: '6px', borderRadius: '50%', background: x.ok === 'pass' ? '#34C77B' : HUE.warn },
+        statusCss: { fontFamily: 'Inter, sans-serif', fontSize: '11px', color: x.ok === 'pass' ? '#34C77B' : HUE.warn }
+      })),
+      hasCard: !!card, card: card || { meta: [], name: '', body: [] },
+      cardCss: c ? { position: 'fixed', left: Math.min(c.x, 1180) + 'px', top: Math.min(c.y, 640) + 'px', width: '340px', background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: '2px', boxShadow: '0 12px 32px rgba(0,0,0,.55)', zIndex: 50, overflow: 'hidden' } : { display: 'none' }
+    };
+  }
+}
+</script>
+</body>
+</html>

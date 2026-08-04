@@ -14,7 +14,7 @@ pip install -r requirements.txt   # only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
 npm run mcp        # the MCP server on stdio (read-only by default)
-npm run verify     # typecheck, 491 unit tests, 62 browser checks
+npm run verify     # typecheck, 529 unit tests, 85 browser checks
 npm run build      # typecheck + production bundle
 ```
 
@@ -53,6 +53,59 @@ that judges it. Both are pinned by tests, and DuckDB is made to raise the same
 breach list as the browser.
 
 The surface is desktop-only at 1600×1000 — the same call the design made.
+
+## Two ways to write the same rule
+
+A rule filed with a regulator is written by people who understand liquidity and
+read by people who understand liquidity. Requiring both to also be fluent in a
+serialisation format puts a translator between the expert and the artifact, and
+every translation step is somewhere a rule can come out meaning something
+slightly different from what was intended.
+
+So there are two modes over one document — **Form** (the default) and **YAML** —
+and the governing constraint is that there is *no parallel model*. Every control
+writes back into the same lines the editor shows, so validation, evaluation, the
+derivation trace and the blast radius all run off one engine and cannot
+disagree. Build a rule in the form, flip to YAML, read exactly what you produced.
+
+Form mode is one measure as a card: a sentence restating the rule in English with
+its current value, then three numbered sections.
+
+> **⟨hqla_total⟩** · Reads a column
+> Adds up hqla_eligible_amount, counting only rows where is_encumbered = false.
+> Shown as $284,120,000.
+
+The sentence rewrites itself on every edit, which is what makes the mode
+self-checking: an author who reads *"across every row"* and expected a filter has
+found their own mistake without running anything.
+
+Four things in it are doing real work:
+
+**The condition builder offers only values the data holds.** The commonest silent
+error in metric authoring is a predicate that matches nothing — `segment =
+'Retail'` against a book that says `RETAIL` — and it returns a confident zero
+rather than an error. The value dropdown lists the distinct values actually
+present in the bound fixture, so that class of mistake is unconstructible.
+
+**A filter it cannot represent is shown, never rewritten.** A clause with
+parentheses, `in`, `not` or `is null` has no faithful row form, so it renders
+read-only with a pointer to YAML. Approximating it would change what the measure
+counts without saying so.
+
+**Dropping a measure into a formula also adds it to the dependency list**, in one
+edit — so `KEEL005`, *used in the formula but missing from `requires`*, cannot be
+built here at all.
+
+**Validation is attached to the field it is about**, routed by diagnostic code,
+with the specific fix — *Insert stub*, *Add to requires* — rather than a generic
+one. A banner at the top of the card makes the reader hunt for which field it
+meant. Anything the routing table cannot place falls to a short list at the
+bottom, visible but not competing.
+
+Renaming is one transaction: the `name:` line **and** every reference to it in
+other measures' dependency lists and formulas. A rename without the second half
+leaves a document that still parses, still renders, and has quietly stopped
+computing.
 
 ## How the workspace is organised
 
@@ -291,9 +344,9 @@ against a real implementation of the protocol rather than against Dremio itself.
 ## Testing
 
 ```
-npm run test         # 491 unit, conformance, server and MCP tests
+npm run test         # 529 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e          # 62 browser checks against the built bundle
+npm run e2e          # 85 browser checks against the built bundle
 ```
 
 The server tests include a live Flight SQL round trip. They skip themselves,
