@@ -60,7 +60,7 @@ describe('finding the right document', () => {
     const all = await listArtifacts(repo);
     const by = (name: string) => all.find((a) => a.name === name)!;
 
-    expect(all).toHaveLength(7);
+    expect(all).toHaveLength(8);
     expect(by('liquidity_pit').kind).toBe(by('fr2052a_outflows').kind);
     expect(by('liquidity_pit').stage).toBe('publish');
     expect(by('fr2052a_outflows').stage).toBe('prepare');
@@ -154,7 +154,7 @@ describe('what depends on what', () => {
   });
 
   it('returns every edge when asked for no document in particular', async () => {
-    expect((await getLineageGraph(repo)).nodes).toHaveLength(7);
+    expect((await getLineageGraph(repo)).nodes).toHaveLength(8);
   });
 });
 

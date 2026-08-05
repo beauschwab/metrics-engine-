@@ -8,6 +8,7 @@ export const VIEW_FILES = [
   'fr2052a_outflows',
   'fr2052a_submission',
   'fr2052a_variance',
+  'murex_eu_binding',
 ] as const;
 export type ViewFile = (typeof VIEW_FILES)[number];
 
@@ -628,6 +629,70 @@ thresholds:
     citation: SR 11-7 outcomes analysis
     description: A wider window catches a drift the 30-day window has absorbed.`;
 
+/**
+ * A client system's table, mapped to the canonical source.
+ *
+ * The rules are written once against canonical names. This says what those
+ * names are called in one particular book — and, where the vocabularies differ
+ * too, which client code means which canonical value. The registry generates an
+ * adapter view from this, and the canonical plan runs on top of it unchanged.
+ *
+ * It is a governed artifact for the same reason a rate table is: a wrong
+ * mapping changes what a number means exactly as much as a wrong rule does.
+ */
+const MUREX_EU_BINDING = `version: 1
+kind: source_binding
+name: murex_eu
+display_name: Murex — EU book
+binds: alm.fct_2052a_positions
+table: murex.v_liq_positions
+
+governance:
+  owner: Liquidity Data Integration
+  sr_11_7_tier: 2
+  validation_status: validated
+
+columns:
+  - canonical: as_of_date
+    column: COB_DATE
+
+  - canonical: balance_usd
+    column: BAL_AMT_USD
+    note: already USD in this feed — no conversion in the adapter
+
+  - canonical: maturity_date
+    column: MAT_DATE
+
+  - canonical: segment
+    column: CUST_SEG
+    map: {RTL: RETAIL, SBB: SMALL_BUSINESS, WSL: WHOLESALE}
+
+  - canonical: direction
+    column: FLOW_DIR
+    map: {I: INFLOW, O: OUTFLOW}
+
+  - canonical: insured_flag
+    column: FDIC_INS
+
+  - canonical: is_secured
+    column: SECURED_FLG
+
+  - canonical: counterparty_type
+    column: CPTY_TYPE
+
+  - canonical: account_type
+    column: ACCT_TYPE
+
+  - canonical: collateral_class
+    column: COLL_CLASS
+
+  - canonical: currency
+    column: CCY
+
+  - canonical: entity_id
+    column: LEGAL_ENT`;
+
+
 export const INITIAL_DOCS: Record<ViewFile, string> = {
   liquidity_pit: LIQUIDITY_PIT,
   irrbb_eve: IRRBB_EVE,
@@ -636,6 +701,7 @@ export const INITIAL_DOCS: Record<ViewFile, string> = {
   fr2052a_outflows: FR2052A_OUTFLOWS,
   fr2052a_submission: FR2052A_SUBMISSION,
   fr2052a_variance: FR2052A_VARIANCE,
+  murex_eu_binding: MUREX_EU_BINDING,
 };
 
 /** What each document opens on — a measure, or the artifact itself. */
@@ -647,4 +713,5 @@ export const DEFAULT_MEASURE: Record<ViewFile, string> = {
   fr2052a_outflows: 'net_outflows_30d',
   fr2052a_submission: 'fr2052a_submission',
   fr2052a_variance: 'HARD-USD',
+  murex_eu_binding: 'balance_usd',
 };

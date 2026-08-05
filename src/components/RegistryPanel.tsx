@@ -69,6 +69,7 @@ const LABEL: Record<string, string> = {
   parameter_set: 'rates',
   report: 'measures',
   variance_monitor: 'thresholds',
+  source_binding: 'mappings',
 };
 
 /**
@@ -85,6 +86,7 @@ const PANEL_TITLE: Record<string, string> = {
   parameter_set: 'Rates',
   report: 'Filed',
   variance_monitor: 'Thresholds',
+  source_binding: 'Mappings',
 };
 
 /**
@@ -116,6 +118,10 @@ const PANEL_HINT: Record<string, [string, string]> = {
     'Thresholds judge each day-over-day move',
     'Click a threshold to jump to it · σ bases need 10 prior moves',
   ],
+  source_binding: [
+    'These map a client system’s columns to the canonical source',
+    'The canonical plan runs unchanged on the generated adapter',
+  ],
 };
 
 /** Blocks of any kind — measures, rules, or parameter entries. */
@@ -128,6 +134,7 @@ function primarySection(g: Graph): string {
   if (g.kind === 'classification') return 'rules';
   if (g.kind === 'parameter_set') return 'entries';
   if (g.kind === 'variance_monitor') return 'thresholds';
+  if (g.kind === 'source_binding') return 'columns';
   return 'measures';
 }
 
@@ -151,6 +158,7 @@ const FILE_GLYPH: Record<string, string> = {
   parameter_set: '≡',
   report: '▤',
   variance_monitor: '∿',
+  source_binding: '⇄',
 };
 
 export function RegistryPanel({
@@ -184,6 +192,7 @@ export function RegistryPanel({
       if (basis.startsWith('stddev')) return `${(m.f.sigma || '').trim()}σ`;
       return basis === 'static_pct' ? `${(m.f.limit || '').trim()}%` : (m.f.limit || '').trim();
     }
+    if (graph.kind === 'source_binding') return (m.f.column || '').trim();
     if (graph.kind === 'classification') return (m.f.emit || '').trim();
     if (graph.kind === 'parameter_set') {
       const v = parseFloat((m.f[(graph.view.value || '').trim()] || '').trim());

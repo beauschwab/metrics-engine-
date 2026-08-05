@@ -29,6 +29,9 @@
 
 import type { Repository, Revision } from '../server/repository';
 import { Conflict } from '../server/repository';
+import {
+  RuntimeNotFound, RuntimeRefused, cutRelease, promoteRelease, runtimeManifest,
+} from '../server/runtime';
 import { compileReport, readReport } from '../src/engine/compile';
 import { diagnose } from '../src/engine/diagnostics';
 import { Evaluator } from '../src/engine/evaluate';
@@ -519,6 +522,96 @@ export async function assessProposed(
 /** Identity of a diagnostic, for telling a new error from one already there. */
 function errorKey(d: { code: string; message: string }): string {
   return `${d.code}::${d.message}`;
+}
+
+// ---------------------------------------------------------------------------
+// Releasing and deploying
+// ---------------------------------------------------------------------------
+
+/**
+ * Cut a release — an immutable snapshot of every artifact at its current
+ * revision.
+ *
+ * Behind the same write gate as saving, and for a sharper reason: a release is
+ * the thing a channel can later point at, so an agent that can cut one can
+ * stage a change for deployment. Reading releases needs no permission.
+ */
+export async function createRelease(
+  repo: Repository,
+  policy: McpPolicy,
+  input: { name?: string; message: string },
+) {
+  if (!policy.canWrite) {
+    throw new ToolError(
+      'this registry connection is read-only — set KEEL_MCP_WRITE=1 to cut releases',
+    );
+  }
+  try {
+    return await cutRelease(repo, { ...input, author: policy.identity });
+  } catch (err) {
+    if (err instanceof RuntimeRefused) throw new ToolError(err.message);
+    throw err;
+  }
+}
+
+export async function listReleases(repo: Repository) {
+  return repo.releases();
+}
+
+export async function getRelease(repo: Repository, version: number) {
+  const found = await repo.release(version);
+  if (!found) throw new ToolError(`no release r${version}`);
+  return found;
+}
+
+/** What each channel serves, and when it last moved. */
+export async function listChannels(repo: Repository) {
+  const channels = await repo.channels();
+  return Promise.all(channels.map(async (c) => ({
+    ...c,
+    history: (await repo.promotions(c.name)).slice(0, 5),
+  })));
+}
+
+export async function getManifest(repo: Repository, channel: string) {
+  try {
+    return await runtimeManifest(repo, channel);
+  } catch (err) {
+    if (err instanceof RuntimeNotFound) throw new ToolError(err.message);
+    throw err;
+  }
+}
+
+/**
+ * Point a channel at a release.
+ *
+ * The most consequential call in this server: it is the moment production
+ * changes. `promoteRelease` runs the impact assessment against what the channel
+ * currently serves and refuses anything that weakens a control without an
+ * explicit acknowledgement — which is then recorded against the promotion.
+ */
+export async function promote(
+  repo: Repository,
+  policy: McpPolicy,
+  input: {
+    channel: string;
+    version: number;
+    message: string;
+    acknowledgeReview?: boolean;
+  },
+) {
+  if (!policy.canWrite) {
+    throw new ToolError(
+      'this registry connection is read-only — set KEEL_MCP_WRITE=1 to deploy',
+    );
+  }
+  try {
+    return await promoteRelease(repo, { ...input, actor: policy.identity });
+  } catch (err) {
+    if (err instanceof RuntimeRefused) throw new ToolError(err.message);
+    if (err instanceof RuntimeNotFound) throw new ToolError(err.message);
+    throw err;
+  }
 }
 
 export interface SaveOutcome {

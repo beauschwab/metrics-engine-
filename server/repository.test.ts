@@ -232,11 +232,11 @@ describe('transaction time', () => {
 describe('seeding', () => {
   it('puts every shipped document in as revision 1', async () => {
     const docs = shippedDocuments();
-    expect(docs).toHaveLength(7);
-    expect(await repo.seed(docs)).toBe(7);
+    expect(docs).toHaveLength(8);
+    expect(await repo.seed(docs)).toBe(8);
 
     const ws = await repo.workspace();
-    expect(ws).toHaveLength(7);
+    expect(ws).toHaveLength(8);
     expect(ws.every((r) => r.revision === 1)).toBe(true);
     // The kind comes off the parsed document rather than being guessed.
     expect(ws.find((r) => r.name === 'fr2052a_product_id')?.kind).toBe('classification');

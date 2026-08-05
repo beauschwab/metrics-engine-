@@ -9,7 +9,7 @@ pip install -r requirements.txt   # only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
 npm run mcp        # the MCP server on stdio (read-only by default)
-npm run test       # 529 unit, conformance, server and MCP tests
+npm run test       # 603 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e        # 85 browser checks against the built bundle
 npm run verify     # all of the above, plus all three typecheck projects
@@ -53,6 +53,7 @@ src/
     variance-diagnostics.ts  the KEEL09x family — is the control watching?
     compile-variance.ts      the monitor as window functions, per backend
     lineage.ts               what each document is *for*, and what feeds what
+    binding.ts               a client system's columns, mapped to the canonical source
     form.ts                  form mode as document operations — no parallel model
     impact.ts                what an edit does, by running both versions
     semantic.ts              publishing a definition to the layer people read
@@ -66,6 +67,7 @@ src/
     conformance-iceberg.test.ts the whole plan, against a real Iceberg catalogue
     conformance-variance.test.ts  same breaches in DuckDB as in the browser
     lineage.test.ts          stages derived, chains built, nothing hardcoded
+    binding.test.ts          adapters, and the mapping that can never be right
     form.test.ts             round trips, and the three losses they guard
     impact.test.ts           silencing measured, not inferred from a diff
     conformance-semantic.test.ts  the published view, executed and reconciled
@@ -101,8 +103,13 @@ server/                      the registry API — no React, no browser
   readonly.ts                the guard: what may be sent to a warehouse at all
   query.ts                   the Dremio gateway — cap, timeout, sampling policy
   live.ts                    the three live reads, built on the same compiler
+  runtime.ts                 releases, channels, and what a deployed client reads
   query/dremio.py            ADBC Flight SQL client, stdin JSON → stdout JSON
   query/flight_sql_stub.py   a real Flight SQL server over DuckDB, for the tests
+clients/                     how a runtime client consumes the registry
+  README.md                  the contract: four GETs, no SDK
+  python/keel_runtime.py     a zero-dependency client
+  python/run_2052a_duckdb.py a worked example — executed by the test suite
 mcp/                         the registry as tools an external agent can call
   tools.ts                   plain functions over a Repository — all the decisions
   server.ts                  the MCP binding: schemas in, JSON out, no decisions
@@ -119,6 +126,138 @@ Everything in it is a pure function of (document text, fixture), which is why
 the same diagnostic drives the inline squiggle, the gutter glyph, the problems
 strip and the `⌘.` menu without any of them re-deriving it — and why the whole
 catalogue is testable without a DOM.
+
+## Deploying: revisions, releases, channels
+
+The surface autosaves every settled edit as a revision. That is right — cheap
+drafts are good — and it means nothing that reads "the latest workspace" can be
+a runtime contract: whatever a client read would change mid-afternoon because
+somebody was typing.
+
+So the fix is not to make saving harder. It is to make deploying a separate,
+deliberate act:
+
+```
+edit     → a revision     automatic, cheap, nothing reads it
+release  → a snapshot     every artifact pinned at one revision, immutable
+promote  → a deployment   a channel now points at that release
+```
+
+A client dereferences a **channel**, never a release. Rollback is repointing the
+channel — nothing is edited back, and the old release remains exactly what it
+was. `server/runtime.test.ts` asserts the property that makes the whole thing
+work: after a release is promoted, editing the workspace changes nothing the
+runtime read path returns.
+
+### One DELETE, and why it is not a hole
+
+`server/dialect.test.ts` asserts that no statement in the registry updates or
+deletes anything that is the audit trail. Adding channels required a `DELETE
+FROM keel_channel` — there is no portable upsert across SQLite and T-SQL — and
+the test caught it, correctly.
+
+The narrowing is the design, stated: `keel_revision`, `keel_artifact`,
+`keel_release`, `keel_release_pin` and `keel_promotion` are append-only and the
+test enumerates them. `keel_channel` is a *pointer* saying what is deployed
+right now, and repointing it is what a deployment and a rollback both are. Every
+move it has ever made is appended to `keel_promotion`. Mutating the pointer
+loses nothing; mutating the log would lose everything.
+
+### The gate at the moment it matters most
+
+`promoteRelease` runs `assessChange` between what the channel currently serves
+and the candidate, and refuses a weakening without `acknowledgeReview`. Three
+details:
+
+**It compares against the channel, not the previous release number.** Releases
+can be cut and skipped; the governance question is always what changes for the
+people reading *this* channel.
+
+**It judges rollbacks.** Promoting an older release that loosens a threshold
+relative to what is deployed is refused the same way, because a rollback is a
+deployment.
+
+**The acknowledgement lands in the promotion record**, with what was silenced —
+so six months later the question is not "was this allowed" but "who decided, and
+did they know what it did", and that has an answer.
+
+Cutting a release records diagnostic counts rather than gating on them. The
+shipped workspace carries two `KEEL030`s, and a release gate that refuses
+anything imperfect is a gate people learn to route around. The single hard
+refusal is a document that does not parse — not a deployable thing, a broken
+file with a version number.
+
+## Source bindings: one plan, many client shapes
+
+The rules are written against canonical names. A client system rarely has them:
+Murex calls the balance `BAL_AMT_USD` and codes the segment `RTL`/`WSL`/`SBB`.
+
+The naive fix is a compiled plan per system. That is N plans to keep conformant,
+and the entire point of the compiler is that there is one. So a binding does the
+opposite: it generates an **adapter view** presenting the client's table under
+the canonical names, and the canonical plan runs on top, byte-identical
+everywhere. `server/runtime.test.ts` asserts exactly that — the plan text with a
+binding and without one is the same string.
+
+A binding is `kind: source_binding` — a governed artifact, revisioned and
+releasable — because a wrong mapping changes what a number means as much as a
+wrong rule does.
+
+### No ELSE fallthrough
+
+A mapped vocabulary becomes a `CASE` whose `ELSE` is `NULL`, not the raw client
+code. An unknown code passed through would fail every rule while *looking like
+data*; NULL sends it to classification coverage as unmapped, which is where this
+surface already makes gaps visible.
+
+### The check that makes it safe to serve
+
+`checkBinding` refuses two things, and the second is the reason it exists.
+
+A column the rules read that the binding does not map is survivable — it fails
+loudly in the client's engine. Computing that set is fiddly and worth stating:
+derived columns are excluded (`product_id` is produced by the classification, so
+no client provides it), and the *report's* grouping keys are included, because
+the compiled plan SELECTs `currency` and `entity_id` straight off the source even
+though the view never mentions them. Too wide and every honest binding fails;
+too narrow and a broken one passes.
+
+**A vocabulary that can never produce a value some rule tests for is the silent
+one.** Omit `SBB: SMALL_BUSINESS` and the small-business rule never fires on that
+one system, forever. Every number computes. Every coverage report looks clean.
+Nothing downstream can see it — this is the only place positioned to, so it
+refuses:
+
+```
+the rules test segment = 'SMALL_BUSINESS', and no client value maps to it
+  — that rule can never fire on murex_eu
+```
+
+## The runtime contract, and a client that is executed
+
+`clients/` holds the answer to "how do I call the registry at run time": four
+GETs, a zero-dependency Python client, and a worked example running the deployed
+plan on a client-shaped DuckDB.
+
+`server/client-example.test.ts` runs it — a real HTTP server on a real port, a
+binding saved over the API, a release cut and promoted, the shipped script
+executed as documented — and asserts the numbers it files from a table with
+*none* of the canonical names in it equal the numbers the surface showed, to the
+cent. Documentation that is not executed is aspiration.
+
+Two things that cost a debugging cycle and are worth recording:
+
+**A semicolon inside a generated comment.** The adapter header said "do not edit
+it; edit the binding", the example split the SQL on `;` to find statements, and
+the fragment after the semicolon became a statement beginning with prose. The
+prose was fixed, but the real fix was to stop making every client a small, wrong
+SQL parser: the response now carries `adapter.statements` pre-split alongside
+`adapter.sql` for humans.
+
+**DuckDB attaches a database file under its basename as a catalog.** The test's
+`murex.duckdb` collided with the `murex` schema its table lived in and made every
+reference ambiguous. Nothing to do with the registry, everything to do with
+naming a file after a schema.
 
 ## Form mode
 
@@ -427,6 +566,17 @@ mirrors `server/api.ts`: `tools.ts` holds every decision as plain async function
 over a `Repository`, and `server.ts` is a schema binding with nothing in it —
 so the behaviour is tested without a subprocess, and the protocol is tested
 without re-testing the behaviour.
+
+### Releasing and deploying
+
+Six more tools: `list_releases`, `get_release`, `list_channels`, `get_manifest`,
+`create_release`, `promote`. Reading is always allowed; cutting and promoting sit
+behind the same `KEEL_MCP_WRITE` gate as saving, and `promote` carries the same
+acknowledgement seam — an agent that wants to deploy a weakening has to say so,
+and the saying is recorded.
+
+The disabled descriptions say what an agent *can* still do rather than only what
+it cannot, because a refusal it could have read about first is a wasted turn.
 
 ### The reads return semantics, not YAML
 
@@ -1186,7 +1336,7 @@ pipeline would do — but emitting a create-if-absent step is an open question.
 
 ## Testing
 
-`npm run test` runs 529 tests — 360 in `src/engine/`, 117 in `server/`, 54 in `mcp/` — covering
+`npm run test` runs 603 tests — 379 in `src/engine/`, 168 in `server/`, 58 in `mcp/` — covering
 the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius

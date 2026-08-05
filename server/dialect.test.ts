@@ -83,13 +83,35 @@ describe('every statement is valid in both dialects', () => {
     });
   });
 
-  it('never updates or deletes a revision', () => {
-    // The storage model is the audit trail. An UPDATE anywhere in this set
-    // would mean a rule change could be made unrecoverable.
+  it('never updates or deletes anything that is the audit trail', () => {
+    // The storage model is the audit trail. An UPDATE or DELETE against any of
+    // these would mean a rule change, a release, or a deployment could be made
+    // unrecoverable.
+    //
+    // `keel_channel` is deliberately excluded, and the distinction is the whole
+    // design: a channel row is a *pointer* saying what is deployed right now,
+    // and repointing it is what a deployment and a rollback both are. Every
+    // move it has ever made is appended to `keel_promotion`, which is in the
+    // list below. Mutating the pointer loses nothing; mutating the log would
+    // lose everything.
+    const APPEND_ONLY = [
+      'keel_revision', 'keel_artifact', 'keel_release', 'keel_release_pin',
+      'keel_promotion',
+    ];
+
     STATEMENTS.forEach(([name, sql]) => {
-      expect(sql, name).not.toMatch(/^\s*UPDATE\b/i);
-      expect(sql, name).not.toMatch(/^\s*DELETE\b/i);
+      const mutating = /^\s*(UPDATE|DELETE\s+FROM)\s+([a-z_]+)/i.exec(sql);
+      if (!mutating) return;
+      expect(APPEND_ONLY, `${name} mutates ${mutating[2]}`).not.toContain(mutating[2]);
     });
+  });
+
+  it('repoints a channel by replacing the row, since neither engine upserts', () => {
+    // No portable upsert exists across SQLite and T-SQL, so a promotion is a
+    // delete-and-insert inside one transaction. Worth naming so the DELETE
+    // above is not read as an oversight.
+    expect(SQL.deleteChannel).toMatch(/^DELETE FROM keel_channel/);
+    expect(SQL.insertChannel).toMatch(/^INSERT INTO keel_channel/);
   });
 });
 
