@@ -185,6 +185,53 @@ test.describe('the registry', () => {
     await expect(line(page, '* 2.0')).toBeVisible();
   });
 
+  test('says what production is running, and when you are ahead of it', async ({ page }) => {
+    // Saved is not deployed, and until releases existed the header only ever
+    // said `saved · rN` — which reads exactly like "shipped". This is the other
+    // half, and it is the reason autosave is safe.
+    const indicator = page.getByTestId('mdl-deploy-state');
+
+    // Nothing promoted yet: the indicator says nothing rather than showing a
+    // placeholder people learn to ignore.
+    await expect(indicator).toHaveCount(0);
+
+    const release = await fetch(`${API}/api/releases`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'from the e2e suite' }),
+    });
+    const { version } = (await release.json()) as { version: number };
+    await fetch(`${API}/api/channels/production`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ version, message: 'go live', acknowledgeReview: true }),
+    });
+
+    await page.reload();
+    await openYaml(page);
+
+    // The release was cut from the workspace as it stands, so every document
+    // matches what production now serves.
+    await expect(indicator).toBeVisible();
+    await expect(indicator).toContainText('production');
+    await expect(indicator).toContainText(`r${version}`);
+    await expect(indicator).toContainText('live');
+    await expect(indicator).toHaveAttribute('data-live', 'true');
+
+    // Now move past it: one more edit, and the surface should say so.
+    await measure(page, 'lcr_buffer').click();
+    await line(page, '* 2.0').click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('1');
+    await expect(page.locator(SAVED)).toHaveText(/saved · r\d+/, { timeout: 15_000 });
+
+    await expect(indicator).toHaveAttribute('data-live', 'false');
+    await expect(indicator).toContainText('1 ahead');
+    // The tooltip names which document, because "1 ahead" without a name sends
+    // the reader hunting.
+    await expect(indicator).toHaveAttribute('title', /liquidity_pit/);
+  });
+
   test('records the edit as a revision rather than replacing the last one', async () => {
     const res = await fetch(`${API}/api/artifacts/liquidity_pit/history`);
     const { history } = (await res.json()) as {

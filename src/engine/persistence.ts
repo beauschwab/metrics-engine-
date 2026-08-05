@@ -124,6 +124,66 @@ export async function loadHistory(name: string): Promise<HistoryEntry[]> {
   }
 }
 
+/**
+ * What a channel is serving, and whether the workspace has moved past it.
+ *
+ * `ahead` is the number of artifacts whose current revision differs from the
+ * one the channel's release pinned. That is the number an author actually wants:
+ * not "is there a newer release" but **"is what I am looking at what production
+ * is running"**.
+ *
+ * Zero is worth saying as loudly as a number. "Deployed" and "three documents
+ * ahead" are different situations, and a surface that only ever shows a version
+ * makes the reader work out which one they are in.
+ */
+export interface Deployment {
+  channel: string;
+  release: number;
+  promotedAt: string;
+  promotedBy: string;
+  /** Artifacts whose working copy differs from what this channel serves. */
+  ahead: string[];
+}
+
+/**
+ * Read a channel's manifest and diff it against the working copy.
+ *
+ * Absent rather than an error when nothing has been promoted: a registry with no
+ * deployments is an ordinary state, not a broken one, and the indicator simply
+ * says so.
+ */
+export async function loadDeployment(
+  channel: string,
+  revisions: Record<string, number>,
+  signal?: AbortSignal,
+): Promise<Deployment | null> {
+  try {
+    const data = (await getJson(`/runtime/${encodeURIComponent(channel)}`, signal)) as {
+      release: { version: number; promotedAt: string; promotedBy: string };
+      artifacts: Array<{ name: string; revision: number }>;
+    };
+
+    const pinned = new Map(data.artifacts.map((a) => [a.name, a.revision]));
+    const ahead: string[] = [];
+    Object.entries(revisions).forEach(([name, revision]) => {
+      const at = pinned.get(name);
+      // A document the release never carried counts as ahead — it is new since
+      // the deployment, which is exactly the thing worth flagging.
+      if (at === undefined || at !== revision) ahead.push(name);
+    });
+
+    return {
+      channel,
+      release: data.release.version,
+      promotedAt: data.release.promotedAt,
+      promotedBy: data.release.promotedBy,
+      ahead: ahead.sort(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export type SaveOutcome =
   | { state: 'saved'; revision: number; changed: boolean }
   | { state: 'conflict'; message: string }

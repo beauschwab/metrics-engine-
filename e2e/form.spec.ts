@@ -41,6 +41,46 @@ test.beforeEach(async ({ page }) => {
 
 // ---------------------------------------------------------------------------
 
+test.describe('documents the form does not edit', () => {
+  /**
+   * Form is the *default* mode and it only edits measures, so five of the eight
+   * shipped documents open on an empty card. Saying "no measures" and stopping
+   * leaves the reader to work out both what the document is and what to do —
+   * so it names the contents and offers the other mode.
+   */
+  const openDoc = (page: Page, name: string) =>
+    page.getByRole('button', { name: `${name}.yaml`, exact: false }).first().click();
+
+  test('says what the document holds instead of reporting an absence', async ({ page }) => {
+    await openDoc(page, 'fr2052a_product_id');
+    const empty = page.getByTestId('mdl-form-no-form');
+    await expect(empty).toContainText('ordered rule set');
+    await expect(empty).toContainText('first match wins');
+  });
+
+  test('offers the mode that can edit it, and switching works', async ({ page }) => {
+    await openDoc(page, 'lcr_outflow_rates');
+    await expect(page.getByTestId('mdl-form-no-form')).toContainText('governed rate table');
+    await page.getByRole('button', { name: 'Edit as YAML' }).click();
+    await expect(page.locator(EDITOR)).toBeVisible();
+    await expect(page.locator(EDITOR)).toContainText('outflow_rate');
+  });
+
+  test('names every kind it cannot edit, rather than a generic message', async ({ page }) => {
+    // A shared "nothing here" across five document kinds teaches the reader
+    // nothing about which one they opened.
+    const expected: Array<[string, RegExp]> = [
+      ['fr2052a_submission', /grain and a destination/],
+      ['fr2052a_variance', /day-over-day/],
+      ['murex_eu_binding', /mapped to the canonical source/],
+    ];
+    for (const [name, text] of expected) {
+      await openDoc(page, name);
+      await expect(page.getByTestId('mdl-form-no-form'), name).toContainText(text);
+    }
+  });
+});
+
 test.describe('the two modes', () => {
   test('opens in form mode, because that is the one needing no YAML', async ({ page }) => {
     await expect(page.locator(FORM)).toBeVisible();

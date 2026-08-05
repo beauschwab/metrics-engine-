@@ -14,7 +14,7 @@ pip install -r requirements.txt   # only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
 npm run mcp        # the MCP server on stdio (read-only by default)
-npm run verify     # typecheck, 603 unit tests, 85 browser checks
+npm run verify     # typecheck, 603 unit tests, 89 browser checks
 npm run build      # typecheck + production bundle
 ```
 
@@ -363,6 +363,15 @@ that refuses anything imperfect is a gate people learn to route around. The one
 hard refusal is a document that does not parse: that is not a deployable thing,
 it is a broken file with a version number.
 
+**The header says which half you are in.** `saved · r7` reads exactly like
+"shipped" to anyone who has not internalised the model above, so next to it sits
+what production is actually running: `production r2 · live` when every document
+matches the deployed release, or `production r1 · 3 ahead` in amber when it does
+not, hovering to name the documents that have moved. It offers no deploy button.
+Cutting and promoting are governed acts with an acknowledgement seam behind them,
+and a button in an editor is the wrong shape for something that should be
+reviewed. Telling the truth about the current state is the whole job.
+
 The runtime contract is four GETs and needs no SDK — manifest, plan, rules — and
 is documented with a zero-dependency client and a worked example in
 [`clients/README.md`](clients/README.md). Both are executed by the test suite,
@@ -419,7 +428,7 @@ against a real implementation of the protocol rather than against Dremio itself.
 ```
 npm run test         # 603 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e          # 85 browser checks against the built bundle
+npm run e2e          # 89 browser checks against the built bundle
 ```
 
 The server tests include a live Flight SQL round trip. They skip themselves,

@@ -34,6 +34,8 @@ import { Chip, DropZone, Field, Note, PaletteRow, Picker, TextBox } from './cont
 
 interface Props {
   graph: Graph;
+  /** Offered when this kind of document has no form — see the empty state. */
+  onUseYaml(): void;
   lines: string[];
   evaluator: Evaluator;
   diagnostics: Diagnostic[];
@@ -66,8 +68,24 @@ const dragPayload = (e: React.DragEvent, kind: string, name: string) => {
   e.dataTransfer.effectAllowed = 'copy';
 };
 
+/**
+ * What each kind of document holds, for the kinds the form does not edit.
+ *
+ * Form mode was built for measures, and it is the *default* mode — so opening a
+ * rule set lands on an empty card. Saying "no measures" and stopping is a dead
+ * end: the reader is left to work out both what this document is and what to do
+ * about it. Naming the contents and offering the door is the whole fix.
+ */
+const NO_FORM_YET: Record<string, string> = {
+  classification: 'an ordered rule set — conditions tried in order, first match wins',
+  parameter_set: 'a governed rate table — keys, values, and the citation behind each',
+  report: 'a grain and a destination — what gets filed, and where',
+  variance_monitor: 'thresholds that judge each day-over-day move',
+  source_binding: 'a client system\u2019s column names and codes, mapped to the canonical source',
+};
+
 export function FormMode({
-  graph, lines, evaluator, diagnostics, fixture, active, onDoc, onPickMeasure, onFix,
+  graph, lines, evaluator, diagnostics, fixture, active, onDoc, onPickMeasure, onFix, onUseYaml,
 }: Props) {
   /**
    * The name is the one field with a draft.
@@ -89,9 +107,26 @@ export function FormMode({
   );
 
   if (!m || !routed) {
+    const holds = NO_FORM_YET[graph.kind];
     return (
-      <div className="mdl-form">
-        <div className="mdl-form-empty">This document has no measures to edit as a form.</div>
+      <div className="mdl-form" data-testid="mdl-form">
+        <div className="mdl-form-empty" data-testid="mdl-form-no-form">
+          <p className="mdl-form-empty-lead">
+            {holds
+              ? `This document holds ${holds}.`
+              : 'This document holds nothing the form can edit.'}
+          </p>
+          {/* The form covers measures. Rather than leave the reader to discover
+              that, say it and open the door — the other mode edits the same
+              document, so nothing is lost by switching. */}
+          <p className="mdl-form-empty-note">
+            The form edits measures. Everything else is edited as YAML, on the
+            same document — switch and back at any time.
+          </p>
+          <button type="button" className="mdl-fix" onClick={onUseYaml}>
+            Edit as YAML
+          </button>
+        </div>
       </div>
     );
   }

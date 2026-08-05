@@ -11,7 +11,7 @@ npm run server     # the registry API on :8787 (SQLite by default)
 npm run mcp        # the MCP server on stdio (read-only by default)
 npm run test       # 603 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e        # 85 browser checks against the built bundle
+npm run e2e        # 89 browser checks against the built bundle
 npm run verify     # all of the above, plus all three typecheck projects
 npm run build      # typecheck + production bundle
 ```
@@ -186,6 +186,38 @@ shipped workspace carries two `KEEL030`s, and a release gate that refuses
 anything imperfect is a gate people learn to route around. The single hard
 refusal is a document that does not parse — not a deployable thing, a broken
 file with a version number.
+
+### Saying it in the header
+
+The model above is only useful to an author who knows it, and the header said
+`saved · r7`, which reads as *shipped*. `DeployState` says the other half:
+`production r2 · live`, or `production r1 · 3 ahead` in amber with the drifted
+documents named on hover. The question it answers is not "is there a newer
+release" — that is a release manager's question — but *is what I am looking at
+what production is running*, which is the one every author has before walking
+away from an edit.
+
+Three decisions in a component this small:
+
+**No deploy button.** Cutting and promoting go through the acknowledgement seam
+above, and a button in an editor is the wrong shape for something that should be
+reviewed. The indicator's whole job is telling the truth about the current
+state.
+
+**Nothing at all when offline or nothing is promoted.** Both are ordinary
+states, and an indicator that shows a placeholder in the ordinary case is one
+people stop reading in the case that matters.
+
+**The drift is said in words.** `live` and `3 ahead` are different situations;
+a reader should not have to decode which one a colour means. Colour reinforces
+the word rather than carrying it. The `·` separator exists because `r1 1 ahead`
+ran the release number into the count and read as one number.
+
+`loadDeployment` compares the channel's pinned revisions against what the
+workspace holds, so "ahead" is per-document rather than a single flag. It is
+called on load and after every successful save — from an effect, not from inside
+the `setConnection` updater where it first sat: updaters must be pure, and
+StrictMode calls them twice, which double-fetched.
 
 ## Source bindings: one plan, many client shapes
 
@@ -373,6 +405,22 @@ asserted `.cm-content` was visible in its `beforeEach`, having implicitly relied
 on the text editor being the only surface. The honest fix was to make those specs
 switch to YAML explicitly: a test that reaches for `.cm-content` is a test about
 the text editor and should say so.
+
+### The dead end at the default
+
+Form mode is built around measures, and `graph.measures` is empty for five of the
+eight shipped kinds — classification, parameter set, report, variance monitor,
+source binding. Since Form is also the *default* mode, opening any of those five
+landed a new author on a card that said nothing and offered nothing: the mode
+that exists so nobody has to meet YAML first was, for the majority of the
+workspace, a wall.
+
+The fix is not to pretend a form exists. Each kind names what its form *would*
+be — *"an ordered rule set — conditions tried in order, first match wins"* — says
+plainly that it is not built yet, and hands over an **Edit as YAML** button that
+switches mode rather than making the reader find the switch. Naming the shape
+tells an author the concept is understood and unimplemented, which is a different
+message from a blank card, and it is the accurate one.
 
 ## The information hierarchy
 
@@ -1356,7 +1404,7 @@ structurally impossible to detect.
 
 ## End to end
 
-`npm run e2e` drives the built bundle in headless Chromium — 85 checks in
+`npm run e2e` drives the built bundle in headless Chromium — 89 checks in
 `e2e/`, split between the surface, the editor and persistence. It runs against `vite
 preview` rather than the dev server, because a production-only failure in
 chunking or CSS ordering is exactly the kind a dev-server test cannot see.
@@ -1377,7 +1425,7 @@ falls back to Playwright's own browser resolution, so it behaves like a default
 config anywhere with a normal toolchain. The escape hatch is also what to reach
 for when an image ships a pre-installed Chromium whose build number does not
 match the pinned `@playwright/test` — the whole suite fails at launch, which
-looks like 85 regressions and is one mismatched path:
+looks like 89 regressions and is one mismatched path:
 
 ```
 npm run e2e                                    # ordinary machines

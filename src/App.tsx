@@ -13,6 +13,7 @@ import { DefinitionCard, type CardTarget } from './components/DefinitionCard';
 import { MetricEditor, type MetricEditorHandle } from './components/MetricEditor';
 import { ProblemsStrip } from './components/ProblemsStrip';
 import { ChangeImpact } from './components/ChangeImpact';
+import { DeployState } from './components/DeployState';
 import { FormMode } from './components/form/FormMode';
 import { LineageStrip } from './components/LineageStrip';
 import { RegistryPanel } from './components/RegistryPanel';
@@ -30,7 +31,9 @@ import { assessChange } from './engine/impact';
 import { AS_OF, TABLES } from './engine/fixtures';
 import { DOMAINS, HUE } from './engine/vocab';
 import { conformance as conformanceOf } from './engine/plan';
-import { loadWorkspace, saveArtifact, type Connection } from './engine/persistence';
+import {
+  loadDeployment, loadWorkspace, saveArtifact, type Connection, type Deployment,
+} from './engine/persistence';
 import { plural } from './engine/format';
 import { refactorHints } from './engine/refactors';
 import type { TraceMode } from './engine/trace';
@@ -51,6 +54,15 @@ const STATE_TARGET = 'hqla_total';
 
 /** Who a save is attributed to until there is an identity provider to ask. */
 const AUTHOR = 'authoring-surface';
+
+/**
+ * The channel the header reports against.
+ *
+ * One, and it is production, because the question an author has is "is this
+ * live" rather than "what is on each of our channels". A channel switcher is a
+ * release manager's tool and belongs wherever releases get cut.
+ */
+const DEPLOY_CHANNEL = 'production';
 
 type SaveState =
   | { kind: 'idle' }
@@ -108,6 +120,16 @@ export default function App() {
     reason: 'not loaded yet',
   });
   const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' });
+
+  /**
+   * What production is running, and whether this workspace has moved past it.
+   *
+   * Re-read whenever a save lands, because that is exactly when the answer can
+   * change — one more document is now ahead of the deployed release. Not polled
+   * on a timer: a channel only moves when somebody promotes, and a spinner in a
+   * header that is right 99% of the time teaches people to stop reading it.
+   */
+  const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [file, setFile] = useState<ViewFile>('liquidity_pit');
   const [fixture, setFixture] = useState<FixtureName>('nominal');
   const [active, setActive] = useState(DEFAULT_MEASURE.liquidity_pit);
@@ -298,6 +320,12 @@ export default function App() {
       origin.current = { ...ws.docs };
       setConnection(ws.connection);
       setLoaded(true);
+      if (ws.connection.state === 'online') {
+        void loadDeployment(DEPLOY_CHANNEL, ws.connection.revisions, abort.signal)
+          .then((d) => {
+            if (!abort.signal.aborted) setDeployment(d);
+          });
+      }
     });
     return () => abort.abort();
   }, []);
@@ -333,6 +361,19 @@ export default function App() {
                 ? { state: 'online', revisions: { ...prev.revisions, [name]: outcome.revision } }
                 : prev);
             setSaveState({ kind: 'saved', revision: outcome.revision, at: Date.now() });
+
+            // The save just changed whether this document matches what is
+            // deployed, so the indicator is refreshed here rather than on a
+            // timer that would usually have nothing to report.
+            //
+            // Computed from the `connection` this callback already closes over,
+            // *not* from inside a `setConnection` updater. An updater has to be
+            // pure — React may call it more than once, and StrictMode does — so
+            // firing a fetch in there would double-request on every save.
+            if (connection.state === 'online') {
+              const revisions = { ...connection.revisions, [name]: outcome.revision };
+              void loadDeployment(DEPLOY_CHANNEL, revisions).then(setDeployment);
+            }
           } else {
             // Nothing is resolved here. A conflict means someone else wrote, and
             // picking a winner automatically is the failure the history exists
@@ -621,6 +662,8 @@ export default function App() {
               {saveLabel(connection, saveState).text}
             </span>
 
+            <DeployState deployment={deployment} online={connection.state === 'online'} />
+
             <span className="mdl-divider" aria-hidden="true" />
 
             <div className="mdl-modes" role="group" aria-label="Editing mode">
@@ -685,6 +728,7 @@ export default function App() {
             active={active}
             onDoc={setDoc}
             onPickMeasure={setActive}
+            onUseYaml={() => setMode('yaml')}
             onFix={(fix) => {
               // Through the same pure transformation the editor's quick fixes
               // use, so a fix applied from the form and one applied from the
