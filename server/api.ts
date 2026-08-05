@@ -12,6 +12,10 @@
  */
 
 import { Conflict, Repository } from './repository';
+import {
+  RuntimeNotFound, RuntimeRefused, cutRelease, promoteRelease, runtimeManifest,
+  runtimePlan, runtimeRules,
+} from './runtime';
 import { NotFound as LiveNotFound, Refused, liveCoverage, liveReport, liveSample } from './live';
 import { QueryFailed, QueryRefused, type DremioConfig } from './query';
 
@@ -121,6 +125,77 @@ export async function handle(
         : json(404, { error: `no such artifact: ${hist[1]}` });
     }
 
+    // --- releases, channels, and the runtime read path ----------------------
+
+    if (method === 'GET' && path === '/api/releases') {
+      return json(200, { releases: await repo.releases() });
+    }
+
+    if (method === 'POST' && path === '/api/releases') {
+      const body = (req.body || {}) as Record<string, unknown>;
+      const message = asString(body.message);
+      if (!message) return json(400, { error: 'message is required — a release with no reason is not a record' });
+      const release = await cutRelease(repo, {
+        ...(asString(body.name) ? { name: asString(body.name)! } : {}),
+        message,
+        author: req.identity || 'unknown',
+      });
+      // 201: unlike a save, a release genuinely creates a new resource.
+      return json(201, release);
+    }
+
+    const oneRelease = /^\/api\/releases\/(\d+)$/.exec(path);
+    if (oneRelease && method === 'GET') {
+      const found = await repo.release(Number(oneRelease[1]));
+      return found ? json(200, found) : json(404, { error: `no release r${oneRelease[1]}` });
+    }
+
+    if (method === 'GET' && path === '/api/channels') {
+      return json(200, { channels: await repo.channels() });
+    }
+
+    const oneChannel = /^\/api\/channels\/([A-Za-z0-9_-]+)$/.exec(path);
+    if (oneChannel) {
+      if (method === 'GET') {
+        const channel = await repo.channel(oneChannel[1]);
+        if (!channel) return json(404, { error: `no channel called ${oneChannel[1]}` });
+        return json(200, { ...channel, history: await repo.promotions(oneChannel[1]) });
+      }
+      if (method === 'PUT') {
+        const body = (req.body || {}) as Record<string, unknown>;
+        if (typeof body.version !== 'number') {
+          return json(400, { error: 'version is required — a promotion names the release it deploys' });
+        }
+        const out = await promoteRelease(repo, {
+          channel: oneChannel[1],
+          version: body.version,
+          actor: req.identity || 'unknown',
+          message: asString(body.message) || 'Promoted',
+          acknowledgeReview: body.acknowledgeReview === true,
+        });
+        return json(200, out);
+      }
+    }
+
+    const rtManifest = /^\/api\/runtime\/([A-Za-z0-9_-]+)$/.exec(path);
+    if (rtManifest && method === 'GET') {
+      return json(200, await runtimeManifest(repo, rtManifest[1]));
+    }
+
+    const rtPlan = /^\/api\/runtime\/([A-Za-z0-9_-]+)\/plan\/([A-Za-z0-9_.-]+)$/.exec(path);
+    if (rtPlan && method === 'GET') {
+      const target = (query.target || 'sql') as 'sql' | 'polars' | 'pyspark';
+      if (!['sql', 'polars', 'pyspark'].includes(target)) {
+        return json(400, { error: `unknown target ${target} — one of sql, polars, pyspark` });
+      }
+      return json(200, await runtimePlan(repo, rtPlan[1], rtPlan[2], target, query.binding || undefined));
+    }
+
+    const rtRules = /^\/api\/runtime\/([A-Za-z0-9_-]+)\/rules\/([A-Za-z0-9_.-]+)$/.exec(path);
+    if (rtRules && method === 'GET') {
+      return json(200, await runtimeRules(repo, rtRules[1], rtRules[2], query.asOf || undefined));
+    }
+
     // --- reading real data -------------------------------------------------
 
     if (path.startsWith('/api/live/')) {
@@ -140,6 +215,12 @@ export async function handle(
     // something the registry will not do — distinct from the warehouse failing,
     // and distinct again from the registry being broken.
     if (err instanceof QueryRefused) return json(400, { error: err.message });
+    // A refused promotion or adapter carries its findings so the caller can act
+    // — or acknowledge — rather than re-deriving them.
+    if (err instanceof RuntimeRefused) {
+      return json(400, { error: err.message, issues: err.issues });
+    }
+    if (err instanceof RuntimeNotFound) return json(404, { error: err.message });
     if (err instanceof Refused) return json(403, { error: err.message });
     if (err instanceof LiveNotFound) return json(404, { error: err.message });
     // The warehouse's own words, at a status that says "not our fault".

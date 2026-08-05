@@ -14,7 +14,7 @@ pip install -r requirements.txt   # only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run server     # the registry API on :8787 (SQLite by default)
 npm run mcp        # the MCP server on stdio (read-only by default)
-npm run verify     # typecheck, 529 unit tests, 85 browser checks
+npm run verify     # typecheck, 603 unit tests, 85 browser checks
 npm run build      # typecheck + production bundle
 ```
 
@@ -37,11 +37,13 @@ each kind of document the workspace holds:
 | `parameter_set` | governed assumptions | the in-force window, the keys, the citation behind each rate |
 | `report` | a grain and a destination | the rows that would actually be filed |
 | `variance_monitor` | thresholds on a rollup | what each threshold did across the window — fired, passed, or had no threshold at all |
+| `source_binding` | a client system's column names and codes | whether the adapter it generates can faithfully stand in for the canonical source |
 
-Seven documents ship in the workspace: two metrics views (`liquidity_pit`,
+Eight documents ship in the workspace: two metrics views (`liquidity_pit`,
 `irrbb_eve`), the FR 2052a product-ID rule set and its LCR rate table, the
-outflow view that applies them, the daily submission report, and a day-over-day
-variance monitor over what that report files.
+outflow view that applies them, the daily submission report, a day-over-day
+variance monitor over what that report files, and a source binding mapping one
+client system's columns onto the canonical source.
 
 **Variance monitoring** answers the question a report cannot: did a number move
 more overnight than it should have? Thresholds are either static — an absolute
@@ -331,6 +333,77 @@ revisions, optimistic concurrency, attribution — behind three gates:
 Identity comes from `KEEL_MCP_IDENTITY`, never from a tool argument. An author
 field the caller can set to any string is not an attribution.
 
+## Deploying, and consuming at run time
+
+The surface autosaves every settled edit as a revision. That is right for
+authors and would be poison for a runtime client — whatever it read would change
+mid-afternoon because somebody was typing. So editing and deploying are separate
+acts:
+
+```
+edit     → a revision     automatic, cheap, nothing reads it
+release  → a snapshot     every artifact pinned at one revision, immutable
+promote  → a deployment   a channel now points at that release
+```
+
+A client dereferences a **channel** — `production`, `staging` — never a release.
+Rollback is repointing the channel; nothing is edited back, and the old release
+is still exactly what it was. Every promotion records who, when and why, so
+*"what were we computing on the 14th"* is a query rather than an investigation.
+
+**Promotion is where the governance gate bites hardest.** `assessChange` runs
+between what the channel currently serves and the candidate release, and a
+change that silences a control or restates filed history is refused unless the
+caller passes `acknowledgeReview` — which is then written into the promotion
+record. It judges rollbacks the same way, because a rollback is a deployment.
+
+Cutting a release records the workspace's diagnostic counts rather than gating
+on them. The shipped workspace itself carries two `KEEL030`s, and a release gate
+that refuses anything imperfect is a gate people learn to route around. The one
+hard refusal is a document that does not parse: that is not a deployable thing,
+it is a broken file with a version number.
+
+The runtime contract is four GETs and needs no SDK — manifest, plan, rules — and
+is documented with a zero-dependency client and a worked example in
+[`clients/README.md`](clients/README.md). Both are executed by the test suite,
+so the documentation is checked rather than described.
+
+## When the client's columns are not your columns
+
+The rules are written once against canonical names — `balance_usd`, `segment`,
+`is_secured`. A client system rarely has those: Murex calls the balance
+`BAL_AMT_USD` and codes the segment `RTL`/`WSL`/`SBB`.
+
+The tempting fix is a different compiled plan per system. That is N plans to
+keep conformant, and the entire point of the compiler is that there is one.
+
+A `source_binding` does the opposite. It generates an **adapter view** that
+presents the client's table under the canonical names, and the canonical plan
+runs on top of it byte-identical everywhere:
+
+```yaml
+kind: source_binding
+binds: alm.fct_2052a_positions      # the canonical source it stands in for
+table: murex.v_liq_positions        # the client's table
+columns:
+  - canonical: balance_usd
+    column: BAL_AMT_USD
+  - canonical: segment
+    column: CUST_SEG
+    map: {RTL: RETAIL, SBB: SMALL_BUSINESS, WSL: WHOLESALE}
+```
+
+An unmapped client code becomes **NULL**, not the raw code — NULL lands in
+classification coverage as *unmapped*, where the surface already makes gaps
+visible, while the raw code would fail every rule while looking like data.
+
+And the check that makes it safe to serve: a binding missing a column the rules
+read, or carrying a vocabulary that can **never produce** a value some rule tests
+for, is refused with the list. That second failure is the reason the check
+exists — omit `SBB: SMALL_BUSINESS` and the small-business rule never fires on
+that one system, forever, while every number still computes and every coverage
+report still looks clean.
+
 ## Where to read next
 
 `IMPLEMENTATION.md` covers the architecture, the diagnostic catalogue, the
@@ -344,7 +417,7 @@ against a real implementation of the protocol rather than against Dremio itself.
 ## Testing
 
 ```
-npm run test         # 529 unit, conformance, server and MCP tests
+npm run test         # 603 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e          # 85 browser checks against the built bundle
 ```

@@ -43,6 +43,10 @@ export interface Dialect {
 
 const ARTIFACT = 'keel_artifact';
 const REVISION = 'keel_revision';
+const RELEASE = 'keel_release';
+const PIN = 'keel_release_pin';
+const CHANNEL = 'keel_channel';
+const PROMOTION = 'keel_promotion';
 
 /**
  * The one thing the schema is really about: revisions are append-only.
@@ -77,6 +81,42 @@ const SQLITE_SCHEMA = [
 )`,
   `CREATE INDEX IF NOT EXISTS ix_${REVISION}_artifact ON ${REVISION} (artifact_id, revision_no)`,
   `CREATE INDEX IF NOT EXISTS ix_${REVISION}_created ON ${REVISION} (artifact_id, created_at)`,
+  // A release is an immutable, named snapshot: every artifact pinned at one
+  // revision. Editing after a release changes nothing a client reads, which is
+  // what turns the surface's autosave from a liability into a scratchpad.
+  `CREATE TABLE IF NOT EXISTS ${RELEASE} (
+  version    INTEGER NOT NULL UNIQUE,
+  name       TEXT NOT NULL,
+  message    TEXT NOT NULL,
+  author     TEXT NOT NULL,
+  errors     INTEGER NOT NULL,
+  warnings   INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+)`,
+  `CREATE TABLE IF NOT EXISTS ${PIN} (
+  version       INTEGER NOT NULL,
+  artifact_name TEXT NOT NULL,
+  kind          TEXT NOT NULL,
+  revision_no   INTEGER NOT NULL,
+  content_hash  TEXT NOT NULL,
+  UNIQUE (version, artifact_name)
+)`,
+  // A channel is a name clients dereference — production, staging. Deploying
+  // is repointing it; rollback is repointing it back. The channel row holds
+  // only the current pointer; every move it has ever made is in promotions.
+  `CREATE TABLE IF NOT EXISTS ${CHANNEL} (
+  name       TEXT NOT NULL UNIQUE,
+  version    INTEGER NOT NULL,
+  updated_at TEXT NOT NULL,
+  updated_by TEXT NOT NULL
+)`,
+  `CREATE TABLE IF NOT EXISTS ${PROMOTION} (
+  channel    TEXT NOT NULL,
+  version    INTEGER NOT NULL,
+  actor      TEXT NOT NULL,
+  message    TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)`,
 ];
 
 /**
@@ -112,6 +152,40 @@ CREATE TABLE ${REVISION} (
 CREATE INDEX ix_${REVISION}_artifact ON ${REVISION} (artifact_id, revision_no)`,
   `IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_${REVISION}_created')
 CREATE INDEX ix_${REVISION}_created ON ${REVISION} (artifact_id, created_at)`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${RELEASE}')
+CREATE TABLE ${RELEASE} (
+  version    INT NOT NULL UNIQUE,
+  name       NVARCHAR(200) NOT NULL,
+  message    NVARCHAR(1000) NOT NULL,
+  author     NVARCHAR(200) NOT NULL,
+  errors     INT NOT NULL,
+  warnings   INT NOT NULL,
+  created_at NVARCHAR(30) NOT NULL
+)`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${PIN}')
+CREATE TABLE ${PIN} (
+  version       INT NOT NULL,
+  artifact_name NVARCHAR(200) NOT NULL,
+  kind          NVARCHAR(40) NOT NULL,
+  revision_no   INT NOT NULL,
+  content_hash  NVARCHAR(64) NOT NULL,
+  CONSTRAINT uq_${PIN} UNIQUE (version, artifact_name)
+)`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${CHANNEL}')
+CREATE TABLE ${CHANNEL} (
+  name       NVARCHAR(100) NOT NULL UNIQUE,
+  version    INT NOT NULL,
+  updated_at NVARCHAR(30) NOT NULL,
+  updated_by NVARCHAR(200) NOT NULL
+)`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${PROMOTION}')
+CREATE TABLE ${PROMOTION} (
+  channel    NVARCHAR(100) NOT NULL,
+  version    INT NOT NULL,
+  actor      NVARCHAR(200) NOT NULL,
+  message    NVARCHAR(1000) NOT NULL,
+  created_at NVARCHAR(30) NOT NULL
+)`,
 ];
 
 /**
@@ -249,6 +323,66 @@ ORDER BY r.revision_no DESC`,
 FROM ${ARTIFACT} a
 JOIN ${REVISION} r ON r.artifact_id = a.artifact_id
 WHERE a.name = ? AND r.revision_no = ?`,
+
+  // --- releases and channels ----------------------------------------------
+
+  /**
+   * Number the release in the same statement that creates it, exactly as
+   * revisions are numbered: two concurrent cuts collide on the UNIQUE
+   * constraint instead of interleaving a stale read.
+   */
+  insertRelease:
+    `INSERT INTO ${RELEASE} (version, name, message, author, errors, warnings, created_at)
+SELECT COALESCE((SELECT MAX(version) FROM ${RELEASE}), 0) + 1, ?, ?, ?, ?, ?, ?`,
+
+  newestReleaseVersion: `SELECT MAX(version) AS version FROM ${RELEASE}`,
+
+  insertPin:
+    `INSERT INTO ${PIN} (version, artifact_name, kind, revision_no, content_hash)
+VALUES (?, ?, ?, ?, ?)`,
+
+  releases:
+    `SELECT version, name, message, author, errors, warnings, created_at
+FROM ${RELEASE} ORDER BY version DESC`,
+
+  releaseByVersion:
+    `SELECT version, name, message, author, errors, warnings, created_at
+FROM ${RELEASE} WHERE version = ?`,
+
+  pinsOf:
+    `SELECT artifact_name, kind, revision_no, content_hash
+FROM ${PIN} WHERE version = ? ORDER BY artifact_name`,
+
+  /** The pinned bodies — what a runtime client actually reads. */
+  releaseBodies:
+    `SELECT p.artifact_name AS name, p.kind, p.revision_no, r.body, p.content_hash
+FROM ${PIN} p
+JOIN ${ARTIFACT} a ON a.name = p.artifact_name
+JOIN ${REVISION} r ON r.artifact_id = a.artifact_id AND r.revision_no = p.revision_no
+WHERE p.version = ?
+ORDER BY p.artifact_name`,
+
+  channelByName:
+    `SELECT name, version, updated_at, updated_by FROM ${CHANNEL} WHERE name = ?`,
+
+  channels:
+    `SELECT name, version, updated_at, updated_by FROM ${CHANNEL} ORDER BY name`,
+
+  // No portable upsert, so a promotion is a delete-and-insert inside the
+  // repository's transaction. The promotions table is the durable record; the
+  // channel row is only the current pointer.
+  deleteChannel: `DELETE FROM ${CHANNEL} WHERE name = ?`,
+
+  insertChannel:
+    `INSERT INTO ${CHANNEL} (name, version, updated_at, updated_by) VALUES (?, ?, ?, ?)`,
+
+  insertPromotion:
+    `INSERT INTO ${PROMOTION} (channel, version, actor, message, created_at)
+VALUES (?, ?, ?, ?, ?)`,
+
+  promotionsOf:
+    `SELECT channel, version, actor, message, created_at
+FROM ${PROMOTION} WHERE channel = ? ORDER BY created_at DESC, version DESC`,
 } as const;
 
 /**

@@ -66,8 +66,9 @@ describe('the connection', () => {
   it('advertises the whole toolset', async () => {
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      'assess_change', 'compile', 'get_artifact', 'get_history', 'get_lineage',
-      'get_parameters', 'get_rules', 'list_artifacts', 'preview_report',
+      'assess_change', 'compile', 'create_release', 'get_artifact', 'get_history',
+      'get_lineage', 'get_manifest', 'get_parameters', 'get_release', 'get_rules',
+      'list_artifacts', 'list_channels', 'list_releases', 'preview_report', 'promote',
       'save_artifact', 'test_rules', 'validate',
     ]);
   });
@@ -97,7 +98,7 @@ describe('the connection', () => {
 describe('reading over the wire', () => {
   it('lists the workspace', async () => {
     const out = json(await client.callTool({ name: 'list_artifacts', arguments: {} }));
-    expect(out).toHaveLength(7);
+    expect(out).toHaveLength(8);
     expect(out.map((a: { name: string }) => a.name)).toContain('fr2052a_product_id');
   });
 
@@ -122,7 +123,7 @@ describe('reading over the wire', () => {
 
   it('returns the whole graph when given no name', async () => {
     const out = json(await client.callTool({ name: 'get_lineage', arguments: {} }));
-    expect(out.nodes).toHaveLength(7);
+    expect(out.nodes).toHaveLength(8);
   });
 
   it('compiles to a semantic target', async () => {
@@ -144,7 +145,7 @@ describe('refusing over the wire', () => {
     expect(out.text).toMatch(/no artifact called nope/);
 
     // And the connection still works, which is the actual assertion.
-    expect(json(await client.callTool({ name: 'list_artifacts', arguments: {} }))).toHaveLength(7);
+    expect(json(await client.callTool({ name: 'list_artifacts', arguments: {} }))).toHaveLength(8);
   });
 
   it('refuses a save on a read-only connection', async () => {
@@ -215,6 +216,104 @@ describe('the governance gate, end to end', () => {
     expect(history[0].message).toMatch(/review acknowledged/);
     // The identity is the server's, not something the call could set.
     expect(history[0].author).toBe('agent-under-test');
+  });
+});
+
+describe('releasing and deploying over the wire', () => {
+  it('refuses to cut or deploy on a read-only connection', async () => {
+    const cut = payload(await client.callTool({
+      name: 'create_release', arguments: { message: 'nope' },
+    }));
+    expect(cut.isError).toBe(true);
+    expect(cut.text).toMatch(/read-only/);
+
+    const deploy = payload(await client.callTool({
+      name: 'promote', arguments: { channel: 'production', version: 1, message: 'nope' },
+    }));
+    expect(deploy.isError).toBe(true);
+    expect(deploy.text).toMatch(/read-only/);
+  });
+
+  it('cuts, deploys, and then serves a manifest a client can poll', async () => {
+    const release = json(await writable.callTool({
+      name: 'create_release', arguments: { message: 'first deployable' },
+    }));
+    expect(release.version).toBeGreaterThan(0);
+    expect(release.artifacts).toBe(8);
+
+    const promoted = json(await writable.callTool({
+      name: 'promote',
+      arguments: { channel: 'production', version: release.version, message: 'go live' },
+    }));
+    expect(promoted.channel.version).toBe(release.version);
+
+    const manifest = json(await writable.callTool({
+      name: 'get_manifest', arguments: { channel: 'production' },
+    }));
+    expect(manifest.release.version).toBe(release.version);
+    expect(manifest.artifacts).toHaveLength(8);
+    // The stage is on every entry, so a client can tell a pipeline stage from a
+    // dashboard ratio without re-deriving it.
+    expect(manifest.artifacts.every((a: { stage: string }) => !!a.stage)).toBe(true);
+  });
+
+  it('refuses a deployment that weakens what the channel serves', async () => {
+    // The gate at the moment it matters most.
+    //
+    // Self-contained on purpose: earlier tests in this file have already
+    // loosened this threshold, so the baseline is established here rather than
+    // assumed. A governance test that only passes in file order is a governance
+    // test that will one day pass for the wrong reason.
+    const setLimit = async (limit: string) => {
+      const body = json(await writable.callTool({
+        name: 'get_artifact', arguments: { name: 'fr2052a_variance' },
+      })).body as string;
+      await writable.callTool({
+        name: 'save_artifact',
+        arguments: {
+          name: 'fr2052a_variance',
+          body: body.replace(/limit: \d+/, `limit: ${limit}`),
+          message: `limit ${limit}`,
+          acknowledgeReview: true,
+        },
+      });
+      return json(await writable.callTool({
+        name: 'create_release', arguments: { message: `limit ${limit}` },
+      })).version as number;
+    };
+
+    // Baseline: the tight threshold, deployed.
+    const tight = await setLimit('1000000');
+    await writable.callTool({
+      name: 'promote',
+      arguments: {
+        channel: 'staging', version: tight, message: 'baseline', acknowledgeReview: true,
+      },
+    });
+
+    const loosened = await setLimit('5000000');
+    const refused = payload(await writable.callTool({
+      name: 'promote',
+      arguments: { channel: 'staging', version: loosened, message: 'ship it' },
+    }));
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/Silences 3 breaches/);
+
+    const accepted = json(await writable.callTool({
+      name: 'promote',
+      arguments: {
+        channel: 'staging', version: loosened,
+        message: 'ship it', acknowledgeReview: true,
+      },
+    }));
+    expect(accepted.channel.version).toBe(loosened);
+  });
+
+  it('says what each channel serves', async () => {
+    const channels = json(await writable.callTool({ name: 'list_channels', arguments: {} }));
+    const names = channels.map((c: { name: string }) => c.name);
+    expect(names).toContain('production');
+    expect(names).toContain('staging');
   });
 });
 

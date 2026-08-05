@@ -47,7 +47,7 @@ describe('reading', () => {
     const res = await get('/api/artifacts');
     expect(res.status).toBe(200);
     const { artifacts } = res.body as { artifacts: Array<{ name: string; revision: number }> };
-    expect(artifacts).toHaveLength(7);
+    expect(artifacts).toHaveLength(8);
     expect(artifacts.map((a) => a.name)).toContain('fr2052a_product_id');
   });
 
@@ -113,9 +113,14 @@ describe('writing', () => {
   });
 
   it('creates an artifact the workspace did not have', async () => {
+    // Counted relative to what was seeded: the assertion is "one more than
+    // before", and hardcoding a total makes every future shipped document look
+    // like a regression here.
+    const before = ((await get('/api/artifacts')).body as { artifacts: unknown[] }).artifacts.length;
     const res = await put('/api/artifacts/new_view', { body: 'version: 1', kind: 'metrics_view' });
     expect(res.body).toMatchObject({ revision: 1, changed: true });
-    expect(((await get('/api/artifacts')).body as { artifacts: unknown[] }).artifacts).toHaveLength(8);
+    expect(((await get('/api/artifacts')).body as { artifacts: unknown[] }).artifacts)
+      .toHaveLength(before + 1);
   });
 
   it('refuses a name that is not a plain identifier', async () => {

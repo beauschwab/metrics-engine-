@@ -8,3 +8,7 @@ blob-report/
 keel.db
 keel.db-shm
 keel.db-wal
+
+# Python bytecode from running the client examples.
+__pycache__/
+*.pyc

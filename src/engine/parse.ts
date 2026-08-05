@@ -41,7 +41,9 @@ export type DocKind =
   | 'parameter_set'
   | 'report'
   /** Day-over-day variance on a rollup, and the thresholds that judge it. */
-  | 'variance_monitor';
+  | 'variance_monitor'
+  /** A client system's columns, mapped to a canonical source. */
+  | 'source_binding';
 
 export interface ViewHeader {
   source: string;

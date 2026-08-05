@@ -102,6 +102,8 @@ const head = (g: Graph, key: string): string => (g.view[key] || '').trim();
 function stageOf(g: Graph, filedViews: Set<string>): Stage {
   if (g.kind === 'report') return 'file';
   if (g.kind === 'variance_monitor') return 'watch';
+  // A binding is about where records come from, which is Prepare's question.
+  if (g.kind === 'source_binding') return 'prepare';
   // A rule set or a rate table is never the number anyone reads; it is always
   // an input to something that is.
   if (g.kind === 'classification' || g.kind === 'parameter_set') return 'prepare';
@@ -148,6 +150,11 @@ function runtimeOf(g: Graph, stage: Stage): { runtime: string; runtimeDetail: st
         runtimeDetail: `Runs in the pipeline; writes ${table}${by ? ` partitioned by ${by}` : ''}`,
       };
     }
+    case 'source_binding':
+      return {
+        runtime: 'Client adapter · writes nothing',
+        runtimeDetail: 'Generates the adapter view a client system runs the canonical plan on',
+      };
     case 'variance_monitor': {
       const report = head(g, 'report');
       return {

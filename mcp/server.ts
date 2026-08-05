@@ -22,8 +22,9 @@ import { dialectFor, type DialectName } from '../server/dialect';
 import { Repository } from '../server/repository';
 import { shippedDocuments } from '../server/index';
 import {
-  ToolError, assessProposed, compile, getArtifact, getHistory, getLineage,
-  getLineageGraph, getParameters, getRules, listArtifacts, policyFromEnv, previewReport,
+  ToolError, assessProposed, compile, createRelease, getArtifact, getHistory,
+  getLineage, getLineageGraph, getManifest, getParameters, getRelease, getRules,
+  listArtifacts, listChannels, listReleases, policyFromEnv, previewReport, promote,
   saveArtifact, testRules, validate, type McpPolicy,
 } from './tools';
 
@@ -214,6 +215,82 @@ export function register(server: McpServer, repo: Repository, policy: McpPolicy)
   );
 
   // --- writing -------------------------------------------------------------
+
+  // --- releasing and deploying --------------------------------------------
+
+  server.tool(
+    'list_releases',
+    'Every release ever cut, newest first, with the diagnostic counts recorded '
+    + 'at cut time. A release is an immutable snapshot of every artifact at one '
+    + 'revision — editing afterwards changes nothing any deployed client reads.',
+    {},
+    () => attempt(() => listReleases(repo)),
+  );
+
+  server.tool(
+    'get_release',
+    'One release with its pins: which revision of each artifact it froze. Use '
+    + 'this to answer "exactly what was deployed" for a given version.',
+    { version: z.number().int().positive() },
+    ({ version }) => attempt(() => getRelease(repo, version)),
+  );
+
+  server.tool(
+    'list_channels',
+    'What each channel (production, staging…) currently serves, and its recent '
+    + 'promotion history. A channel is what runtime clients dereference; they '
+    + 'never name a release directly.',
+    {},
+    () => attempt(() => listChannels(repo)),
+  );
+
+  server.tool(
+    'get_manifest',
+    'What a channel serves right now: release version, and every artifact with '
+    + 'its pinned revision and content hash. This is the poll target for a '
+    + 'runtime client — cache everything else against release.version.',
+    { channel: z.string() },
+    ({ channel }) => attempt(() => getManifest(repo, channel)),
+  );
+
+  server.tool(
+    'create_release',
+    policy.canWrite
+      ? 'Cut a release from the current workspace, pinning every artifact at its '
+        + 'current revision. Records the diagnostic counts rather than gating on '
+        + 'them; refuses only if a document does not parse. Cutting does not '
+        + 'deploy — use promote for that.'
+      : 'Disabled: this registry connection is read-only. Set KEEL_MCP_WRITE=1 to '
+        + 'cut releases. You can still read what has been released with '
+        + 'list_releases and get_release, and see what is deployed with get_manifest.',
+    {
+      message: z.string().describe('Why this release is being cut — it lands in the record'),
+      name: z.string().optional().describe('Optional human label, e.g. "Q3 rates"'),
+    },
+    (args) => attempt(() => createRelease(repo, policy, args)),
+  );
+
+  server.tool(
+    'promote',
+    policy.canWrite
+      ? 'Point a channel at a release — this is the moment production changes. '
+        + 'Runs the impact assessment against what the channel currently serves '
+        + 'and REFUSES anything that weakens a control or restates filed history '
+        + 'unless acknowledgeReview is set; the acknowledgement is recorded '
+        + 'against the promotion. Rolling back is promoting an older version, '
+        + 'and is judged the same way.'
+      : 'Disabled: this registry connection is read-only. Set KEEL_MCP_WRITE=1 to '
+        + 'deploy. You can still inspect what each channel serves with '
+        + 'list_channels and get_manifest, and compare releases with get_release.',
+    {
+      channel: z.string().describe('e.g. production, staging'),
+      version: z.number().int().positive(),
+      message: z.string(),
+      acknowledgeReview: z.boolean().optional()
+        .describe('Set only after reading the refusal and intending the weakening'),
+    },
+    (args) => attempt(() => promote(repo, policy, args)),
+  );
 
   server.tool(
     'save_artifact',

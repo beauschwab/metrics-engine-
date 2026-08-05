@@ -20,6 +20,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { VIEW_FILES } from '../src/engine/documents';
 
 const EDITOR = '.cm-content';
 const SAVED = '[data-testid="mdl-save-state"]';
@@ -149,7 +150,10 @@ test.describe('the registry', () => {
   test('serves the workspace it seeded from the shipped documents', async () => {
     const res = await fetch(`${API}/api/artifacts`);
     const { artifacts } = (await res.json()) as { artifacts: Array<{ name: string; revision: number }> };
-    expect(artifacts).toHaveLength(7);
+    // Against the shipped set rather than a literal — the claim is "everything
+    // that ships is seeded", and a hardcoded total turns every new document
+    // into a failure here.
+    expect(artifacts.map((a) => a.name).sort()).toEqual([...VIEW_FILES].sort());
     expect(artifacts.every((a) => a.revision >= 1)).toBe(true);
   });
 

@@ -209,4 +209,195 @@ export class Repository {
     }
     return created;
   }
+
+  // --- releases and channels ------------------------------------------------
+
+  /**
+   * Cut a release: pin every artifact at its current revision.
+   *
+   * The release is the unit of deployment, and it is immutable — the surface's
+   * debounced autosave keeps writing revisions afterwards without changing what
+   * any client reads. `errors`/`warnings` are recorded rather than gated here:
+   * whether a workspace with problems may be *deployed* is the promotion's
+   * decision, made where the target channel is known.
+   */
+  async createRelease(input: {
+    name?: string;
+    message: string;
+    author: string;
+    errors: number;
+    warnings: number;
+  }): Promise<ReleaseSummary> {
+    return this.db.transaction(async () => {
+      const workspace = await this.workspace();
+      if (!workspace.length) throw new NotFound('nothing to release — the registry is empty');
+
+      const at = now();
+      await this.db.run(SQL.insertRelease, [
+        input.name || '', input.message, input.author,
+        input.errors, input.warnings, at,
+      ]);
+      // Re-read rather than computing MAX+1 twice: the INSERT numbered it, and
+      // inside the transaction this read sees our own write on both engines.
+      const [row] = await this.db.all<{ version: number }>(SQL.newestReleaseVersion);
+      const version = Number(row.version);
+
+      for (const artifact of workspace) {
+        await this.db.run(SQL.insertPin, [
+          version, artifact.name, artifact.kind, artifact.revision, artifact.contentHash,
+        ]);
+      }
+
+      return {
+        version,
+        name: input.name || '',
+        message: input.message,
+        author: input.author,
+        errors: input.errors,
+        warnings: input.warnings,
+        createdAt: at,
+        artifacts: workspace.length,
+      };
+    });
+  }
+
+  async releases(): Promise<ReleaseSummary[]> {
+    const rows = await this.db.all<ReleaseRow>(SQL.releases);
+    const counts = new Map<number, number>();
+    for (const r of rows) {
+      const pins = await this.db.all(SQL.pinsOf, [r.version]);
+      counts.set(Number(r.version), pins.length);
+    }
+    return rows.map((r) => toRelease(r, counts.get(Number(r.version)) ?? 0));
+  }
+
+  async release(version: number): Promise<(ReleaseSummary & { pins: Pin[] }) | null> {
+    const [row] = await this.db.all<ReleaseRow>(SQL.releaseByVersion, [version]);
+    if (!row) return null;
+    const pins = await this.db.all<PinRow>(SQL.pinsOf, [version]);
+    return {
+      ...toRelease(row, pins.length),
+      pins: pins.map((p) => ({
+        name: p.artifact_name,
+        kind: p.kind,
+        revision: Number(p.revision_no),
+        contentHash: p.content_hash,
+      })),
+    };
+  }
+
+  /** The pinned bodies — the workspace a runtime client actually evaluates. */
+  async releaseWorkspace(version: number): Promise<Revision[]> {
+    const rows = await this.db.all<{
+      name: string; kind: string; revision_no: number; body: string; content_hash: string;
+    }>(SQL.releaseBodies, [version]);
+    return rows.map((r) => ({
+      name: r.name,
+      kind: r.kind,
+      revision: Number(r.revision_no),
+      body: r.body,
+      contentHash: r.content_hash,
+      author: '',
+      message: '',
+      createdAt: '',
+    }));
+  }
+
+  /**
+   * Point a channel at a release.
+   *
+   * Deliberately dumb: the governance — impact against what the channel
+   * currently serves, acknowledgement of weakenings — happens in the layer
+   * above, where the engine is available. This records the move and keeps every
+   * prior move, so "what was production reading on the 14th" has an answer.
+   */
+  async promote(channel: string, version: number, actor: string, message: string): Promise<Channel> {
+    const found = await this.release(version);
+    if (!found) throw new NotFound(`no release r${version}`);
+
+    return this.db.transaction(async () => {
+      const at = now();
+      await this.db.run(SQL.deleteChannel, [channel]);
+      await this.db.run(SQL.insertChannel, [channel, version, at, actor]);
+      await this.db.run(SQL.insertPromotion, [channel, version, actor, message, at]);
+      return { name: channel, version, updatedAt: at, updatedBy: actor };
+    });
+  }
+
+  async channel(name: string): Promise<Channel | null> {
+    const [row] = await this.db.all<ChannelRow>(SQL.channelByName, [name]);
+    return row
+      ? { name: row.name, version: Number(row.version), updatedAt: row.updated_at, updatedBy: row.updated_by }
+      : null;
+  }
+
+  async channels(): Promise<Channel[]> {
+    const rows = await this.db.all<ChannelRow>(SQL.channels);
+    return rows.map((r) => ({
+      name: r.name, version: Number(r.version), updatedAt: r.updated_at, updatedBy: r.updated_by,
+    }));
+  }
+
+  async promotions(channel: string): Promise<Promotion[]> {
+    const rows = await this.db.all<PromotionRow>(SQL.promotionsOf, [channel]);
+    return rows.map((r) => ({
+      channel: r.channel, version: Number(r.version), actor: r.actor,
+      message: r.message, createdAt: r.created_at,
+    }));
+  }
 }
+
+// --- release shapes ---------------------------------------------------------
+
+export interface ReleaseSummary {
+  version: number;
+  name: string;
+  message: string;
+  author: string;
+  /** Diagnostic counts at cut time — recorded, and judged at promotion. */
+  errors: number;
+  warnings: number;
+  createdAt: string;
+  artifacts: number;
+}
+
+export interface Pin {
+  name: string;
+  kind: string;
+  revision: number;
+  contentHash: string;
+}
+
+export interface Channel {
+  name: string;
+  version: number;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface Promotion {
+  channel: string;
+  version: number;
+  actor: string;
+  message: string;
+  createdAt: string;
+}
+
+interface ReleaseRow {
+  version: number; name: string; message: string; author: string;
+  errors: number; warnings: number; created_at: string;
+}
+interface PinRow { artifact_name: string; kind: string; revision_no: number; content_hash: string }
+interface ChannelRow { name: string; version: number; updated_at: string; updated_by: string }
+interface PromotionRow {
+  channel: string; version: number; actor: string; message: string; created_at: string;
+}
+
+function toRelease(r: ReleaseRow, artifacts: number): ReleaseSummary {
+  return {
+    version: Number(r.version), name: r.name, message: r.message, author: r.author,
+    errors: Number(r.errors), warnings: Number(r.warnings), createdAt: r.created_at,
+    artifacts,
+  };
+}
+
