@@ -77,6 +77,40 @@ export interface AuditRow {
   createdAt: string;
 }
 
+export type ProposalStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
+
+export interface ProposalRow {
+  id: string;
+  docName: string;
+  yaml: string;
+  rationale: string;
+  status: ProposalStatus;
+  evidence: unknown;
+  author: string;
+  dashboardId: string | null;
+  steward: string | null;
+  decisionComment: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApprovalRow {
+  track: string;
+  approver: string;
+  decision: 'approve' | 'reject';
+  comment: string;
+  createdAt: string;
+}
+
+export interface ExposureRow {
+  dashboardId: string;
+  specHash: string;
+  refreshSlo: string;
+  registeredBy: string;
+  registeredAt: string;
+}
+
 const now = () => new Date().toISOString();
 
 export class ChartroomRepository {
@@ -311,6 +345,186 @@ export class ChartroomRepository {
     return (await this.latestBrief(dashboardId))!;
   }
 
+  // ---- proposals ----------------------------------------------------------
+
+  /** Create or (while undecided) revise a proposal. Every touch re-validates. */
+  async saveProposal(input: {
+    id: string; docName: string; yaml: string; rationale: string;
+    evidence: unknown; dashboardId: string | null; author: string; actor: string;
+  }): Promise<ProposalRow> {
+    const existing = await this.proposal(input.id);
+    const at = now();
+    if (existing) {
+      if (existing.status === 'approved' || existing.status === 'rejected') {
+        throw new Invalid(
+          `proposal ${input.id} is ${existing.status} — a decided proposal is history; open a new one`,
+        );
+      }
+      await this.db.transaction(async () => {
+        await this.db.run(S.updateProposalDraft, [
+          input.yaml, input.rationale, JSON.stringify(input.evidence), 'draft', at, input.id,
+        ]);
+        await this.audit(input.actor, 'proposal.revise', 'proposal', input.id, input.yaml);
+      });
+    } else {
+      await this.db.transaction(async () => {
+        await this.db.run(S.insertProposal, [
+          input.id, input.docName, input.yaml, input.rationale, 'draft',
+          JSON.stringify(input.evidence), input.author, input.dashboardId, at, at,
+        ]);
+        await this.audit(input.actor, 'proposal.create', 'proposal', input.id, input.yaml);
+      });
+    }
+    return (await this.proposal(input.id))!;
+  }
+
+  async submitProposal(id: string, actor: string, blockers: string[]): Promise<ProposalRow> {
+    const p = await this.proposal(id);
+    if (!p) throw new NotFound(`no proposal called ${id}`);
+    if (p.status !== 'draft') throw new Invalid(`proposal ${id} is ${p.status}, not submittable`);
+    if (blockers.length) {
+      throw new Invalid(
+        'the validation evidence blocks submission — a steward should never be asked to '
+        + 'approve a document the engine already rejects',
+        blockers,
+      );
+    }
+    await this.db.transaction(async () => {
+      await this.db.run(S.updateProposalDraft, [
+        p.yaml, p.rationale, JSON.stringify(p.evidence), 'submitted', now(), id,
+      ]);
+      await this.audit(actor, 'proposal.submit', 'proposal', id, p.yaml);
+    });
+    return (await this.proposal(id))!;
+  }
+
+  /** The steward's decision. Entitlement (human-only) is the API's job. */
+  async decideProposal(input: {
+    id: string; decision: 'approved' | 'rejected'; steward: string; comment: string;
+    evidence: unknown;
+  }): Promise<ProposalRow> {
+    const p = await this.proposal(input.id);
+    if (!p) throw new NotFound(`no proposal called ${input.id}`);
+    if (p.status !== 'submitted') {
+      throw new Invalid(`proposal ${input.id} is ${p.status} — only a submitted proposal can be decided`);
+    }
+    await this.db.transaction(async () => {
+      await this.db.run(S.decideProposal, [
+        input.decision, input.steward, input.comment, now(),
+        JSON.stringify(input.evidence), now(), input.id,
+      ]);
+      await this.audit(input.steward, `proposal.${input.decision === 'approved' ? 'approve' : 'reject'}`,
+        'proposal', input.id, input.comment);
+    });
+    return (await this.proposal(input.id))!;
+  }
+
+  async proposal(id: string): Promise<ProposalRow | null> {
+    const rows = await this.db.all<Record<string, unknown>>(S.proposal, [id]);
+    return rows.length ? mapProposal(rows[0]) : null;
+  }
+
+  async proposals(status?: string): Promise<ProposalRow[]> {
+    const rows = await this.db.all<Record<string, unknown>>(S.proposals);
+    const all = rows.map(mapProposal);
+    return status ? all.filter((p) => p.status === status) : all;
+  }
+
+  // ---- approvals & promotion ---------------------------------------------
+
+  async addApproval(input: {
+    dashboardId: string; track: string; approver: string;
+    decision: 'approve' | 'reject'; comment: string;
+  }): Promise<void> {
+    await this.db.transaction(async () => {
+      await this.db.run(S.insertApproval, [
+        'dashboard', input.dashboardId, input.track, input.approver,
+        input.decision, input.comment, now(),
+      ]);
+      await this.audit(input.approver, `approval.${input.decision}`, 'dashboard',
+        input.dashboardId, `${input.track}: ${input.comment}`);
+    });
+  }
+
+  /** The newest decision per track — a later rejection outdates an approval. */
+  async approvalState(dashboardId: string): Promise<Record<string, ApprovalRow>> {
+    const rows = await this.db.all<Record<string, unknown>>(
+      S.approvalsOf, ['dashboard', dashboardId],
+    );
+    const out: Record<string, ApprovalRow> = {};
+    for (const r of rows) {
+      out[String(r.track)] = {
+        track: String(r.track), approver: String(r.approver),
+        decision: String(r.decision) as 'approve' | 'reject',
+        comment: String(r.comment), createdAt: String(r.created_at),
+      };
+    }
+    return out;
+  }
+
+  /**
+   * Move a dashboard's status and append the version that carries it.
+   *
+   * The status column and the spec agree by construction: the promoted spec is
+   * the latest version's spec with only its status changed, saved as the next
+   * version with the promoter as author. Gates live in the API layer, where
+   * the lint context is available; this is the mechanics.
+   */
+  async promote(input: {
+    dashboardId: string; to: 'team' | 'certified'; actor: string;
+    lintReport: LintReport;
+  }): Promise<VersionRow> {
+    const dash = await this.dashboard(input.dashboardId);
+    if (!dash) throw new NotFound(`no dashboard called ${input.dashboardId}`);
+    const latest = await this.latest(input.dashboardId);
+    if (!latest) throw new Invalid('a dashboard with no versions cannot be promoted');
+
+    const spec: DashboardSpec = {
+      ...latest.spec,
+      dashboard: { ...latest.spec.dashboard, status: input.to },
+    };
+    const row: VersionRow = {
+      version: latest.version + 1,
+      spec,
+      specHash: specHash(spec),
+      parent: latest.version,
+      author: input.actor,
+      lintReport: input.lintReport,
+      createdAt: now(),
+    };
+    await this.db.transaction(async () => {
+      await this.db.run(S.setStatus, [input.to, input.dashboardId]);
+      await this.db.run(S.insertVersion, [
+        input.dashboardId, row.version, canonicalize(spec), row.specHash,
+        row.parent, row.author, JSON.stringify(row.lintReport), row.createdAt,
+      ]);
+      await this.audit(input.actor, `dashboard.promote.${input.to}`, 'dashboard',
+        input.dashboardId, row.specHash);
+    });
+    return row;
+  }
+
+  async addExposure(input: {
+    dashboardId: string; specHash: string; refreshSlo: string; registeredBy: string;
+  }): Promise<void> {
+    await this.db.transaction(async () => {
+      await this.db.run(S.insertExposure, [
+        input.dashboardId, input.specHash, input.refreshSlo, input.registeredBy, now(),
+      ]);
+      await this.audit(input.registeredBy, 'exposure.register', 'dashboard',
+        input.dashboardId, `${input.specHash} · ${input.refreshSlo}`);
+    });
+  }
+
+  async exposures(dashboardId: string): Promise<ExposureRow[]> {
+    const rows = await this.db.all<Record<string, unknown>>(S.exposuresOf, [dashboardId]);
+    return rows.map((r) => ({
+      dashboardId: String(r.dashboard_id), specHash: String(r.spec_hash),
+      refreshSlo: String(r.refresh_slo), registeredBy: String(r.registered_by),
+      registeredAt: String(r.registered_at),
+    }));
+  }
+
   async auditLog(artifactType: string, artifactId: string): Promise<AuditRow[]> {
     const rows = await this.db.all<Record<string, unknown>>(S.auditOf, [artifactType, artifactId]);
     return rows.map((r) => ({
@@ -331,6 +545,24 @@ function mapDashboard(r: Record<string, unknown>): DashboardRow {
     status: String(r.status) as DashboardRow['status'],
     owner: String(r.owner),
     createdAt: String(r.created_at),
+  };
+}
+
+function mapProposal(r: Record<string, unknown>): ProposalRow {
+  return {
+    id: String(r.id),
+    docName: String(r.doc_name),
+    yaml: String(r.yaml),
+    rationale: String(r.rationale),
+    status: String(r.status) as ProposalStatus,
+    evidence: JSON.parse(String(r.evidence)),
+    author: String(r.author),
+    dashboardId: r.dashboard_id === null ? null : String(r.dashboard_id),
+    steward: r.steward === null ? null : String(r.steward),
+    decisionComment: r.decision_comment === null ? null : String(r.decision_comment),
+    decidedAt: r.decided_at === null ? null : String(r.decided_at),
+    createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at),
   };
 }
 

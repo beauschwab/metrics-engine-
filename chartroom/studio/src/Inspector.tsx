@@ -24,9 +24,10 @@ import {
 } from 'chartroom-spec';
 import type { WidgetContract } from 'chartroom-spec';
 import { BriefCard } from './BriefCard';
+import { GovernCard } from './GovernCard';
 import type { ContractSummary } from './data';
 
-export type Tab = 'widget' | 'source' | 'findings' | 'brief';
+export type Tab = 'widget' | 'source' | 'findings' | 'brief' | 'govern';
 
 interface Props {
   spec: DashboardSpec;
@@ -40,6 +41,8 @@ interface Props {
   onTab(t: Tab): void;
   onSpec(next: DashboardSpec): void;
   onSelect(id: string): void;
+  /** After a promotion (which writes a version) the shell refetches. */
+  onReload(): void;
 }
 
 export function Inspector(props: Props) {
@@ -50,7 +53,7 @@ export function Inspector(props: Props) {
   return (
     <aside className="cr-inspector" data-testid="inspector">
       <nav className="cr-tabs" role="tablist">
-        {(['widget', 'source', 'findings', 'brief'] as const).map((t) => (
+        {(['widget', 'source', 'findings', 'brief', 'govern'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -76,6 +79,11 @@ export function Inspector(props: Props) {
         props.dashboardId
           ? <BriefCard dashboardId={props.dashboardId} />
           : <div className="cr-pane-empty">Open a dashboard to see its brief.</div>
+      )}
+      {tab === 'govern' && (
+        props.dashboardId
+          ? <GovernCard dashboardId={props.dashboardId} onPromoted={props.onReload} />
+          : <div className="cr-pane-empty">Open a dashboard to see its promotion state.</div>
       )}
     </aside>
   );

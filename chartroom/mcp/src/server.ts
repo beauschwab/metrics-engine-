@@ -55,10 +55,16 @@ The flow is fixed, and the server enforces it — skipping ahead returns 403s:
    before calling a composition done.
 5. ITERATE — preview_query for real numbers, diff_dashboard for what changed
    between versions. Every accepted change is a new version with a diff.
+6. GOVERN — when the registry lacks a metric, propose_metric files a KEEL
+   document with engine-run evidence; submit it when the blockers list is
+   empty and ask a steward to decide in the studio. get_promotion_checklist
+   shows what stands between a dashboard and its next status — your job is to
+   clear the checkable items (lint BLOCKs, stale weakening pins via
+   check_upgrades) and tell the humans which sign-offs remain.
 
-You cannot approve anything — briefs, promotions, none of it. Approval is the
-human half of the maker-checker seam; your half is making the artifact worth
-approving.
+You cannot approve anything — briefs, proposals, promotions, none of it.
+Approval is the human half of the maker-checker seam; your half is making the
+artifact worth approving.
 `.trim();
 
 type Content = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
@@ -267,6 +273,69 @@ export function build(): McpServer {
     },
   }, async ({ dashboard_id, a, b }) => attempt(() =>
     call('GET', `/api/dashboards/${dashboard_id}/diff?a=${a}&b=${b}`)));
+
+  // ---- governance (phase 3) ----------------------------------------------
+
+  server.registerTool('propose_metric', {
+    description: 'File a metric proposal: a complete KEEL YAML document plus the '
+      + 'rationale a steward will read. The server validates it through the real '
+      + 'engine — parse, diagnostics, every measure evaluated, semantic view '
+      + 'compiled — and returns the evidence with any blockers. A registry gap '
+      + 'becomes one of these, never inlined math in a spec.',
+    inputSchema: {
+      id: z.string().describe('slug id for the proposal'),
+      yaml: z.string().describe('the full KEEL document (metrics_view etc.)'),
+      rationale: z.string().describe('why this metric should exist, for the steward (min 20 chars)'),
+      dashboard_id: z.string().optional().describe('the dashboard whose gap this fills'),
+    },
+  }, async ({ id, yaml, rationale, dashboard_id }) => attempt(() =>
+    call('POST', '/api/proposals', { id, yaml, rationale, dashboard_id })));
+
+  server.registerTool('submit_proposal', {
+    description: 'Move a draft proposal to the steward queue. The server re-validates '
+      + 'against the current workspace first and refuses (422, blockers named) while '
+      + 'anything blocks: fix the document and propose again rather than arguing. '
+      + 'Deciding is human-only — after submitting, ask a steward to review in the studio.',
+    inputSchema: { proposal_id: z.string() },
+  }, async ({ proposal_id }) => attempt(() =>
+    call('POST', `/api/proposals/${proposal_id}/submit`, {})));
+
+  server.registerTool('get_proposal', {
+    description: 'One proposal with its stored evidence — parse result, diagnostics, '
+      + 'measure values on the fixture, semantic compile — plus current blockers and, '
+      + 'once decided, the registry revision an approval wrote.',
+    inputSchema: { proposal_id: z.string() },
+  }, async ({ proposal_id }) => attempt(() =>
+    call('GET', `/api/proposals/${proposal_id}`)));
+
+  server.registerTool('list_proposals', {
+    description: 'Every metric proposal, optionally filtered by status (draft, '
+      + 'submitted, approved, rejected). Check here before proposing: a gap someone '
+      + 'already proposed needs a comment on theirs, not a duplicate.',
+    inputSchema: {
+      status: z.enum(['draft', 'submitted', 'approved', 'rejected']).optional(),
+    },
+  }, async ({ status }) => attempt(() =>
+    call('GET', `/api/proposals${status ? `?status=${status}` : ''}`)));
+
+  server.registerTool('get_promotion_checklist', {
+    description: 'Where a dashboard stands in the draft → team → certified matrix: '
+      + 'the next status, each requirement with met/unmet and why, approval state per '
+      + 'track, and the lint report at the target status (GOV rules arm as the bar '
+      + 'rises). Read-only — promotion itself is a human act in the studio; your job '
+      + 'is clearing the checkable items and naming the sign-offs that remain.',
+    inputSchema: { dashboard_id: z.string() },
+  }, async ({ dashboard_id }) => attempt(() =>
+    call('GET', `/api/dashboards/${dashboard_id}/promotion`)));
+
+  server.registerTool('check_upgrades', {
+    description: 'Stale version pins on a dashboard, each with the engine’s impact '
+      + 'assessment between the pinned and latest revisions — which measures move and '
+      + 'by how much, what disappears, whether a control weakens. Notify-with-a-diff: '
+      + 'surface these to the owner; never silently re-pin a promoted dashboard.',
+    inputSchema: { dashboard_id: z.string() },
+  }, async ({ dashboard_id }) => attempt(() =>
+    call('GET', `/api/dashboards/${dashboard_id}/upgrades`)));
 
   return server;
 }

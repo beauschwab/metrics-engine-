@@ -110,13 +110,19 @@ describe('the connection', () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      'create_brief', 'create_dashboard', 'critique_spec', 'diff_dashboard',
-      'get_brief', 'get_dashboard', 'get_design_rules', 'get_metric_contract',
-      'get_pattern', 'get_widget_contract', 'lint_spec', 'list_dashboards',
-      'list_patterns', 'list_widgets', 'preview_query', 'save_dashboard',
-      'search_metrics', 'update_brief',
+      'check_upgrades', 'create_brief', 'create_dashboard', 'critique_spec',
+      'diff_dashboard', 'get_brief', 'get_dashboard', 'get_design_rules',
+      'get_metric_contract', 'get_pattern', 'get_promotion_checklist',
+      'get_proposal', 'get_widget_contract', 'lint_spec', 'list_dashboards',
+      'list_patterns', 'list_proposals', 'list_widgets', 'preview_query',
+      'propose_metric', 'save_dashboard', 'search_metrics', 'submit_proposal',
+      'update_brief',
     ]);
-    expect(names.filter((n) => n.includes('approve') || n.includes('promote'))).toEqual([]);
+    // The maker-checker seam, stated as an absence: no tool decides, approves,
+    // or promotes. (get_promotion_checklist is read-only — "promotion", not
+    // an act of promoting.)
+    expect(names.filter((n) => n.includes('approve') || n.includes('promote')
+      || n.includes('decide'))).toEqual([]);
   });
 
   it('carries the intake protocol in its instructions', () => {
@@ -227,5 +233,71 @@ describe('the Phase-2 gates, exercised end to end', () => {
     expect(agentActs.map((a) => a.action)).toContain('dashboard.save');
     // And the human approval is attributed to the human, not the agent.
     expect(audit.audit.find((a) => a.action === 'brief.approve')!.actor).toBe('beau');
+  });
+});
+
+describe('the Phase-3 governance loop, agent half only', () => {
+  const YAML = `name: mcp_proposed_view
+kind: metrics_view
+display_name: MCP-proposed view
+owner: Liquidity Regulatory Reporting
+source: alm.fct_liquidity_position
+
+measures:
+  - name: unencumbered_hqla
+    description: Eligible HQLA excluding encumbered positions.
+    type: simple
+    agg: sum
+    field: hqla_eligible_amount
+    where: is_encumbered = false
+    format: currency_usd
+`;
+
+  it('proposes a metric and reads back the engine-run evidence', async () => {
+    const r = json(await client.callTool({
+      name: 'propose_metric',
+      arguments: {
+        id: 'mcp-proposal', yaml: YAML,
+        rationale: 'Intake surfaced an unencumbered-HQLA gap no registry function covers.',
+        dashboard_id: 'agent-board',
+      },
+    }));
+    expect(r.proposal.status).toBe('draft');
+    expect(r.blockers).toEqual([]);
+    expect(r.proposal.evidence.measures[0].finite).toBe(true);
+
+    const submitted = json(await client.callTool({
+      name: 'submit_proposal', arguments: { proposal_id: 'mcp-proposal' },
+    }));
+    expect(submitted.proposal.status).toBe('submitted');
+
+    const listed = json(await client.callTool({
+      name: 'list_proposals', arguments: { status: 'submitted' },
+    }));
+    expect(listed.proposals.map((p: { id: string }) => p.id)).toContain('mcp-proposal');
+  });
+
+  it('reads the promotion checklist but holds no tool to act on it', async () => {
+    const r = json(await client.callTool({
+      name: 'get_promotion_checklist', arguments: { dashboard_id: 'agent-board' },
+    }));
+    expect(r.status).toBe('draft');
+    expect(r.next).toBe('team');
+    expect(Array.isArray(r.requirements)).toBe(true);
+    // The enforcement is server-side too, not just tool absence: the agent
+    // identity is refused even if it speaks HTTP directly.
+    const direct = await fetch(`${API}/api/dashboards/agent-board/promote`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-identity': 'agent:mcp-direct' },
+      body: JSON.stringify({ to: 'team' }),
+    });
+    expect(direct.status).toBe(403);
+  });
+
+  it('reports upgrade notices (none, when every pin is current)', async () => {
+    const r = json(await client.callTool({
+      name: 'check_upgrades', arguments: { dashboard_id: 'agent-board' },
+    }));
+    expect(r.upgrades).toEqual([]);
   });
 });
