@@ -413,6 +413,28 @@ exists — omit `SBB: SMALL_BUSINESS` and the small-business rule never fires on
 that one system, forever, while every number still computes and every coverage
 report still looks clean.
 
+## Chartroom — dashboards over the registry
+
+A second app in the monorepo (`chartroom/` — four npm workspaces): a studio
+for **governed analytics dashboards** whose every number traces to a registry
+function and whose every visual clears an executable design guide. A dashboard
+is a declarative spec — schema-validated, content-hashed, versioned, diffed in
+reviewer vocabulary — never freeform code; the renderer is a deterministic
+interpreter over a versioned widget catalog. The linter carries the design
+guide as rules with IDs and one-click JSON Patch fixes; governance status
+derives from the registry's own release/channel system, so a dashboard cannot
+leave draft while binding a measure production has never served.
+
+```
+npm run chartroom:server   # :8788 — contracts, queries, dashboards
+npm run chartroom:studio   # :5174 — the studio
+```
+
+Two dogfood dashboards (an LCR monitor and a limit board) seed on first boot,
+bound to the real shipped measures. [`chartroom/README.md`](chartroom/README.md)
+is the tour; [`chartroom/ADRS.md`](chartroom/ADRS.md) records every deviation
+from the design handoff's pinned decisions.
+
 ## Where to read next
 
 `IMPLEMENTATION.md` covers the architecture, the diagnostic catalogue, the
@@ -429,6 +451,7 @@ against a real implementation of the protocol rather than against Dremio itself.
 npm run test         # 603 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e          # 89 browser checks against the built bundle
+npm run verify:chartroom  # the Chartroom workspaces: 96 unit tests + 9 browser checks
 ```
 
 The server tests include a live Flight SQL round trip. They skip themselves,

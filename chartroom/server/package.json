@@ -1,0 +1,16 @@
+{
+  "name": "chartroom-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Chartroom API: KEEL adapters, grouped query evaluation, versioned dashboard persistence, audit trail.",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "chartroom-spec": "*",
+    "zod": "^3.25.76"
+  }
+}

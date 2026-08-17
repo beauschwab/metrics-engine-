@@ -3,6 +3,12 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "workspaces": [
+    "chartroom/spec",
+    "chartroom/widgets",
+    "chartroom/server",
+    "chartroom/studio"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -13,9 +19,15 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
-    "verify": "npm run typecheck && npm run test && npm run e2e",
+    "verify": "npm run typecheck && npm run test && npm run e2e && npm run verify:chartroom",
+    "typecheck:chartroom": "npm run typecheck --workspaces",
+    "test:chartroom": "npm run test --workspace=chartroom-spec --workspace=chartroom-widgets --workspace=chartroom-server",
+    "e2e:chartroom": "npm run e2e --workspace=chartroom-studio",
+    "verify:chartroom": "npm run typecheck:chartroom && npm run test:chartroom && npm run e2e:chartroom",
     "server": "tsx server/index.ts",
     "server:watch": "tsx watch server/index.ts",
+    "chartroom:server": "npm run start --workspace=chartroom-server",
+    "chartroom:studio": "npm run dev --workspace=chartroom-studio",
     "mcp": "tsx mcp/server.ts"
   },
   "dependencies": {

@@ -8,6 +8,9 @@ blob-report/
 keel.db
 keel.db-shm
 keel.db-wal
+chartroom.db
+chartroom.db-shm
+chartroom.db-wal
 
 # Python bytecode from running the client examples.
 __pycache__/

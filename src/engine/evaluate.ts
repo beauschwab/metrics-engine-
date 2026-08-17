@@ -107,6 +107,27 @@ export class Evaluator {
     readonly graph: Graph,
     readonly fixture: FixtureName,
     readonly registry: Registry = NO_REGISTRY,
+    /**
+     * Restrict evaluation to the rows this predicate accepts — the seam a
+     * grouped query (Chartroom's `dims:`) evaluates through. It runs *after*
+     * row derivations, so a group key can be a derived column
+     * (`maturity_bucket`) as readily as a source column, and each group gets
+     * its own Evaluator so the memo never mixes subsets. Everything else —
+     * expressions, windows, weights, classifications — is untouched, which is
+     * the point: a grouped value is computed by the same code as the headline
+     * value, not by a parallel implementation that can drift.
+     */
+    private readonly rowFilter?: (row: Row) => boolean,
+    /**
+     * Where derived rows come from, when the caller already has them.
+     *
+     * A grouped query builds one evaluator per group; without this seam each
+     * would re-run the whole row stage — classification included — per date,
+     * turning a 46-group pivot into 60×46 rule-set runs (measured at ~6s).
+     * Handing every group the *same* probe's `rowsFor` makes the row stage
+     * run once per date, and the groups differ only in their filter.
+     */
+    private readonly rowSource?: (date: string) => RowResult,
   ) {}
 
   /**
@@ -118,10 +139,16 @@ export class Evaluator {
   rowsFor(date: string): RowResult {
     const hit = this.derived[date];
     if (hit) return hit;
-    const table = (TABLES[this.fixture] || {})[this.graph.view.source] || {};
-    const r = deriveRows(this.graph, this.registry, table[date] || [], date, DOMAINS);
-    this.derived[date] = r;
-    return r;
+    let r: RowResult;
+    if (this.rowSource) {
+      r = this.rowSource(date);
+    } else {
+      const table = (TABLES[this.fixture] || {})[this.graph.view.source] || {};
+      r = deriveRows(this.graph, this.registry, table[date] || [], date, DOMAINS);
+    }
+    const out = this.rowFilter ? { ...r, rows: r.rows.filter(this.rowFilter) } : r;
+    this.derived[date] = out;
+    return out;
   }
 
   /** Classification coverage at the as-of date — the answer for a rule set. */
