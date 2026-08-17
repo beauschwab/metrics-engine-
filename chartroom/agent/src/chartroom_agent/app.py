@@ -33,6 +33,7 @@ from fastapi.responses import StreamingResponse
 
 from . import agent as agent_mod
 from . import protocol
+from .query_api import query_router
 from .toolset import assert_governed, make_client
 
 CHECKPOINT_DB = os.environ.get("CHARTROOM_AGENT_DB", "chartroom-agent.db")
@@ -102,6 +103,10 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="chartroom-agent", lifespan=lifespan)
     app.state.runtime = runtime
+    # E8.2: the warehouse query executor rides in the same service — the
+    # chat loop and the query path share a process, not a fate; queries
+    # never touch the model or the MCP session.
+    app.include_router(query_router())
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:

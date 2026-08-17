@@ -122,6 +122,19 @@ export interface EvalDeps {
   onEvaluate?: () => void;
 }
 
+/**
+ * The executor seam (E8.1, ADR-39): the cache and refusal vocabulary above
+ * stay put; what computes a result is pluggable. `FixtureExecutor` is the
+ * in-process Evaluator path — kept forever, because it is the test oracle
+ * every other backend must agree with. `WarehouseExecutor` (below) delegates
+ * to the Python service. A streaming backend slots in here later (ADR-30)
+ * without touching widgets.
+ */
+export interface QueryExecutor {
+  name: string;
+  run(req: QueryRequest): Promise<QueryResult>;
+}
+
 async function evaluate(req: QueryRequest, deps: EvalDeps): Promise<QueryResult> {
   deps.onEvaluate?.();
   const resolved = await resolveRef(req.metric, deps.state);
@@ -216,7 +229,12 @@ export class QueryService {
   private cache = new Map<string, QueryResult>();
   private readonly capacity = 256;
 
-  constructor(private deps: EvalDeps) {}
+  constructor(private deps: EvalDeps, private executor?: QueryExecutor) {}
+
+  /** Which backend answers queries — surfaced in health, never guessed. */
+  backend(): string {
+    return this.executor?.name ?? 'fixtures';
+  }
 
   /** Workspace identity: any revision moves, every key moves. */
   private stateKey(): string {
@@ -252,7 +270,7 @@ export class QueryService {
     const running = this.inflight.get(key);
     if (running) return running;
 
-    const p = evaluate(req, this.deps)
+    const p = (this.executor ? this.executor.run(req) : evaluate(req, this.deps))
       .then((r) => {
         this.cache.set(key, r);
         if (this.cache.size > this.capacity) {

@@ -21,6 +21,7 @@ import { deriveContracts, fetchRegistryState, type ContractSet } from './keel';
 import { registerDocument, submitBlockers, validateProposal, type ProposalEvidence } from './proposals';
 import { QueryRefused, QueryUnresolved, QueryService, type QueryRequest } from './query';
 import { upgradeNotices } from './upgrades';
+import { buildManifest } from './warehouse';
 import { ChartroomRepository, Conflict, Forbidden, Invalid, NotFound, isAgent } from './repository';
 
 export interface ApiRequest {
@@ -280,6 +281,13 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
       const set = await deps.contracts.current();
       const critique = await dataCritique(parsed.spec, deps.queries, set.byRef);
       return json(200, critique);
+    }
+
+    // The warehouse manifest: measure SQL + fixture tables for the Python
+    // query executor (E8.2). Read-only; the engine stays the source of truth.
+    if (method === 'GET' && path === '/api/warehouse/manifest') {
+      const set = await deps.contracts.current();
+      return json(200, buildManifest(set.state));
     }
 
     // ---- queries ---------------------------------------------------------

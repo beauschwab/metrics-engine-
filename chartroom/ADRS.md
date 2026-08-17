@@ -503,3 +503,52 @@ text-only history, every turn self-contained (ADR-34) — remains the accepted
 *request* shape for compatibility, seeding a fresh thread with the transcript
 as context. Real threads mean tool traffic and prior reasoning survive
 across turns and service restarts, which the text replay never could.
+
+## Phase 8 ADRs
+
+## ADR-39 — an executor seam, with the fixture path as the permanent oracle
+
+**Decision:** `QueryService` splits behind a `QueryExecutor` interface. The
+cache, single-flight, refusal vocabulary, and response shapes stay above the
+seam; what computes a result is pluggable. The in-process Evaluator path is
+not deprecated by real backends — it is kept forever, because it is the test
+oracle every other backend must agree with: the parity harness (pytest, in
+the agent service) runs every query shape against fixtures AND DuckDB over
+identical rows and requires agreement within 1e-6 relative. This is MASS-01's
+discipline turned cross-backend — drift you cannot detect is worse than a
+wrong number you can, so the detector ships with the seam. The interface is
+also written for what it doesn't yet host: a `subscribe()`-capable streaming
+executor (ADR-30) slots in without touching widgets. `CHARTROOM_BACKEND=
+fixtures|duckdb|dremio` selects; fixtures remain the default, so a fresh
+clone still works offline.
+
+## ADR-40 — Python owns warehouse execution; the manifest is the wire
+
+**Decision:** warehouse queries execute in the agent service (`/query/run`,
+DuckDB in dev, Dremio over Flight SQL with a PAT in prod), not in
+chartroom-server. The server publishes `/api/warehouse/manifest` — the
+engine's own SQL for every measure (`stage()`/`aggregate()`, ROUND stripped
+because the Evaluator never rounds and the oracle must be matchable), the
+row stage as SQL steps (`rowStageSql()`: date arithmetic, maturity buckets,
+classifications and rate lookups as the same CASE chains the pipeline
+compilers emit), and the typed fixture tables that make the parity harness
+possible. The Python side arranges those snippets into the semantic views'
+CTE shape parameterized by dims and filters; it never invents an expression,
+so there is one definition of every number. Context params resolve to
+literal filters on the TS side before the wire — one resolution path. The
+aggregates-only boundary holds structurally: the only SELECT the executor
+can emit is a GROUP BY. Documented limit: the warehouse serves the latest
+revision only — a stale pin is refused with re-pin guidance rather than
+silently served fresh numbers.
+
+## ADR-41 — asOf comes from the data; cost comes from the backend
+
+**Decision:** the warehouse path reports `asOf` as the actual
+`max(as_of_date)` in the queried data, not the workspace's declared date —
+so the staleness the widget vocabulary has carried since Phase 1 becomes an
+observed fact once a real warehouse lags. `cost.rowsScanned` is a real
+count over the filtered row stage on the executing backend. DuckDB
+`EXPLAIN`-based estimates and Flight metadata were considered and deferred:
+for an in-memory dev backend the count IS the honest cost, and Dremio
+estimation belongs with the first real Dremio deployment rather than
+speculation ahead of it.

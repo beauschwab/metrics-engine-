@@ -117,7 +117,7 @@ export function expressionToSql(expr: string): { sql: string; reason?: string } 
   return { sql };
 }
 
-interface Staged {
+export interface Staged {
   simple: Measure[];
   derived: Measure[];
   issues: SemanticIssue[];
@@ -134,7 +134,7 @@ interface Staged {
  * and silently omitting a measure from a published view is how a dashboard ends
  * up missing a number nobody notices is gone.
  */
-function stage(view: Graph): Staged {
+export function stage(view: Graph): Staged {
   const measures = sectionBlocks(view, 'measures');
   const simple: Measure[] = [];
   const pending: Measure[] = [];
@@ -175,7 +175,7 @@ function stage(view: Graph): Staged {
 }
 
 /** The aggregate for one simple measure, as SQL. */
-function aggregate(m: Measure): { sql: string; reason?: string } {
+export function aggregate(m: Measure): { sql: string; reason?: string } {
   const agg = (m.f.agg || 'sum').trim().toUpperCase();
   const field = (m.f.field || '').trim();
   if (!field) return { sql: '', reason: 'no field to aggregate' };

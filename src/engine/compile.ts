@@ -310,6 +310,22 @@ function emitDerivations(
   });
 }
 
+/**
+ * The row stage as flat SQL steps, in dependency order: what a warehouse
+ * must compute over the source before the aggregate stage can reference
+ * derivation-emitted columns (`days_to_maturity`, `product_id`, …). Each
+ * step may read the columns of the steps before it, so a consumer chains
+ * them — one CTE per step. Prelude columns (a bucket's day count) are
+ * flattened in ahead of the column that reads them.
+ */
+export function rowStageSql(g: Graph, registry: Registry): Array<{ name: string; sql: string }> {
+  return emitDerivations(g, registry, 'sql', '  ').flatMap((c) => (
+    c.prelude
+      ? [{ name: c.prelude.name, sql: c.prelude.expr }, { name: c.name, sql: c.expr }]
+      : [{ name: c.name, sql: c.expr }]
+  ));
+}
+
 // ---------------------------------------------------------------------------
 // Measures
 // ---------------------------------------------------------------------------
