@@ -12,13 +12,14 @@ matrix, exposure records at certification, and version-pin upgrade notices
 that carry the diff. Phase 4 adds scale: the deterministic data critic,
 spec-declared cross-filtering, and the PPTX committee pack. Phase 5 adds
 pilot readiness: the shareable read-only view mode and the E2.5 usage
-instrumentation.
+instrumentation. Phase 6 adds the embedded agent chat — the spec's §7
+conversational surface, in the studio.
 
 ```
-npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance
+npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance, chat
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
 npm run chartroom:mcp      # stdio — the agent's 25 tools
-npm run verify:chartroom   # typecheck ×7 + 166 unit tests + 19 browser checks
+npm run verify:chartroom   # typecheck ×7 + 173 unit tests + 20 browser checks
 ```
 
 Run `npm run server` (the registry, :8787) alongside for live contracts;
@@ -136,6 +137,20 @@ Every server mutation writes `chartroom_audit` with its actor.
 - **The data critic in the studio** — a "Run data critic" button in the
   Findings tab (a button, not a keystroke — it runs every query leg), with
   findings and their computed evidence inline (ADR-33).
+
+## The embedded agent chat (Phase 6)
+
+The `agent ✳` button opens a chat pane wired to `POST /api/chat` (SSE): a
+server-side agentic loop on the same model as the design critic, whose tools
+execute against the same governed `handle()` as every other caller — under an
+`agent:chat-<session>` identity, so the chat can interview, search the
+registry, preview numbers, lint, data-critique, file briefs and proposals,
+and compose after approval, but can never approve, decide, or promote
+(ADR-34). The pane replicates Claude-chat functionality with
+AI-Elements-vocabulary components — Conversation, Message, streamed-markdown
+Response, collapsible Tool cards, PromptInput with stop, Suggestions — on the
+studio's own design system. Set `ANTHROPIC_API_KEY` to enable it; without a
+key the pane says so plainly and everything else keeps working (ADR-35).
 
 ## The two dogfood dashboards
 

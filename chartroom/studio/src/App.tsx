@@ -21,6 +21,7 @@ import { Inspector, type Tab } from './Inspector';
 import { Harness } from './Harness';
 import { ProposalsPage } from './ProposalsPage';
 import { ViewPage } from './ViewPage';
+import { ChatPane } from './chat/ChatPane';
 
 type SaveState =
   | { kind: 'clean'; version: number }
@@ -59,6 +60,7 @@ function Studio() {
   const [tab, setTab] = useState<Tab>('widget');
   const [newId, setNewId] = useState('');
   const [newTitle, setNewTitle] = useState('');
+  const [chatOpen, setChatOpen] = useState(false);
 
   const contractsByRef = useMemo(
     () => new Map(contracts.map((c) => [c.ref, c])),
@@ -186,6 +188,15 @@ function Studio() {
             </a>
           </>
         )}
+        <button
+          type="button"
+          className="cr-header-link cr-chat-toggle"
+          data-testid="open-chat"
+          data-open={chatOpen || undefined}
+          onClick={() => setChatOpen((o) => !o)}
+        >
+          agent ✳
+        </button>
         <a className="cr-header-link" href="#/proposals" data-testid="nav-proposals">proposals</a>
         <span className="cr-registry-source" data-source={source} title={
           source === 'shipped'
@@ -297,6 +308,7 @@ function Studio() {
             void loadDashboards().then((r) => setDashboards(r.dashboards));
           }}
         />
+        {chatOpen && <ChatPane dashboardId={openId} onClose={() => setChatOpen(false)} />}
       </div>
     </div>
   );

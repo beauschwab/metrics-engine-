@@ -424,3 +424,40 @@ findings render with their computed evidence inline, and the clean state is
 worded as the critic's actual verdict ("grouped sums reconcile, one as-of
 everywhere, everything finite") — a reader should know what was checked, not
 just that nothing was found.
+
+## Phase 6 ADRs
+
+## ADR-34 — the embedded chat is a second client of the governed API, not a second API
+
+**Pinned:** the spec's §7 agent chat ("streams a Claude session pre-wired to
+chartroom-mcp"), deferred by ADR-17, delivered here.
+**Decision:** the chat loop runs server-side (`/api/chat`, SSE) on
+claude-opus-5 — the same model as the design critic — with a manual agentic
+loop over the Anthropic SDK's streaming API, chosen over the beta tool runner
+because every stream event is forwarded to the browser while tools run
+between turns. Its tools execute against the same pure `handle()` every
+caller uses, under an `agent:chat-<session>` identity, so every entitlement
+holds structurally: no approve, decide, or promote tool exists (ADR-18's
+absence, third surface), and even a direct call would 403 on identity. The
+tool roster is a curated subset of the MCP server's — the MCP server remains
+the external agent surface; in-process `handle()` calls beat spawning an MCP
+subprocess per chat session. Conversation state is client-held and text-only:
+each POST replays the visible transcript, and every agentic turn is
+self-contained — the model re-fetches what it needs through tools rather
+than replaying stale tool traffic. The studio pane is built from
+AI-Elements-vocabulary components (Conversation, Message, Response, Tool,
+PromptInput, Suggestions) on the studio's own design system rather than
+importing the library — the studio has no Tailwind/shadcn substrate, and the
+component contract, not the CSS, is what's worth replicating.
+
+## ADR-35 — chat unavailability is a banner, not a block
+
+**Decision:** ADR-20's posture, extended to the chat: with no
+`ANTHROPIC_API_KEY`, `/api/chat` answers with an `unavailable` event that
+says so plainly and points at what still works — the linter and the data
+critic are deterministic, approvals and promotion are human acts, and the
+whole studio functions without a model. The pane renders the message as a
+banner and disables input; nothing else dims. The e2e suite runs with the
+key explicitly blanked so the degrade path is what CI exercises; the live
+loop is covered by a key-gated server test, the same arrangement as the
+critic evals.

@@ -406,3 +406,92 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   background: var(--cr-panel-2); border: 1px solid var(--cr-border);
   padding: 6px 8px; border-radius: 2px; overflow-x: auto; margin: 6px 0 0;
 }
+
+/* ---- the embedded agent chat (Phase 6) -------------------------------- */
+
+.cr-chat {
+  width: 420px; flex: none; display: flex; flex-direction: column;
+  border-left: 1px solid var(--cr-border); background: var(--cr-panel);
+  font-size: 12.5px;
+}
+.cr-chat-toggle[data-open] { color: var(--cr-accent); border-color: var(--cr-accent); }
+.cr-chat-head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-bottom: 1px solid var(--cr-border);
+}
+.cr-chat-title { font-weight: 700; }
+.cr-chat-ctx {
+  font-family: var(--cr-mono); font-size: 10px; color: var(--cr-text-faint);
+  border: 1px solid var(--cr-border); border-radius: 1px; padding: 1px 6px;
+}
+.cr-chat-unavailable {
+  margin: 10px 14px 0; padding: 8px 10px; font-size: 11.5px; line-height: 1.5;
+  color: var(--cr-warn); border: 1px solid var(--cr-warn); border-radius: 2px;
+}
+.cr-chat-conversation { flex: 1; overflow-y: auto; padding: 12px 14px; }
+.cr-chat-message { margin-bottom: 14px; }
+.cr-chat-user {
+  background: var(--cr-panel-2); border: 1px solid var(--cr-border);
+  border-radius: 8px 8px 2px 8px; padding: 8px 12px; margin-left: 48px;
+  white-space: pre-wrap; line-height: 1.5;
+}
+.cr-chat-response { line-height: 1.55; }
+.cr-chat-response .cr-chat-p { margin: 0 0 8px; }
+.cr-chat-response .cr-chat-h { font-weight: 700; margin: 10px 0 6px; }
+.cr-chat-response .cr-chat-h[data-level='1'] { font-size: 14px; }
+.cr-chat-ul { margin: 0 0 8px; padding-left: 18px; }
+.cr-chat-ul li { margin-bottom: 3px; }
+.cr-chat-code {
+  font-family: var(--cr-mono); font-size: 10.5px; line-height: 1.45;
+  background: var(--cr-panel-2); border: 1px solid var(--cr-border);
+  padding: 8px 10px; border-radius: 2px; overflow-x: auto; margin: 0 0 8px;
+  max-height: 260px; overflow-y: auto; white-space: pre-wrap;
+}
+.cr-chat-code[data-error] { border-color: var(--cr-breach); color: var(--cr-breach); }
+.cr-chat-cursor {
+  display: inline-block; width: 7px; height: 13px; background: var(--cr-accent);
+  vertical-align: text-bottom; animation: cr-blink 1s steps(1) infinite;
+}
+@keyframes cr-blink { 50% { opacity: 0; } }
+
+.cr-chat-suggestions { display: flex; flex-direction: column; gap: 8px; }
+.cr-chat-suggestion {
+  text-align: left; background: var(--cr-panel-2); border: 1px solid var(--cr-border);
+  border-radius: 6px; padding: 8px 12px; color: var(--cr-text); font: inherit;
+  cursor: pointer;
+}
+.cr-chat-suggestion:hover { border-color: var(--cr-accent); color: var(--cr-accent); }
+
+.cr-chat-tool {
+  border: 1px solid var(--cr-border); border-radius: 4px; margin: 6px 0 10px;
+  background: var(--cr-panel-2);
+}
+.cr-chat-tool-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: none; border: 0; padding: 6px 10px; cursor: pointer;
+  color: var(--cr-text-muted); font: inherit; font-size: 11px;
+}
+.cr-chat-tool-name { font-family: var(--cr-mono); }
+.cr-chat-tool-state { margin-left: auto; font-size: 10px; color: var(--cr-text-faint); }
+.cr-chat-tool-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--cr-text-faint); flex: none;
+}
+.cr-chat-tool[data-state='running'] .cr-chat-tool-dot { background: var(--cr-warn); animation: cr-blink 1s steps(1) infinite; }
+.cr-chat-tool[data-state='done'] .cr-chat-tool-dot { background: var(--cr-up); }
+.cr-chat-tool[data-state='error'] .cr-chat-tool-dot { background: var(--cr-breach); }
+.cr-chat-tool-body { padding: 0 10px 8px; }
+.cr-chat-tool-label {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--cr-text-faint); margin: 4px 0;
+}
+
+.cr-chat-input {
+  display: flex; gap: 8px; align-items: flex-end; padding: 10px 14px;
+  border-top: 1px solid var(--cr-border);
+}
+.cr-chat-textarea {
+  flex: 1; resize: none; background: var(--cr-panel-2); color: var(--cr-text);
+  border: 1px solid var(--cr-border); border-radius: 6px; padding: 8px 10px;
+  font: inherit; line-height: 1.4;
+}
+.cr-chat-textarea:focus { outline: none; border-color: var(--cr-accent); }
