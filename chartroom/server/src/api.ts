@@ -13,9 +13,11 @@ import {
   type DashboardSpec, type LintContext,
 } from 'chartroom-spec';
 import { CATALOG, CATALOG_BY_REF } from 'chartroom-widgets/contracts';
+import { PATTERNS, PATTERNS_BY_REF, RULE_GUIDE } from 'chartroom-patterns';
+import { runDesignCritic } from 'chartroom-critics';
 import { deriveContracts, fetchRegistryState, type ContractSet } from './keel';
 import { QueryRefused, QueryUnresolved, QueryService, type QueryRequest } from './query';
-import { ChartroomRepository, Conflict, Invalid, NotFound } from './repository';
+import { ChartroomRepository, Conflict, Forbidden, Invalid, NotFound, isAgent } from './repository';
 
 export interface ApiRequest {
   method: string;
@@ -24,6 +26,12 @@ export interface ApiRequest {
   body?: unknown;
   /** Asserted by whatever fronts the process — never chosen by the client. */
   identity?: string | null;
+  /**
+   * The human an agent session acts for (`x-principal`). The *actor* in the
+   * audit trail is always the identity; the principal is attribution — the
+   * SR 11-7 pairing of "which agent session" with "on whose behalf".
+   */
+  principal?: string | null;
 }
 
 export interface ApiResponse {
@@ -82,6 +90,7 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
   const { method, path } = req;
   const body = (req.body ?? {}) as Record<string, unknown>;
   const identity = req.identity || 'anonymous';
+  const author = req.principal || identity;
 
   try {
     if (method === 'GET' && path === '/api/health') {
@@ -115,6 +124,35 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
 
     if (method === 'GET' && path === '/api/widgets') {
       return json(200, { widgets: CATALOG });
+    }
+
+    if (method === 'GET' && path === '/api/patterns') {
+      return json(200, { patterns: PATTERNS });
+    }
+
+    const patternPath = /^\/api\/patterns\/([a-z0-9@.-]+)$/.exec(path);
+    if (method === 'GET' && patternPath) {
+      const p = PATTERNS_BY_REF.get(patternPath[1]);
+      if (!p) return json(404, { error: `no pattern called ${patternPath[1]} in the catalog` });
+      return json(200, { pattern: p });
+    }
+
+    if (method === 'GET' && path === '/api/design-rules') {
+      return json(200, { rules: RULE_GUIDE });
+    }
+
+    // The design critic, run server-side against the dashboard's latest brief.
+    // It degrades to a WARN "unavailable" finding without a model — the
+    // deterministic linter is the hard gate, so this route never 500s on a
+    // model failure.
+    if (method === 'POST' && path === '/api/critique') {
+      const parsed = parseSpec(body.spec);
+      if (!parsed.ok) return json(422, { error: 'schema', problems: parsed.problems });
+      const brief = typeof body.dashboard_id === 'string'
+        ? await deps.repo.latestBrief(body.dashboard_id)
+        : null;
+      const findings = await runDesignCritic(parsed.spec, brief?.brief ?? null);
+      return json(200, { findings, brief_version: brief?.version ?? null });
     }
 
     // ---- queries ---------------------------------------------------------
@@ -168,7 +206,7 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
         dashboardId: versionsPath[1],
         spec: parsed.spec,
         lintReport: report,
-        author: identity,
+        author,
         actor: identity,
         expectedVersion: body.expectedVersion === undefined || body.expectedVersion === null
           ? null
@@ -194,6 +232,39 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
       return json(200, { diff: diffSpecs(va.spec as DashboardSpec, vb.spec as DashboardSpec) });
     }
 
+    // ---- briefs ----------------------------------------------------------
+    const briefPath = /^\/api\/dashboards\/([a-z][a-z0-9-]*)\/brief$/.exec(path);
+    if (method === 'GET' && briefPath) {
+      const brief = await deps.repo.latestBrief(briefPath[1]);
+      if (!brief) return json(404, { error: `no brief exists for ${briefPath[1]}` });
+      return json(200, { brief });
+    }
+
+    if (method === 'POST' && briefPath) {
+      const row = await deps.repo.saveBrief({
+        dashboardId: briefPath[1],
+        content: body.brief,
+        author,
+        actor: identity,
+      });
+      return json(201, { brief: row });
+    }
+
+    const approvePath = /^\/api\/dashboards\/([a-z][a-z0-9-]*)\/brief\/approve$/.exec(path);
+    if (method === 'POST' && approvePath) {
+      // The entitlement, at the boundary: approval is a human act. The agent
+      // holds no approver rights whatever headers it sends, because identity
+      // is asserted by what fronts the process, not chosen by the caller.
+      if (isAgent(identity)) {
+        return json(403, {
+          error: 'an agent session cannot approve a brief — approval is the human half '
+            + 'of the maker-checker seam. Ask the requester to approve it in the studio.',
+        });
+      }
+      const row = await deps.repo.approveBrief(approvePath[1], identity);
+      return json(200, { brief: row });
+    }
+
     const auditPath = /^\/api\/dashboards\/([a-z][a-z0-9-]*)\/audit$/.exec(path);
     if (method === 'GET' && auditPath) {
       return json(200, { audit: await deps.repo.auditLog('dashboard', auditPath[1]) });
@@ -202,6 +273,7 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
     return json(404, { error: `no route ${method} ${path}` });
   } catch (e) {
     if (e instanceof Invalid) return json(422, { error: e.message, problems: e.problems });
+    if (e instanceof Forbidden) return json(403, { error: e.message });
     if (e instanceof Conflict) return json(409, { error: e.message });
     if (e instanceof NotFound) return json(404, { error: e.message });
     if (e instanceof QueryUnresolved) return json(404, { error: e.message });

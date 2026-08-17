@@ -5,6 +5,9 @@
   "type": "module",
   "workspaces": [
     "chartroom/spec",
+    "chartroom/patterns",
+    "chartroom/critics",
+    "chartroom/mcp",
     "chartroom/widgets",
     "chartroom/server",
     "chartroom/studio"
@@ -21,13 +24,14 @@
     "e2e:ui": "playwright test --ui",
     "verify": "npm run typecheck && npm run test && npm run e2e && npm run verify:chartroom",
     "typecheck:chartroom": "npm run typecheck --workspaces",
-    "test:chartroom": "npm run test --workspace=chartroom-spec --workspace=chartroom-widgets --workspace=chartroom-server",
+    "test:chartroom": "npm run test --workspace=chartroom-spec --workspace=chartroom-widgets --workspace=chartroom-patterns --workspace=chartroom-critics --workspace=chartroom-server --workspace=chartroom-mcp",
     "e2e:chartroom": "npm run e2e --workspace=chartroom-studio",
     "verify:chartroom": "npm run typecheck:chartroom && npm run test:chartroom && npm run e2e:chartroom",
     "server": "tsx server/index.ts",
     "server:watch": "tsx watch server/index.ts",
     "chartroom:server": "npm run start --workspace=chartroom-server",
     "chartroom:studio": "npm run dev --workspace=chartroom-studio",
+    "chartroom:mcp": "npm run start --workspace=chartroom-mcp",
     "mcp": "tsx mcp/server.ts"
   },
   "dependencies": {

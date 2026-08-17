@@ -23,9 +23,10 @@ import {
   type DashboardSpec, type LintFinding, type LintReport, type WidgetInstance,
 } from 'chartroom-spec';
 import type { WidgetContract } from 'chartroom-spec';
+import { BriefCard } from './BriefCard';
 import type { ContractSummary } from './data';
 
-export type Tab = 'widget' | 'source' | 'findings';
+export type Tab = 'widget' | 'source' | 'findings' | 'brief';
 
 interface Props {
   spec: DashboardSpec;
@@ -34,6 +35,8 @@ interface Props {
   widgets: WidgetContract[];
   report: LintReport | null;
   tab: Tab;
+  /** The open dashboard — the brief tab loads and approves against it. */
+  dashboardId: string | null;
   onTab(t: Tab): void;
   onSpec(next: DashboardSpec): void;
   onSelect(id: string): void;
@@ -47,7 +50,7 @@ export function Inspector(props: Props) {
   return (
     <aside className="cr-inspector" data-testid="inspector">
       <nav className="cr-tabs" role="tablist">
-        {(['widget', 'source', 'findings'] as const).map((t) => (
+        {(['widget', 'source', 'findings', 'brief'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -69,6 +72,11 @@ export function Inspector(props: Props) {
       {tab === 'widget' && <WidgetForm {...props} />}
       {tab === 'source' && <SourceEditor spec={props.spec} onSpec={props.onSpec} />}
       {tab === 'findings' && <Findings {...props} />}
+      {tab === 'brief' && (
+        props.dashboardId
+          ? <BriefCard dashboardId={props.dashboardId} />
+          : <div className="cr-pane-empty">Open a dashboard to see its brief.</div>
+      )}
     </aside>
   );
 }

@@ -193,3 +193,74 @@ at the as-of date, with `delta` computed against the prior date server-side) or
 requests the time series (timeseries widget). Mixing both (`dims:
 [as_of_date, entity_id]` → multi-series) is supported for timeseries only, capped
 by TS-02. A general OLAP cube was not needed by either dogfood dashboard.
+
+---
+
+## Phase 2 ADRs
+
+## ADR-17 — Claude Code is the agent surface; the embedded chat is deferred
+
+**Pinned:** studio left pane streams an embedded Claude session wired to
+`chartroom-mcp` (E2.2/E2.5).
+**Decision:** `chartroom-mcp` ships first-class and the agent connects from
+Claude Code (or any MCP client); the studio keeps the human half — the brief
+card and the Approve button. The embedded chat pane is deferred until there is
+a pilot to put in front of it.
+
+The PRD itself makes this portable-by-design: "the same tools work from the
+studio UI's embedded agent, from Claude Code, or from Claude Tag." Every gate
+the chat would exercise is server-side and tested over the wire — an embedded
+pane adds streaming UI, key management, and session plumbing, not governance.
+The one UX piece the chat carried that matters now — the brief rendered as an
+approvable card — ships in the studio's Brief tab.
+
+## ADR-18 — there is no approve tool, anywhere
+
+**Pinned:** "the MCP server enforces authZ — the agent can never approve
+anything."
+**Decision:** enforced twice, deliberately. The server refuses approval to any
+`agent:*` identity (identity is asserted by what fronts the process, never
+chosen by the caller), *and* `chartroom-mcp` simply has no approval tool — the
+instructions tell the agent approval is the human half of the seam. A tool
+that always 403s teaches an agent to retry; a missing tool plus an explanation
+teaches it to ask the human.
+
+## ADR-19 — an edited brief supersedes its approval
+
+**Decision:** saving a new brief version supersedes every earlier version,
+approved included; composition re-locks until a human approves again.
+
+The alternative — the approval surviving edits — makes "approved" mean
+"approved something, once". A brief edited after approval is a different
+brief; SR 11-7's evidence value depends on the approval pointing at the exact
+artifact reviewed. `briefs.test.ts` pins this.
+
+## ADR-20 — critic degradation is a finding, not an exception
+
+**Pinned:** "never block the pipeline on model failure — degrade to WARN."
+**Decision:** taken literally: no key, network failure, or twice-unparseable
+output all return a WARN-severity finding that says the critic did not run and
+that the deterministic linter still did. The unavailability is *visible in the
+findings list* rather than a silent skip, because "not reviewed for
+composition" is information a reviewer needs. The eval suite runs with a real
+model when `ANTHROPIC_API_KEY` is present and skips itself (loudly) when not —
+the same posture as the repo's Python conformance tests.
+
+## ADR-21 — the grilling protocol is a Zod schema
+
+**Pinned:** `create_brief` "rejects if required slots missing — the grilling
+protocol is enforced here, not merely prompted."
+**Decision:** the eight intake slots are required fields with minimum lengths
+in `chartroom-spec`'s `BriefSchema` (`decision` needs 20 characters because
+"monitoring" is not a decision), shared by server validation, MCP input
+shaping, and the studio card. An agent cannot charm its way past a schema, and
+a human filing a brief by hand meets exactly the same bar.
+
+## ADR-22 — patterns and rule rationale are served by the server, not bundled per client
+
+**Decision:** `chartroom-patterns` is data; the server exposes it at
+`/api/patterns` and `/api/design-rules`, and the MCP proxies those routes.
+One source for "what patterns exist" beats three bundled copies that drift —
+the same argument as deriving metric contracts instead of storing them. The
+patterns test asserts the rule-rationale roster covers exactly the linter's
+emittable rule ids, so a new lint rule without guide text fails CI.

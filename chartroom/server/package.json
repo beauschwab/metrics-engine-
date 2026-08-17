@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "chartroom-spec": "*",
+    "chartroom-patterns": "*",
+    "chartroom-critics": "*",
     "zod": "^3.25.76"
   }
 }

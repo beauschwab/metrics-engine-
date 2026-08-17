@@ -44,6 +44,9 @@ function Studio() {
   const [source, setSource] = useState<string>('…');
 
   const [openId, setOpenId] = useState<string | null>(null);
+  // Written synchronously in open(), because the guard must see the newest
+  // intent even if a fetch resolves before React commits the state.
+  const openRef = useRef<string | null>(null);
   const [spec, setSpec] = useState<DashboardSpec | null>(null);
   const [save, setSave] = useState<SaveState>({ kind: 'clean', version: 0 });
   const [report, setReport] = useState<LintReport | null>(null);
@@ -71,9 +74,18 @@ function Studio() {
   }, []);
 
   const open = (id: string) => {
+    // Idempotent: clicking the dashboard that is already open (or opening)
+    // must not refetch — the response would land after any edits made in the
+    // meantime and silently reset the spec to the saved version. That is a
+    // data-loss bug wearing a refresh's clothes.
+    if (openRef.current === id) return;
+    openRef.current = id;
     setOpenId(id);
     setSelected(null);
     void loadDashboard(id).then((r) => {
+      // Two opens can be in flight (the auto-open racing a user click);
+      // only the one still selected may land.
+      if (openRef.current !== id) return;
       if (r.latest) {
         setSpec(r.latest.spec);
         setReport(r.latest.lintReport);
@@ -87,14 +99,18 @@ function Studio() {
   };
 
   // Server-side lint, debounced off edits — the report review sees is the
-  // server's, so the one on screen is the server's too.
+  // server's, so the one on screen is the server's too. The sequence number
+  // guards the race two quick edits create: the earlier request's response
+  // arriving last must not overwrite the report for a spec no longer shown.
   const lintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lintSeq = useRef(0);
   const editSpec = useCallback((next: DashboardSpec) => {
     setSpec(next);
     setSave((s) => (s.kind === 'clean' || s.kind === 'dirty'
       ? { kind: 'dirty', version: s.version }
       : s));
     if (lintTimer.current) clearTimeout(lintTimer.current);
+    const seq = ++lintSeq.current;
     lintTimer.current = setTimeout(() => {
       void fetch('/api/lint', {
         method: 'POST',
@@ -103,7 +119,7 @@ function Studio() {
       })
         .then((r) => (r.ok ? r.json() : null))
         .then((r) => {
-          if (r) setReport((r as { report: LintReport }).report);
+          if (r && seq === lintSeq.current) setReport((r as { report: LintReport }).report);
         });
     }, 250);
   }, []);
@@ -241,6 +257,7 @@ function Studio() {
           widgets={widgets}
           report={report}
           tab={tab}
+          dashboardId={openId}
           onTab={setTab}
           onSpec={editSpec}
           onSelect={(id) => { setSelected(id); setTab('widget'); }}

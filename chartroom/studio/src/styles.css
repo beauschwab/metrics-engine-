@@ -263,3 +263,34 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .cr-harness-state { font-size: 10px; color: var(--cr-text-faint); text-transform: uppercase; letter-spacing: 0.08em; }
 .cr-harness-cell .cr-frame { height: 230px; margin-top: 4px; }
 .cr-harness-cell .cr-frame-body { padding: 10px 12px; }
+
+/* ---- the brief card (Phase 2) --------------------------------------- */
+
+.cr-brief { padding: 14px; overflow-y: auto; font-size: 12px; }
+.cr-brief-head { display: flex; align-items: baseline; justify-content: space-between; }
+.cr-brief-title { font-weight: 700; font-size: 13px; }
+.cr-brief-status {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 2px 8px; border: 1px solid var(--cr-border); border-radius: 1px;
+  color: var(--cr-warn);
+}
+.cr-brief-status[data-status='approved'] { color: var(--cr-up); border-color: var(--cr-up); }
+.cr-brief-byline { color: var(--cr-text-faint); font-size: 11px; margin: 4px 0 12px; }
+.cr-brief-slots { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; }
+.cr-brief-slot dt {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--cr-text-faint);
+}
+.cr-brief-slot dd { margin: 2px 0 0; line-height: 1.45; }
+.cr-brief-bindings { list-style: none; padding: 0; margin: 0 0 12px; }
+.cr-brief-bindings li { display: flex; gap: 8px; padding: 3px 0; align-items: baseline; }
+.cr-brief-slot-name { color: var(--cr-text-muted); flex: none; }
+.cr-brief-metric { font-family: var(--cr-mono); font-size: 10.5px; word-break: break-all; }
+.cr-brief-excluded { padding-left: 16px; margin: 0 0 12px; color: var(--cr-text-muted); }
+.cr-brief-wireframe {
+  font-family: var(--cr-mono); font-size: 10.5px; line-height: 1.35;
+  background: var(--cr-panel-2); border: 1px solid var(--cr-border);
+  padding: 10px; border-radius: 2px; overflow-x: auto; color: var(--cr-text-muted);
+}
+.cr-brief-actions { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.cr-brief-error { color: var(--cr-breach); font-size: 11px; }

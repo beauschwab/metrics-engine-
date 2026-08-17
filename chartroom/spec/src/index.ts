@@ -26,7 +26,10 @@ export type { SpecDiff } from './diff';
 export { applyPatch, PatchFailed } from './patch';
 export type { PatchOp } from './patch';
 
-export { lint, RULES } from './lint';
+export { BriefSchema, IntakeSchema, parseBrief } from './brief';
+export type { Brief, BriefStatus, Intake } from './brief';
+
+export { lint, RULES, RULE_IDS } from './lint';
 export { widgetsOf } from './lint/context';
 export type {
   LintContext, LintFinding, LintReport, Severity, Rule, WidgetAt,

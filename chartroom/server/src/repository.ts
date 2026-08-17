@@ -14,14 +14,18 @@
  */
 
 import {
-  canonicalize, parseSpec, sha256Hex, specHash,
-  type DashboardSpec, type LintReport,
+  canonicalize, parseBrief, parseSpec, sha256Hex, specHash,
+  type Brief, type BriefStatus, type DashboardSpec, type LintReport,
 } from 'chartroom-spec';
 import { isUniqueViolation, type Db } from '../../../server/db';
 import { STATEMENTS as S } from './dialect';
 
 export class Conflict extends Error {}
 export class NotFound extends Error {}
+export class Forbidden extends Error {}
+
+/** The SR 11-7 line: an agent proposes; named humans approve and compose freely. */
+export const isAgent = (actor: string): boolean => actor.startsWith('agent:');
 export class Invalid extends Error {
   constructor(message: string, public problems: string[] = []) {
     super(message);
@@ -51,6 +55,16 @@ export interface VersionSummary {
   specHash: string;
   parent: number | null;
   author: string;
+  createdAt: string;
+}
+
+export interface BriefRow {
+  version: number;
+  brief: Brief;
+  status: BriefStatus;
+  author: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
   createdAt: string;
 }
 
@@ -126,6 +140,24 @@ export class ChartroomRepository {
 
     const dash = await this.dashboard(input.dashboardId);
     if (!dash) throw new NotFound(`no dashboard called ${input.dashboardId}`);
+
+    // The Phase-2 composition gate: an agent may not compose until a human
+    // has approved the brief. Plan before pixels is a product promise, and a
+    // promise the agent could skip by just calling save is a prompt, not a
+    // gate. Humans compose freely — they are the approvers.
+    if (isAgent(input.actor)) {
+      const brief = await this.latestBrief(input.dashboardId);
+      if (!brief || brief.status !== 'approved') {
+        throw new Forbidden(
+          brief
+            ? `the brief for ${input.dashboardId} is ${brief.status} — composition waits for a `
+              + 'human approval (create_brief → a person approves in the studio → save_dashboard)'
+            : `no brief exists for ${input.dashboardId} — the flow is create_brief, human `
+              + 'approval, then composition',
+        );
+      }
+    }
+
     if (spec.dashboard.id !== input.dashboardId) {
       throw new Invalid(`the spec says its id is ${spec.dashboard.id}, not ${input.dashboardId}`);
     }
@@ -199,6 +231,86 @@ export class ChartroomRepository {
     }));
   }
 
+  // ---- briefs -------------------------------------------------------------
+
+  /**
+   * Append a brief version. The schema *is* the grilling protocol: an intake
+   * missing a slot fails here with the slot named, whoever — human or agent —
+   * sent it. A new version supersedes every earlier one, approved included:
+   * a brief edited after approval is a different brief, and pretending the
+   * old approval covers it is how "approved" stops meaning anything.
+   */
+  async saveBrief(input: {
+    dashboardId: string; content: unknown; author: string; actor: string;
+  }): Promise<BriefRow> {
+    const parsed = parseBrief(input.content);
+    if (!parsed.ok) {
+      throw new Invalid(
+        'the brief cannot be created until every intake slot is resolved',
+        parsed.problems,
+      );
+    }
+    if (parsed.brief.dashboard_id !== input.dashboardId) {
+      throw new Invalid(
+        `the brief says it is for ${parsed.brief.dashboard_id}, not ${input.dashboardId}`,
+      );
+    }
+    const dash = await this.dashboard(input.dashboardId);
+    if (!dash) throw new NotFound(`no dashboard called ${input.dashboardId}`);
+
+    const maxRows = await this.db.all<{ v: number | null }>(S.maxBrief, [input.dashboardId]);
+    const version = (maxRows[0]?.v ?? 0) + 1;
+    const row: BriefRow = {
+      version, brief: parsed.brief, status: 'draft', author: input.author,
+      approvedBy: null, approvedAt: null, createdAt: now(),
+    };
+    try {
+      await this.db.transaction(async () => {
+        await this.db.run(S.supersedeBriefs, [input.dashboardId]);
+        await this.db.run(S.insertBrief, [
+          input.dashboardId, version, JSON.stringify(parsed.brief), 'draft',
+          input.author, row.createdAt,
+        ]);
+        await this.audit(input.actor, 'brief.save', 'dashboard', input.dashboardId, `v${version}`);
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new Conflict('someone else briefed at the same moment — reload');
+      throw e;
+    }
+    return row;
+  }
+
+  async latestBrief(dashboardId: string): Promise<BriefRow | null> {
+    const rows = await this.db.all<Record<string, unknown>>(
+      S.latestBrief, [dashboardId, dashboardId],
+    );
+    return rows.length ? mapBrief(rows[0]) : null;
+  }
+
+  async briefs(dashboardId: string): Promise<BriefRow[]> {
+    const rows = await this.db.all<Record<string, unknown>>(S.briefsOf, [dashboardId]);
+    return rows.map(mapBrief);
+  }
+
+  /**
+   * Approve the current brief. Actor entitlement is the API's job (an agent
+   * identity is refused before this is reached); this layer guarantees the
+   * mechanics — only a draft can be approved, and the approval stamps who.
+   */
+  async approveBrief(dashboardId: string, approver: string): Promise<BriefRow> {
+    const current = await this.latestBrief(dashboardId);
+    if (!current) throw new NotFound(`no brief exists for ${dashboardId}`);
+    if (current.status === 'approved') return current;
+    if (current.status !== 'draft') {
+      throw new Invalid(`brief v${current.version} is ${current.status}, not approvable`);
+    }
+    await this.db.transaction(async () => {
+      await this.db.run(S.approveBrief, [approver, now(), dashboardId, current.version]);
+      await this.audit(approver, 'brief.approve', 'dashboard', dashboardId, `v${current.version}`);
+    });
+    return (await this.latestBrief(dashboardId))!;
+  }
+
   async auditLog(artifactType: string, artifactId: string): Promise<AuditRow[]> {
     const rows = await this.db.all<Record<string, unknown>>(S.auditOf, [artifactType, artifactId]);
     return rows.map((r) => ({
@@ -218,6 +330,18 @@ function mapDashboard(r: Record<string, unknown>): DashboardRow {
     title: String(r.title),
     status: String(r.status) as DashboardRow['status'],
     owner: String(r.owner),
+    createdAt: String(r.created_at),
+  };
+}
+
+function mapBrief(r: Record<string, unknown>): BriefRow {
+  return {
+    version: Number(r.version_no),
+    brief: JSON.parse(String(r.content)) as Brief,
+    status: String(r.status) as BriefStatus,
+    author: String(r.author),
+    approvedBy: r.approved_by === null ? null : String(r.approved_by),
+    approvedAt: r.approved_at === null ? null : String(r.approved_at),
     createdAt: String(r.created_at),
   };
 }
