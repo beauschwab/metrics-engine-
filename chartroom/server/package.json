@@ -10,9 +10,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "chartroom-spec": "*",
-    "chartroom-patterns": "*",
     "chartroom-critics": "*",
+    "chartroom-patterns": "*",
+    "chartroom-spec": "*",
+    "pptxgenjs": "^4.0.1",
     "zod": "^3.25.76"
   }
 }

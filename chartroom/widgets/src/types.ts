@@ -49,4 +49,13 @@ export interface WidgetProps {
   data: WidgetData | null;
   status: WidgetStatus;
   error?: string;
+  /**
+   * Cross-filter seam (Phase 4): when the interpreter wires this widget as an
+   * interaction source, clicking a group calls back with its key. Still
+   * presentation-only — the widget reports the click; what it filters, and
+   * whether anything does, is the interpreter's spec-driven business.
+   */
+  onPick?(key: Record<string, string>): void;
+  /** The group key currently driving a cross-filter, for highlight. */
+  picked?: Record<string, string> | null;
 }

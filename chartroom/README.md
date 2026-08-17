@@ -9,13 +9,14 @@ loop (MCP server, the intake/brief protocol with a human approval gate, the
 pattern catalog, the LLM design critic); and governance — metric proposals
 validated through the real engine, the draft → team → certified promotion
 matrix, exposure records at certification, and version-pin upgrade notices
-that carry the diff.
+that carry the diff. Phase 4 adds scale: the deterministic data critic,
+spec-declared cross-filtering, and the PPTX committee pack.
 
 ```
 npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
-npm run chartroom:mcp      # stdio — the agent's 24 tools
-npm run verify:chartroom   # typecheck ×7 + 146 unit tests + 13 browser checks
+npm run chartroom:mcp      # stdio — the agent's 25 tools
+npm run verify:chartroom   # typecheck ×7 + 163 unit tests + 15 browser checks
 ```
 
 Run `npm run server` (the registry, :8787) alongside for live contracts;
@@ -27,12 +28,12 @@ never impersonate a governed workspace.
 
 | Package | The idea |
 | --- | --- |
-| `chartroom-spec` | The dashboard DSL as Zod schemas, canonical hashing, reviewer-vocabulary diffs, RFC-6902 fixes, a 14-rule linter — and the **brief schema**, where the grilling protocol's eight intake slots are required fields, not suggestions. Pure — runs identically in browser, server, and MCP. |
+| `chartroom-spec` | The dashboard DSL as Zod schemas, canonical hashing, reviewer-vocabulary diffs, RFC-6902 fixes, a 16-rule linter — and the **brief schema**, where the grilling protocol's eight intake slots are required fields, not suggestions. Pure — runs identically in browser, server, and MCP. |
 | `chartroom-widgets` | The catalog: versioned contracts as data, presentation-only SVG renderers. Widgets receive numbers; they cannot fetch. |
-| `chartroom-patterns` | The reviewed archetypes (limit-utilization-board, liquidity-monitor, metric-deep-dive) with slots, wireframes and when-*not*-to-use — plus the design guide's rationale for all 14 rules, tested to cover exactly the linter's roster. |
+| `chartroom-patterns` | The reviewed archetypes (limit-utilization-board, liquidity-monitor, metric-deep-dive) with slots, wireframes and when-*not*-to-use — plus the design guide's rationale for all 16 rules, tested to cover exactly the linter's roster. |
 | `chartroom-critics` | The LLM design critic: composition, hierarchy, decision-alignment against the brief. Zod-validated findings, one retry, then a WARN "critic unavailable" — the deterministic linter is the hard gate, so a model outage never blocks anyone. Evals run live with `ANTHROPIC_API_KEY`, skip loudly without. |
 | `chartroom-server` | Contracts *derived* from the registry (unit from format, dims from derived rows, governance status from the production channel), grouped queries through the engine's own `Evaluator`, versioned dashboard persistence, briefs with a human-only approval gate, metric proposals with engine-run evidence, the promotion gate matrix, exposure records, upgrade notices — and an audit trail pairing every agent action with its principal. |
-| `chartroom-mcp` | Chartroom's 24 tools over stdio, thin by contract: validate → HTTP as `agent:mcp-<session>` → shape. The server's entitlements do the governing; there is deliberately **no approve, decide, or promote tool** — the governance tools file proposals and read the gate. The MCP instructions carry the intake protocol. |
+| `chartroom-mcp` | Chartroom's 25 tools over stdio, thin by contract: validate → HTTP as `agent:mcp-<session>` → shape. The server's entitlements do the governing; there is deliberately **no approve, decide, or promote tool** — the governance tools file proposals and read the gate. The MCP instructions carry the intake protocol. |
 | `chartroom-studio` | The interpreter canvas, a contract-generated widget form, the spec source in CodeMirror, findings with one-click fixes, explicit versioned saves — the **Brief tab** (the intake slots as an approvable card), the **Govern tab** (the promotion checklist with sign-offs, the promote act, and version-pin notices), and `#/proposals`, the steward queue. `#/widgets` is the widget-states review harness. |
 
 Three enforcement layers, strongest first: the **schema** cannot express raw
@@ -95,6 +96,29 @@ Every server mutation writes `chartroom_audit` with its actor.
 - Every decision, sign-off, and promotion is human-only at the API — the
   agent's half is filing artifacts worth approving and reading the gate
   (ADR-24).
+
+## Scale (Phase 4)
+
+- **The data critic** — deterministic, LLM-free, at `/api/data-critique` and
+  the `data_critique` tool: grouped sums reconcile with the headline for
+  additive measures (MASS-01), every query leg answers at one as-of
+  (COHERE-01), nothing non-finite would render (FIN-01) — each finding with
+  its computed evidence. Its statically-checkable half graduated into the
+  linter: AGG-01 (no grid totals over non-additive measures — summing ratios,
+  made uncheatable) and IX-01 (cross-filter wiring answerable on both ends)
+  (ADR-27).
+- **Cross-filtering** — declared in `spec.interactions`, interpreted by the
+  canvas: a widget is clickable only because the spec names it a source, a
+  click narrows exactly the declared targets through the same aggregate query
+  path, and the active filter is a visible chip. Mosaic/DuckDB-WASM stays a
+  substrate swap behind the same contract (ADR-28).
+- **The committee pack** — `GET /api/dashboards/:id/deck.pptx` (the `deck ↓`
+  header link): a deterministic plan from the same QueryService and the same
+  `formatValue` the widgets use, rendered as *native* PPTX charts and tables
+  with the version and spec hash on the title slide — the deck cannot diverge
+  from the live dashboard (ADR-29).
+- Deephaven streaming, the Slack/Claude Tag entry, and catalog growth ship as
+  seams awaiting their forcing functions (ADR-30).
 
 ## The two dogfood dashboards
 

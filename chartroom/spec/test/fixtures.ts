@@ -51,6 +51,9 @@ export const CONTRACTS: MetricContract[] = [
   }),
   metric({ ref: 'keel://liquidity_pit.lcr_floor@4', unit: 'percent', precision: 1, format: 'percent_1dp' }),
   metric({ ref: 'keel://scratch.candidate@9', status: 'draft', doc: 'scratch', measure: 'candidate' }),
+  // A headline-only measure: no categorical dims at all. Exists so IX-01's
+  // target-side check (a filter that cannot apply) is testable.
+  metric({ ref: 'keel://liquidity_pit.group_total@4', dims: [{ name: 'as_of_date', type: 'time' }] }),
 ];
 
 export const WIDGETS: WidgetContract[] = [

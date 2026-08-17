@@ -163,6 +163,16 @@ function Studio() {
           </span>
         )}
         <span className="cr-header-spacer" />
+        {openId && save.kind === 'clean' && save.version > 0 && (
+          <a
+            className="cr-header-link"
+            href={`/api/dashboards/${openId}/deck.pptx`}
+            data-testid="export-deck"
+            title="The committee pack: the saved version's numbers, as native PPTX charts"
+          >
+            deck ↓
+          </a>
+        )}
         <a className="cr-header-link" href="#/proposals" data-testid="nav-proposals">proposals</a>
         <span className="cr-registry-source" data-source={source} title={
           source === 'shipped'

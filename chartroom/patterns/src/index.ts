@@ -232,4 +232,16 @@ export const RULE_GUIDE: RuleGuide[] = [
     rationale: 'A filter reading an undeclared context is a dangling reference that silently '
       + 'matches nothing or everything depending on the renderer\'s charity — both wrong.',
   },
+  {
+    rule: 'AGG-01', title: 'Totals only total what totals', enforced: 'linter', autofix: false,
+    rationale: 'A grid\'s margin totals sum structurally, and summing a ratio is a number that '
+      + 'means nothing wearing the format of one that does. The contract\'s '
+      + 'allowed_aggregations says which measures re-aggregate; the grid is only for those.',
+  },
+  {
+    rule: 'IX-01', title: 'Cross-filters are answerable on both ends', enforced: 'linter', autofix: true,
+    rationale: 'A cross-filter promises that a click narrows every target. A source that does '
+      + 'not group by the dim has nothing to click; a target whose metric lacks the dim '
+      + 'would show unfiltered numbers beside filtered ones — coherent-looking and wrong.',
+  },
 ];
