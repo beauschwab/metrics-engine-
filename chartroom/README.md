@@ -15,11 +15,16 @@ pilot readiness: the shareable read-only view mode and the E2.5 usage
 instrumentation. Phase 6 adds the embedded agent chat — the spec's §7
 conversational surface, in the studio.
 
+Phase 7 moves the agent runtime to Python: `chartroom/agent` is a LangGraph +
+deepagents loop on FastAPI whose tools are `chartroom-mcp` — see
+[`chartroom/agent/README.md`](agent/README.md) and `PLAN-PHASES-7-11.md`.
+
 ```
-npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance, chat
+npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance, chat proxy
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
 npm run chartroom:mcp      # stdio — the agent's 25 tools
-npm run verify:chartroom   # typecheck ×7 + 173 unit tests + 20 browser checks
+# python agent (chat backend): see chartroom/agent/README.md  → :8789
+npm run verify:chartroom   # typecheck ×7 + 168 TS unit tests + 18 pytest + 20 browser checks
 ```
 
 Run `npm run server` (the registry, :8787) alongside for live contracts;
@@ -140,17 +145,19 @@ Every server mutation writes `chartroom_audit` with its actor.
 
 ## The embedded agent chat (Phase 6)
 
-The `agent ✳` button opens a chat pane wired to `POST /api/chat` (SSE): a
-server-side agentic loop on the same model as the design critic, whose tools
-execute against the same governed `handle()` as every other caller — under an
-`agent:chat-<session>` identity, so the chat can interview, search the
-registry, preview numbers, lint, data-critique, file briefs and proposals,
-and compose after approval, but can never approve, decide, or promote
-(ADR-34). The pane replicates Claude-chat functionality with
+The `agent ✳` button opens a chat pane wired to `POST /api/chat` (SSE),
+which proxies to the Python agent service: a LangGraph + deepagents loop on
+the same model as the design critic, whose tools are the `chartroom-mcp`
+roster under an `agent:lg-<session>` identity — so the chat can interview,
+search the registry, preview numbers, lint, data-critique, file briefs and
+proposals, and compose after approval, but can never approve, decide, or
+promote (ADR-36). Threads persist server-side in a LangGraph checkpointer
+(ADR-38). The pane replicates Claude-chat functionality with
 AI-Elements-vocabulary components — Conversation, Message, streamed-markdown
 Response, collapsible Tool cards, PromptInput with stop, Suggestions — on the
-studio's own design system. Set `ANTHROPIC_API_KEY` to enable it; without a
-key the pane says so plainly and everything else keeps working (ADR-35).
+studio's own design system, over a frozen SSE protocol (ADR-37). Run the
+agent service with `ANTHROPIC_API_KEY` to enable it; without it the pane says
+so plainly and everything else keeps working (ADR-35).
 
 ## The two dogfood dashboards
 

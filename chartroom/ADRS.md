@@ -461,3 +461,45 @@ banner and disables input; nothing else dims. The e2e suite runs with the
 key explicitly blanked so the degrade path is what CI exercises; the live
 loop is covered by a key-gated server test, the same arrangement as the
 critic evals.
+
+## Phase 7 ADRs
+
+## ADR-36 — the agent runtime is a Python service; its tools are the MCP roster
+
+**Pinned:** the plan's directive — LangGraph + deepagents on FastAPI.
+**Decision:** `chartroom/agent` (:8789) replaces the Phase-6 TS chat loop.
+`create_deep_agent` supplies the loop — planning, subagents, tool execution —
+on claude-opus-5; the tool surface is `chartroom-mcp` consumed over stdio via
+`langchain-mcp-adapters`, one supervised subprocess per service. Zero tool
+duplication: studio, Claude Code, and LangGraph share one governed roster,
+under an `agent:lg-<session>` identity (the MCP client grew a cosmetic
+`CHARTROOM_MCP_LABEL` so the audit trail names the surface; entitlements key
+on `agent:*` regardless). A bespoke LangGraph state machine re-enforcing the
+§3 journey gates was considered and rejected: the server's 403s are the
+enforcement, the system prompt encodes the flow, and duplicate enforcement
+could only ever disagree with the source of truth. A startup guard fails the
+service loudly if the roster ever grows an approval-shaped tool — defense in
+depth, not the defense. Dependency versions are pinned exactly; the step-zero
+spike that validated their APIs is re-run on any bump.
+
+## ADR-37 — the chat SSE protocol is a frozen contract
+
+**Decision:** the event vocabulary the studio pane consumes (`text`,
+`tool_start`, `tool_result`, `turn_end`, `done`, `error`, `unavailable`),
+framed byte-exactly as `data: <json>\n\n`, is frozen. The Python service
+writes frames by hand rather than through sse-starlette, whose `\r\n`
+framing the pane's parser would never split. New event types may be added
+(clients ignore unknown types); existing ones never change shape. This is
+what let the runtime be replaced under the pane without touching it —
+chartroom-server's `/api/chat` became a pass-through proxy whose only own
+behavior is the `unavailable` frame when the service is unreachable.
+
+## ADR-38 — threads live server-side in a LangGraph checkpointer
+
+**Decision:** conversations persist in an (async) SQLite checkpointer keyed
+by `thread_id`; the service emits an additive `thread` event naming the
+thread so a client can resume it. The Phase-6 posture — client-held,
+text-only history, every turn self-contained (ADR-34) — remains the accepted
+*request* shape for compatibility, seeding a fresh thread with the transcript
+as context. Real threads mean tool traffic and prior reasoning survive
+across turns and service restarts, which the text replay never could.

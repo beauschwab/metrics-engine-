@@ -10,7 +10,7 @@
 import { createServer } from 'node:http';
 import { migrate, openMssql, openSqlite, type Db } from '../../../server/db';
 import { handle, ContractCache, type ApiRequest } from './api';
-import { runChatTurn, type ChatTurnRequest } from './chat';
+import { chatFrames } from './proxy';
 import { chartroomDialect } from './dialect';
 import { fetchRegistryState } from './keel';
 import { QueryService } from './query';
@@ -116,6 +116,7 @@ async function main(): Promise<void> {
 
     // The embedded chat streams SSE — a transport the pure handle() contract
     // doesn't model, so it gets its own route here (like the deck's binary).
+    // Since Phase 7 the loop lives in the Python agent service; this proxies.
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       res.writeHead(200, {
         'content-type': 'text/event-stream',
@@ -125,12 +126,9 @@ async function main(): Promise<void> {
       });
       const abort = new AbortController();
       req.on('close', () => abort.abort());
-      await runChatTurn(
-        body as ChatTurnRequest,
-        deps,
-        (e) => res.write(`data: ${JSON.stringify(e)}\n\n`),
-        abort.signal,
-      );
+      for await (const chunk of chatFrames(body, abort.signal)) {
+        res.write(chunk);
+      }
       res.end();
       return;
     }

@@ -1,0 +1,48 @@
+[project]
+name = "chartroom-agent"
+version = "0.1.0"
+description = "Chartroom's agent runtime: a LangGraph/deepagents loop on FastAPI, fronting the governed chartroom-mcp toolset (ADR-36)."
+requires-python = ">=3.11"
+# Pinned exactly (plan E7.1 step zero): these libraries move fast, and the
+# spike that validated their APIs validated *these* versions.
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn==0.52.3",
+    "langgraph==1.2.11",
+    "langgraph-checkpoint-sqlite==3.1.1",
+    "deepagents==0.7.6",
+    "langchain-anthropic==1.5.6",
+    "langchain-mcp-adapters==0.3.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "httpx==0.28.1",
+    "ruff==0.16.3",
+    "mypy==2.3.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
