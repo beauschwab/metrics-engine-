@@ -15,6 +15,7 @@ import { toNamedParameters, type Dialect, type DialectName } from '../../../serv
 const DASHBOARD = 'chartroom_dashboard';
 const VERSION = 'chartroom_version';
 const AUDIT = 'chartroom_audit';
+const BRIEF = 'chartroom_brief';
 
 const SQLITE_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS ${DASHBOARD} (
@@ -45,6 +46,21 @@ const SQLITE_SCHEMA = [
   created_at    TEXT NOT NULL
 )`,
   `CREATE INDEX IF NOT EXISTS ix_${AUDIT}_artifact ON ${AUDIT} (artifact_type, artifact_id)`,
+  // Briefs are versioned like everything else: an edit appends the next
+  // version_no; approval stamps the *current* one. `status` moves
+  // draft → approved → superseded, and only a human actor may move it to
+  // approved — the API enforces that, the schema just records who and when.
+  `CREATE TABLE IF NOT EXISTS ${BRIEF} (
+  dashboard_id TEXT NOT NULL,
+  version_no   INTEGER NOT NULL,
+  content      TEXT NOT NULL,
+  status       TEXT NOT NULL,
+  author       TEXT NOT NULL,
+  approved_by  TEXT,
+  approved_at  TEXT,
+  created_at   TEXT NOT NULL,
+  UNIQUE (dashboard_id, version_no)
+)`,
 ];
 
 const MSSQL_SCHEMA = [
@@ -81,6 +97,18 @@ CREATE TABLE ${AUDIT} (
 )`,
   `IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_${AUDIT}_artifact')
 CREATE INDEX ix_${AUDIT}_artifact ON ${AUDIT} (artifact_type, artifact_id)`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${BRIEF}')
+CREATE TABLE ${BRIEF} (
+  dashboard_id NVARCHAR(120) NOT NULL,
+  version_no   INT NOT NULL,
+  content      NVARCHAR(MAX) NOT NULL,
+  status       NVARCHAR(20) NOT NULL,
+  author       NVARCHAR(200) NOT NULL,
+  approved_by  NVARCHAR(200),
+  approved_at  NVARCHAR(30),
+  created_at   NVARCHAR(30) NOT NULL,
+  CONSTRAINT uq_${BRIEF} UNIQUE (dashboard_id, version_no)
+)`,
 ];
 
 export const STATEMENTS = {
@@ -105,6 +133,25 @@ export const STATEMENTS = {
     `SELECT version_no, spec_hash, parent_no, author, created_at
      FROM ${VERSION} WHERE dashboard_id = ? ORDER BY version_no`,
   maxVersion: `SELECT MAX(version_no) AS v FROM ${VERSION} WHERE dashboard_id = ?`,
+
+  insertBrief:
+    `INSERT INTO ${BRIEF} (dashboard_id, version_no, content, status, author, approved_by, approved_at, created_at)
+     VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)`,
+  latestBrief:
+    `SELECT version_no, content, status, author, approved_by, approved_at, created_at
+     FROM ${BRIEF} WHERE dashboard_id = ?
+       AND version_no = (SELECT MAX(version_no) FROM ${BRIEF} WHERE dashboard_id = ?)`,
+  maxBrief: `SELECT MAX(version_no) AS v FROM ${BRIEF} WHERE dashboard_id = ?`,
+  briefsOf:
+    `SELECT version_no, content, status, author, approved_by, approved_at, created_at
+     FROM ${BRIEF} WHERE dashboard_id = ? ORDER BY version_no`,
+  // The two status moves. Approval stamps who and when; superseding does not
+  // erase them — an approval that was later superseded is history, not error.
+  approveBrief:
+    `UPDATE ${BRIEF} SET status = 'approved', approved_by = ?, approved_at = ?
+     WHERE dashboard_id = ? AND version_no = ? AND status = 'draft'`,
+  supersedeBriefs:
+    `UPDATE ${BRIEF} SET status = 'superseded' WHERE dashboard_id = ? AND status <> 'superseded'`,
 
   insertAudit:
     `INSERT INTO ${AUDIT} (actor, action, artifact_type, artifact_id, payload_hash, created_at)

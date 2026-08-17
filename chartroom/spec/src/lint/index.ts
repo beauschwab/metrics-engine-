@@ -27,6 +27,12 @@ export const RULES: Rule[] = [
   KPI_02, DEN_01, GRID_01, LAY_01, GOV_01, GOV_02, CTX_01,
 ];
 
+/** Every id the linter can emit — the roster guide text is checked against. */
+export const RULE_IDS = [
+  'REF-01', 'TS-01', 'TS-02', 'BAR-02', 'PIE-01', 'COL-03', 'NUM-01',
+  'KPI-02', 'DEN-01', 'GRID-01', 'LAY-01', 'GOV-01', 'GOV-02', 'CTX-01',
+] as const;
+
 const ORDER: Record<string, number> = { BLOCK: 0, WARN: 1, SUGGEST: 2 };
 
 export function lint(spec: DashboardSpec, ctx: LintContext): LintReport {

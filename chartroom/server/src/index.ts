@@ -93,7 +93,7 @@ async function main(): Promise<void> {
     const cors: Record<string, string> = {
       'access-control-allow-origin': '*',
       'access-control-allow-methods': 'GET, POST, OPTIONS',
-      'access-control-allow-headers': 'content-type, x-identity',
+      'access-control-allow-headers': 'content-type, x-identity, x-principal',
     };
     if (req.method === 'OPTIONS') {
       res.writeHead(204, cors);
@@ -118,6 +118,7 @@ async function main(): Promise<void> {
       query: Object.fromEntries(url.searchParams),
       body,
       identity: (req.headers['x-identity'] as string | undefined) || null,
+      principal: (req.headers['x-principal'] as string | undefined) || null,
     };
 
     const out = await handle(request, deps);

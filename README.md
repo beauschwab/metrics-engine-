@@ -415,19 +415,29 @@ report still looks clean.
 
 ## Chartroom — dashboards over the registry
 
-A second app in the monorepo (`chartroom/` — four npm workspaces): a studio
-for **governed analytics dashboards** whose every number traces to a registry
-function and whose every visual clears an executable design guide. A dashboard
-is a declarative spec — schema-validated, content-hashed, versioned, diffed in
-reviewer vocabulary — never freeform code; the renderer is a deterministic
-interpreter over a versioned widget catalog. The linter carries the design
-guide as rules with IDs and one-click JSON Patch fixes; governance status
-derives from the registry's own release/channel system, so a dashboard cannot
-leave draft while binding a measure production has never served.
+A second app in the monorepo (`chartroom/` — seven npm workspaces): an
+**agent-guided studio for governed analytics dashboards** whose every number
+traces to a registry function and whose every visual clears an executable
+design guide. A dashboard is a declarative spec — schema-validated,
+content-hashed, versioned, diffed in reviewer vocabulary — never freeform
+code; the renderer is a deterministic interpreter over a versioned widget
+catalog. The linter carries the design guide as rules with IDs and one-click
+JSON Patch fixes; governance status derives from the registry's own
+release/channel system, so a dashboard cannot leave draft while binding a
+measure production has never served.
+
+The agent loop is governed the same way: an MCP server exposes 18 tools, the
+intake interview's eight slots are a schema (`create_brief` rejects an
+incomplete brief naming the slot), and an agent session cannot compose until a
+human approves the design brief in the studio — nor approve anything itself,
+ever. An LLM design critic judges composition against the brief and degrades
+to a WARN when no model is available; the deterministic linter stays the hard
+gate.
 
 ```
-npm run chartroom:server   # :8788 — contracts, queries, dashboards
-npm run chartroom:studio   # :5174 — the studio
+npm run chartroom:server   # :8788 — contracts, queries, dashboards, briefs
+npm run chartroom:studio   # :5174 — the studio (brief approval lives here)
+npm run chartroom:mcp      # stdio — the agent's tool surface
 ```
 
 Two dogfood dashboards (an LCR monitor and a limit board) seed on first boot,
@@ -451,7 +461,7 @@ against a real implementation of the protocol rather than against Dremio itself.
 npm run test         # 603 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e          # 89 browser checks against the built bundle
-npm run verify:chartroom  # the Chartroom workspaces: 96 unit tests + 9 browser checks
+npm run verify:chartroom  # the Chartroom workspaces: 132 unit tests + 11 browser checks
 ```
 
 The server tests include a live Flight SQL round trip. They skip themselves,

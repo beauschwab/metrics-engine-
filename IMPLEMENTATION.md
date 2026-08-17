@@ -1418,16 +1418,42 @@ worst mistakes unrepresentable (no SQL, no HTML, no color field, no dual
 axes); fourteen linter rules with IDs carry the judgment calls, each a pure
 function over injected contracts with golden tests, fixes as RFC-6902 patches,
 and a round-trip test asserting every fix resolves its own finding; the LLM
-critics are Phase 2 and deliberately absent — the deterministic linter is the
-hard gate, per the handoff.
+design critic (Phase 2) judges composition against the approved brief and is
+advisory by design — the deterministic linter is the hard gate, per the
+handoff, and a critic outage degrades to a WARN finding that says so.
 
-**Verification**: `npm run verify:chartroom` — typecheck across the four
-workspaces, 96 unit tests (55 spec, 31 server, 10 widgets), and 9 Playwright
-checks that execute the Phase-1 acceptance loop against the built studio and a
-real server: load the seeded LCR monitor, break it through the form, watch the
-findings arrive, apply a fix, save a version, reload, find it kept — plus a
-conflicting save refused with a 409 and the widget-states harness at
-`#/widgets` rendering every catalog widget in every state.
+**Phase 2 is the agent loop, and its governance is server-side.** Three more
+workspaces — `patterns` (archetypes + rule rationale as data), `critics` (the
+design critic with a Zod-validated finding schema, one retry, and a
+never-blocks degrade path), and `mcp` (18 tools over stdio, thin by contract).
+The grilling protocol is a schema: `BriefSchema`'s eight intake slots are
+required fields, so `create_brief` rejects an incomplete intake naming the
+missing slot whoever sent it. Composition by an `agent:*` identity requires an
+approved brief; approval is refused to agents at the API boundary and the MCP
+ships no approve tool at all — plan-before-pixels is enforced where the agent
+cannot reach it. Editing a brief supersedes its approval and re-locks
+composition, because an approval must point at the exact artifact reviewed.
+The audit trail pairs each agent action (`agent:mcp-<session>`) with the human
+principal it acted for. The studio grew a Brief tab — the intake slots as an
+approvable card; its Approve button is the human half of the seam. ADRs 17–22
+record the Phase-2 decisions (Claude Code as the agent surface, the missing
+approve tool, approval superseding, critic degradation as a finding).
+
+**One studio bug Phase 2's e2e caught in Phase-1 code**: `open()` was not
+idempotent — clicking the already-open dashboard fired a second load whose
+response landed after subsequent edits and silently reset the spec to the
+saved version. Data loss wearing a refresh's clothes; fixed with an
+opening-intent ref, alongside sequence-guarding the debounced lint so a stale
+report can never overwrite a fresh one.
+
+**Verification**: `npm run verify:chartroom` — typecheck across the seven
+workspaces, 132 unit tests (55 spec, 10 widgets, 6 patterns, 9 critics + 8
+live-model evals that skip without a key, 40 server, 12 MCP), and 11
+Playwright checks: the Phase-1 acceptance loop (form edit → lint → fix → save
+→ reload), a conflicting save refused with a 409, the widget-states harness —
+and the Phase-2 approval seam end to end: an agent session drafts a brief and
+is refused composition, a human approves the card in the studio, the same
+agent session is then allowed through, with the audit trail naming both.
 
 ## Testing
 

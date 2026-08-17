@@ -9,7 +9,10 @@ import { expect, test, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('dash-lcr-monitor')).toBeVisible();
+  // Open the seeded monitor explicitly — the studio auto-opens the first
+  // dashboard alphabetically, and other specs create boards that sort earlier.
+  await page.getByTestId('dash-lcr-monitor').click();
+  await expect(page.getByTestId('widget-lcr-tile')).toBeVisible();
 });
 
 const openFindings = (page: Page) => page.getByTestId('tab-findings').click();
@@ -74,7 +77,10 @@ test.describe('the E1.4 loop: form edit → lint → fix → save → reload', (
     await expect(page.getByTestId('save-state')).toHaveText('v2');
 
     // Reload: the version, the clamped decimals, and the WARN all persist.
+    // (Re-open explicitly — the auto-open picks whatever sorts first, and
+    // other specs create boards that do.)
     await page.reload();
+    await page.getByTestId('dash-lcr-monitor').click();
     await expect(page.getByTestId('save-state')).toHaveText('v2');
     await page.getByTestId('widget-headroom-tile').click();
     await expect(page.getByTestId('form-decimals')).toHaveValue('1');
