@@ -17,7 +17,10 @@ const DEFAULT = 50_000;
 
 export const GRID_01: Rule = (spec, ctx) =>
   widgetsOf(spec, ctx).flatMap(({ w, path, widgetContract, metricContract }) => {
-    if (widgetContract?.family !== 'grid') return [];
+    // Heatmaps cross two dims into cells the same way a pivot does, so the
+    // cell ceiling is the same judgment — AGG-01's margin-total rule is not,
+    // which is why they are separate families (Phase 9).
+    if (widgetContract?.family !== 'grid' && widgetContract?.family !== 'heatmap') return [];
     const p = `${path}/bind/max_cells`;
 
     if (w.bind.max_cells === undefined) {

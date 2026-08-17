@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { RULE_IDS } from 'chartroom-spec';
 
 const dir = mkdtempSync(join(tmpdir(), 'chartroom-mcp-'));
 // Per-run port: a server leaked by an interrupted earlier run must not serve
@@ -156,8 +157,10 @@ describe('reading over the wire', () => {
       .toContain('limit-utilization-board');
     expect(patterns.patterns[0].when_not.length).toBeGreaterThan(20);
 
+    // Against the linter's own roster, not a literal — the guide must serve
+    // every rule the linter can emit, however many that becomes.
     const rules = json(await client.callTool({ name: 'get_design_rules', arguments: {} }));
-    expect(rules.rules).toHaveLength(16);
+    expect(rules.rules).toHaveLength(RULE_IDS.length);
   });
 
   it('previews real numbers through the aggregates-only boundary', async () => {

@@ -362,3 +362,208 @@ describe('the report', () => {
     expect(r.findings[0].severity).toBe('BLOCK');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 9 (E9.2) — the rules that ship with the new catalog entries.
+// ---------------------------------------------------------------------------
+
+/** A stacked-area widget bound to a splittable measure. */
+function stacked(metric = 'keel://liquidity_pit.hqla_total@4'): DashboardSpec {
+  const s = baseSpec();
+  s.widgets[1] = {
+    id: 'hqla-mix', type: 'stacked-area@1', pos: { x: 3, y: 0, w: 9, h: 4 },
+    bind: { metric, dims: ['as_of_date', 'scenario_code'], window: { trailing: '60d' } },
+  };
+  return s;
+}
+
+describe('AREA-01 — a stack claims the parts make the whole', () => {
+  it('lints clean for an additive, unsigned measure', () => {
+    expect(findingsFor(stacked(), 'AREA-01')).toEqual([]);
+  });
+
+  it('blocks a ratio, because the top edge would sum percentages', () => {
+    const s = stacked('keel://liquidity_pit.lcr_pct@4');
+    const [f] = findingsFor(s, 'AREA-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('do not add up');
+    roundTrip(s, 'AREA-01');
+  });
+
+  it('blocks a signed measure, whose stack would overlap itself', () => {
+    const s = stacked('keel://liquidity_pit.hqla_delta@4');
+    const [f] = findingsFor(s, 'AREA-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('signed measure');
+    roundTrip(s, 'AREA-01');
+  });
+
+  it('the fix keeps the binding and only swaps the rendering', () => {
+    const s = stacked('keel://liquidity_pit.lcr_pct@4');
+    const [f] = findingsFor(s, 'AREA-01');
+    const fixed = applyPatch(s, f.fix!);
+    expect(fixed.widgets[1].type).toBe('timeseries@1');
+    expect(fixed.widgets[1].bind.dims).toEqual(['as_of_date', 'scenario_code']);
+  });
+
+  it('leaves other families alone — a bar of a ratio is not a stack', () => {
+    const s = baseSpec();
+    s.widgets[1] = {
+      id: 'lcr-by-entity', type: 'bar@1', pos: { x: 3, y: 0, w: 9, h: 4 },
+      bind: { metric: 'keel://liquidity_pit.lcr_pct@4', dims: ['entity_id'] },
+    };
+    expect(findingsFor(s, 'AREA-01')).toEqual([]);
+  });
+});
+
+/** A bullet with a governed threshold. */
+function gauge(): DashboardSpec {
+  const s = baseSpec();
+  s.widgets[0] = {
+    id: 'lcr-gauge', type: 'bullet@1', pos: { x: 0, y: 0, w: 3, h: 2 },
+    bind: {
+      metric: 'keel://liquidity_pit.lcr_pct@4',
+      compare: { vs: 'keel://liquidity_pit.lcr_floor@4', style: 'threshold' },
+    },
+  };
+  return s;
+}
+
+describe('GAUGE-01 — a limit nobody governs is not a limit', () => {
+  it('lints clean when the threshold is a registry ref', () => {
+    expect(findingsFor(gauge(), 'GAUGE-01')).toEqual([]);
+  });
+
+  it('blocks a bullet with no comparison at all', () => {
+    const s = gauge();
+    delete s.widgets[0].bind.compare;
+    const [f] = findingsFor(s, 'GAUGE-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('binds no comparison');
+  });
+
+  it('blocks prior_period — a drift is not a threshold', () => {
+    const s = gauge();
+    s.widgets[0].bind.compare = { vs: 'prior_period', style: 'threshold' };
+    const [f] = findingsFor(s, 'GAUGE-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('never breaches its own prior');
+  });
+
+  it('does not reach a kpi-tile, which KPI-02 judges more softly', () => {
+    const s = baseSpec();
+    delete s.widgets[0].bind.compare;
+    expect(findingsFor(s, 'GAUGE-01')).toEqual([]);
+    expect(findingsFor(s, 'KPI-02')).toHaveLength(1);
+  });
+});
+
+/** Small multiples split across a categorical dim. */
+function multiples(
+  metric = 'keel://liquidity_pit.hqla_total@4',
+  dims = ['as_of_date', 'scenario_code'],
+): DashboardSpec {
+  const s = baseSpec();
+  s.widgets[1] = {
+    id: 'by-scenario', type: 'small-multiples@1', pos: { x: 3, y: 0, w: 9, h: 4 },
+    bind: { metric, dims, window: { trailing: '60d' } },
+  };
+  return s;
+}
+
+describe('SM-01 — panels share a scale, or compare nothing', () => {
+  it('lints clean for a split inside the panel ceiling', () => {
+    expect(findingsFor(multiples(), 'SM-01')).toEqual([]);
+  });
+
+  it('blocks a single-panel chart, which is a timeseries in disguise', () => {
+    const s = multiples('keel://liquidity_pit.hqla_total@4', ['as_of_date']);
+    const [f] = findingsFor(s, 'SM-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('nothing to compare');
+    roundTrip(s, 'SM-01');
+  });
+
+  it('warns past the panel ceiling, where the shared scale flattens the small ones', () => {
+    const s = multiples('keel://liquidity_pit.desk_total@4', ['as_of_date', 'desk_code']);
+    const [f] = findingsFor(s, 'SM-01');
+    expect(f.severity).toBe('WARN');
+    expect(f.message).toContain('14 values');
+  });
+});
+
+/** A waterfall bridging one dim. */
+function bridge(metric = 'keel://liquidity_pit.hqla_total@4'): DashboardSpec {
+  const s = baseSpec();
+  s.widgets[1] = {
+    id: 'hqla-walk', type: 'waterfall@1', pos: { x: 3, y: 0, w: 9, h: 4 },
+    bind: { metric, dims: ['entity_id'] },
+  };
+  return s;
+}
+
+describe('WF-01 — a bridge must actually bridge', () => {
+  it('lints clean for an additive measure over the whole population', () => {
+    expect(findingsFor(bridge(), 'WF-01')).toEqual([]);
+  });
+
+  it('blocks a non-additive measure, whose moves cannot compose the total', () => {
+    const [f] = findingsFor(bridge('keel://liquidity_pit.lcr_pct@4'), 'WF-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('cannot compose the total move');
+  });
+
+  it('warns when a filter narrows the bars but not the totals', () => {
+    const s = bridge();
+    s.widgets[1].bind.filters = [{ dim: 'scenario_code', op: '=', value: 'BASE' }];
+    const [f] = findingsFor(s, 'WF-01');
+    expect(f.severity).toBe('WARN');
+    expect(f.message).toContain('go missing rather than showing up as a residual');
+  });
+
+  it('does not warn on an `in` filter that excludes nothing meaningful', () => {
+    const s = bridge();
+    s.widgets[1].bind.filters = [{ dim: 'scenario_code', op: 'in', value: ['BASE'] }];
+    expect(findingsFor(s, 'WF-01').filter((f) => f.severity === 'WARN')).toEqual([]);
+  });
+
+  it('BAR-02 does not reach a waterfall — the bridge order is the chart', () => {
+    expect(findingsFor(bridge(), 'BAR-02')).toEqual([]);
+  });
+});
+
+describe('family separation (Phase 9)', () => {
+  it('AGG-01 does not block a heatmap, which renders no margin totals', () => {
+    const s = baseSpec();
+    s.widgets[1] = {
+      id: 'lcr-heat', type: 'heatmap@1', pos: { x: 3, y: 0, w: 9, h: 4 },
+      bind: {
+        metric: 'keel://liquidity_pit.lcr_pct@4',
+        dims: ['entity_id', 'scenario_code'],
+        max_cells: 200,
+      },
+    };
+    expect(findingsFor(s, 'AGG-01')).toEqual([]);
+    // GRID-01 still applies: crossing two dims is still a cell count.
+    expect(findingsFor(s, 'GRID-01')).toEqual([]);
+  });
+
+  it('GRID-01 still demands a cell ceiling from a heatmap', () => {
+    const s = baseSpec();
+    s.widgets[1] = {
+      id: 'lcr-heat', type: 'heatmap@1', pos: { x: 3, y: 0, w: 9, h: 4 },
+      bind: { metric: 'keel://liquidity_pit.lcr_pct@4', dims: ['entity_id', 'scenario_code'] },
+    };
+    expect(findingsFor(s, 'GRID-01')).toHaveLength(1);
+  });
+
+  it('KPI-02 does not demand a comparison from an annotation panel', () => {
+    const s = baseSpec();
+    s.widgets[0] = {
+      id: 'commentary', type: 'annotation@1', pos: { x: 0, y: 0, w: 3, h: 2 },
+      bind: { metric: 'keel://liquidity_pit.lcr_pct@4' },
+      note: 'LCR held above the floor through the quarter-end funding squeeze.',
+    };
+    expect(findingsFor(s, 'KPI-02')).toEqual([]);
+  });
+});

@@ -52,7 +52,20 @@ export interface SkippedSlide {
   title: string;
   reason: string;
 }
-export type DeckSlide = KpiSlide | ChartSlide | TableSlide | SkippedSlide;
+/**
+ * Author commentary (annotation@1). The note is the slide's substance and the
+ * value is its anchor, so the sentence lands in the pack next to the number
+ * it was written about rather than in the email nobody kept.
+ */
+export interface NoteSlide {
+  type: 'note';
+  widget: string;
+  title: string;
+  note: string;
+  value: string;
+  asOf: string;
+}
+export type DeckSlide = KpiSlide | ChartSlide | TableSlide | SkippedSlide | NoteSlide;
 
 export interface DeckPlan {
   title: {
@@ -92,11 +105,18 @@ export async function buildDeckPlan(
       continue;
     }
     asOf = asOf || r.asOf;
-    const family = w.type.split('@')[0];
+    const widget = w.type.split('@')[0];
     const decimals = w.format?.decimals;
     const fv = (v: number) => formatValue(v, r.format, decimals);
 
-    if (r.kind === 'scalar') {
+    if (widget === 'annotation') {
+      slides.push({
+        type: 'note', widget: w.id, title: titleOf(w),
+        note: w.note?.trim() || '(no commentary written)',
+        value: r.kind === 'scalar' ? fv(r.value) : '',
+        asOf: r.asOf,
+      });
+    } else if (r.kind === 'scalar') {
       slides.push({
         type: 'kpi', widget: w.id, title: titleOf(w),
         value: fv(r.value), prior: fv(r.prior), asOf: r.asOf,
@@ -111,11 +131,26 @@ export async function buildDeckPlan(
         })),
         format: r.format, asOf: r.asOf,
       });
-    } else if (family === 'bar') {
+    } else if (widget === 'bar' || widget === 'distribution') {
       slides.push({
         type: 'bar', widget: w.id, title: titleOf(w),
         labels: r.rows.map((row) => Object.values(row.key).join(' · ')),
         series: [{ name: titleOf(w), values: r.rows.map((row) => row.value) }],
+        format: r.format, asOf: r.asOf,
+      });
+    } else if (widget === 'waterfall') {
+      // A bridge exports as its steps — the per-driver moves, plus the two
+      // totals that bracket them, so the slide carries the same arithmetic
+      // the widget draws rather than a pair of unexplained levels.
+      const opening = r.rows.reduce((s, row) => s + row.prior, 0);
+      const closing = r.rows.reduce((s, row) => s + row.value, 0);
+      slides.push({
+        type: 'bar', widget: w.id, title: titleOf(w),
+        labels: ['prior', ...r.rows.map((row) => Object.values(row.key).join(' · ')), 'current'],
+        series: [{
+          name: titleOf(w),
+          values: [opening, ...r.rows.map((row) => row.value - row.prior), closing],
+        }],
         format: r.format, asOf: r.asOf,
       });
     } else {
@@ -177,6 +212,13 @@ export async function renderDeck(plan: DeckPlan): Promise<Buffer> {
     if (s.type === 'kpi') {
       slide.addText(s.value, { x: 0.6, y: 2.6, w: 12, h: 1.6, fontSize: 54, bold: true });
       slide.addText(`prior ${s.prior}`, { x: 0.6, y: 4.3, w: 12, h: 0.5, fontSize: 16, color: '666666' });
+    } else if (s.type === 'note') {
+      if (s.value) {
+        slide.addText(s.value, { x: 0.6, y: 1.3, w: 12, h: 1, fontSize: 32, bold: true });
+      }
+      slide.addText(s.note, {
+        x: 0.6, y: s.value ? 2.5 : 1.3, w: 12, h: 4, fontSize: 16, color: '333333', valign: 'top',
+      });
     } else if (s.type === 'line' || s.type === 'bar') {
       slide.addChart(s.type === 'line' ? 'line' : 'bar', s.series.map((line) => ({
         name: line.name, labels: s.labels, values: line.values,

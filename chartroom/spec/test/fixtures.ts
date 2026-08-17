@@ -54,6 +54,20 @@ export const CONTRACTS: MetricContract[] = [
   // A headline-only measure: no categorical dims at all. Exists so IX-01's
   // target-side check (a filter that cannot apply) is testable.
   metric({ ref: 'keel://liquidity_pit.group_total@4', dims: [{ name: 'as_of_date', type: 'time' }] }),
+  // A signed measure — additive, but able to go negative, which is AREA-01's
+  // second branch (a stack that overlaps itself).
+  metric({ ref: 'keel://liquidity_pit.hqla_delta@4', measure: 'hqla_delta' }),
+  // A many-valued split, so SM-01's panel ceiling is testable.
+  metric({
+    ref: 'keel://liquidity_pit.desk_total@4',
+    dims: [
+      { name: 'as_of_date', type: 'time' },
+      {
+        name: 'desk_code', type: 'categorical',
+        values: Array.from({ length: 14 }, (_, i) => `DESK-${i + 1}`),
+      },
+    ],
+  }),
 ];
 
 export const WIDGETS: WidgetContract[] = [
@@ -84,6 +98,48 @@ export const WIDGETS: WidgetContract[] = [
   {
     widget: 'pie', version: 1, family: 'part_to_whole',
     accepts: { categorical_dims: { min: 1, max: 1 }, supports: [] }, guide_rules: ['PIE-01'],
+  },
+  // Phase 9. These mirror the shipped catalog entries; the families are the
+  // load-bearing part, since four of the new rules key off them.
+  {
+    widget: 'stacked-area', version: 1, family: 'part_to_whole',
+    accepts: {
+      requires_time_dim: true, max_series: 8,
+      categorical_dims: { min: 1, max: 1 }, supports: ['window', 'filters'],
+    },
+    guide_rules: ['AREA-01', 'PIE-01', 'TS-01'],
+  },
+  {
+    widget: 'waterfall', version: 1, family: 'waterfall',
+    accepts: { categorical_dims: { min: 1, max: 1 }, supports: ['filters'] },
+    guide_rules: ['WF-01', 'NUM-01'],
+  },
+  {
+    widget: 'small-multiples', version: 1, family: 'timeseries',
+    accepts: {
+      requires_time_dim: true, max_series: 12,
+      categorical_dims: { min: 1, max: 1 }, supports: ['window', 'filters'],
+    },
+    guide_rules: ['SM-01', 'TS-01'],
+  },
+  {
+    widget: 'heatmap', version: 1, family: 'heatmap',
+    accepts: { categorical_dims: { min: 2, max: 2 }, supports: ['max_cells', 'filters'] },
+    guide_rules: ['GRID-01', 'COL-03'],
+  },
+  {
+    widget: 'distribution', version: 1, family: 'bar',
+    accepts: { categorical_dims: { min: 1, max: 1 }, supports: ['filters'] },
+    guide_rules: ['NUM-01'],
+  },
+  {
+    widget: 'bullet', version: 1, family: 'kpi',
+    accepts: { supports: ['compare', 'filters'] },
+    guide_rules: ['GAUGE-01', 'KPI-02', 'NUM-01'],
+  },
+  {
+    widget: 'annotation', version: 1, family: 'annotation',
+    accepts: { supports: ['filters'] }, guide_rules: ['NUM-01'],
   },
 ];
 

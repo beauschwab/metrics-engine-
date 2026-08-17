@@ -50,8 +50,18 @@ export interface MetricContract {
 export interface WidgetContract {
   widget: string;
   version: number;
-  /** What kind of visual this is — several rules key off the family. */
-  family: 'kpi' | 'timeseries' | 'bar' | 'table' | 'grid' | 'part_to_whole';
+  /**
+   * What kind of visual this is — several rules key off the family, so a
+   * family is a claim about which judgments apply, not a label. Phase 9 added
+   * three rather than overloading existing ones: a `waterfall` is not a `bar`
+   * (BAR-02's value-sort would scramble the bridge order that *is* the
+   * chart), a `heatmap` is not a `grid` (AGG-01 blocks non-additive margin
+   * totals, and a heatmap renders no margins), and an `annotation` is not a
+   * `kpi` (KPI-02 would demand a comparison from a prose panel).
+   */
+  family:
+    | 'kpi' | 'timeseries' | 'bar' | 'table' | 'grid' | 'part_to_whole'
+    | 'waterfall' | 'heatmap' | 'annotation';
   accepts: {
     requires_time_dim?: boolean;
     max_series?: number;

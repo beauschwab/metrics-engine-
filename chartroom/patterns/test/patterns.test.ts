@@ -7,10 +7,24 @@ describe('the pattern catalog', () => {
     for (const p of PATTERNS) expect(() => PatternSchema.parse(p)).not.toThrow();
   });
 
-  it('ships the three Phase-2 archetypes', () => {
+  it('ships the three Phase-2 archetypes and the three Phase-9 additions', () => {
     expect([...PATTERNS_BY_REF.keys()].sort()).toEqual([
-      'limit-utilization-board@1', 'liquidity-monitor@1', 'metric-deep-dive@1',
+      'exec-summary@1', 'limit-utilization-board@1', 'liquidity-monitor@1',
+      'metric-deep-dive@1', 'scenario-comparison@1', 'variance-walk@1',
     ]);
+  });
+
+  it('exec-summary caps its tiles, because density is the whole constraint', () => {
+    const tiles = PATTERNS_BY_REF.get('exec-summary@1')!.slots
+      .find((s) => s.name === 'headlines')!;
+    expect(tiles.count.max).toBeLessThanOrEqual(6);
+  });
+
+  it('variance-walk requires the commentary slot — the reason travels with the move', () => {
+    const walk = PATTERNS_BY_REF.get('variance-walk@1')!;
+    const note = walk.slots.find((s) => s.name === 'commentary')!;
+    expect(note.required).toBe(true);
+    expect(note.families).toContain('annotation');
   });
 
   it('each pattern says when NOT to use it — the anti-sprawl half', () => {

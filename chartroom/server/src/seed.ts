@@ -127,7 +127,64 @@ function limitBoard(rev: (doc: string) => number): DashboardSpec {
   };
 }
 
-/** Seed both boards if the repository is empty. Lint runs exactly as a save would. */
+/**
+ * The variance walk (Phase 9) — the first dogfood board built on a shipped
+ * *pattern* rather than a `none` justification, and the acceptance case for
+ * E9.1–E9.3: a bridge, its drivers on a shared scale, and the written reason,
+ * all bound to governed measures.
+ *
+ * The bridge deliberately carries no filters. WF-01 warns about a filtered
+ * walk because the excluded rows vanish into the gap between the two totals,
+ * and a seeded board that trips its own rule would teach exactly the wrong
+ * lesson on first boot.
+ */
+function varianceWalk(rev: (doc: string) => number): DashboardSpec {
+  const of = (m: string) => `keel://fr2052a_outflows.${m}@${rev('fr2052a_outflows')}`;
+  return {
+    chartroom: '0.1',
+    dashboard: {
+      id: 'outflow-walk',
+      title: 'Weighted Outflows — Variance Walk',
+      pattern: 'variance-walk@1',
+      audience: 'treasury-committee',
+      cadence: 'eod',
+      status: 'draft',
+    },
+    context: {},
+    layout: { grid: { cols: 12, row_height: 96 } },
+    widgets: [
+      {
+        id: 'outflow-bridge', type: 'waterfall@1',
+        title: 'What moved weighted outflows, day over day',
+        pos: { x: 0, y: 0, w: 12, h: 4 },
+        bind: { metric: of('weighted_outflows_30d'), dims: ['maturity_bucket'] },
+      },
+      {
+        id: 'bucket-drivers', type: 'small-multiples@1',
+        title: 'Each bucket over the trailing 30 days',
+        pos: { x: 0, y: 4, w: 8, h: 4 },
+        bind: {
+          metric: of('weighted_outflows_30d'),
+          dims: ['as_of_date', 'maturity_bucket'],
+          window: { trailing: '30d' },
+        },
+      },
+      {
+        id: 'walk-commentary', type: 'annotation@1', title: 'Reading',
+        pos: { x: 8, y: 4, w: 4, h: 4 },
+        bind: { metric: of('weighted_outflows_30d') },
+        note: 'The move is concentrated in the short buckets, where run-off '
+          + 'rates are highest — so a small shift in balances moves the weighted '
+          + 'total more than the same shift further out the ladder. Read the '
+          + 'bridge with the panels: a step that looks like a one-day shock is '
+          + 'often a trend that has been building all week.',
+      },
+    ],
+    interactions: [],
+  };
+}
+
+/** Seed the boards if the repository is empty. Lint runs exactly as a save would. */
 export async function seedDogfood(
   repo: ChartroomRepository,
   state: RegistryState,
@@ -141,7 +198,7 @@ export async function seedDogfood(
   const ctx: LintContext = { contracts: set.byRef, widgets: CATALOG_BY_REF };
 
   const seeded: string[] = [];
-  for (const spec of [lcrMonitor(rev), limitBoard(rev)]) {
+  for (const spec of [lcrMonitor(rev), limitBoard(rev), varianceWalk(rev)]) {
     const parsed = parseSpec(spec);
     if (!parsed.ok) throw new Error(`seed spec invalid: ${parsed.problems.join('; ')}`);
     await repo.create({
