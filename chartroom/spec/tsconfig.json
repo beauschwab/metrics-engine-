@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    // Node types are for `test/` only (fixtures, the boundaries scan). `src/`
+    // purity — no Node, no DOM, no React — is enforced by boundaries.test.ts,
+    // which fails on any such import in src.
+    "types": ["node"]
+  },
+  "include": ["src", "test"]
+}

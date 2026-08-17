@@ -1382,6 +1382,53 @@ partitioned. The plan writes; it does not provision. The test bootstraps the
 sink from the plan's own output schema via a zero-row collect, which is what a
 pipeline would do — but emitting a create-if-absent step is an open question.
 
+## Chartroom
+
+A second application in the monorepo (`chartroom/`, four npm workspaces:
+`spec`, `widgets`, `server`, `studio`) implementing Phase 1 of the
+agent-guided dashboard studio design handoff. The full tour is
+`chartroom/README.md`; every deviation from the handoff's pinned technology
+decisions is a numbered ADR in `chartroom/ADRS.md`. What belongs here is the
+seam it needed from the engine and the shape of the trust chain.
+
+**The engine grew two optional constructor arguments and nothing else.**
+A grouped query ("weighted outflows by maturity bucket") is answered by the
+same `Evaluator` that answers the headline number, restricted by a `rowFilter`
+predicate that runs *after* row derivations — so a classification's emitted
+column groups exactly like a source column, and there is no parallel "grouped
+evaluator" to drift. The second argument, `rowSource`, exists because the
+naive per-group construction re-ran the entire row stage — classification
+included — once per group per date: an entity × product pivot measured ~6s
+cold. Sharing one probe's derived rows across all group evaluators made the
+row stage run once per date (~300ms cold, ~10ms warm from the query cache),
+and `query.test.ts` pins the conservation law that keeps the seam honest:
+per-group values sum back to the headline for an additive measure.
+
+**Metric contracts are derived, never stored.** Unit and precision from the
+measure's declared `format`, dimensions from actually running the row stage
+and looking at what a row has, denominator lineage from the ratio expression,
+and governance status from the release/channel system: `approved` means "the
+production channel serves exactly this revision of this document". There is no
+second status flag to fall out of date, and Chartroom's GOV-02 rule (no
+ungoverned metrics beyond draft) is thereby wired to the registry's real
+promotion gate rather than to a parallel invention.
+
+**The design guide is three enforcement layers.** The Zod schema makes the
+worst mistakes unrepresentable (no SQL, no HTML, no color field, no dual
+axes); fourteen linter rules with IDs carry the judgment calls, each a pure
+function over injected contracts with golden tests, fixes as RFC-6902 patches,
+and a round-trip test asserting every fix resolves its own finding; the LLM
+critics are Phase 2 and deliberately absent — the deterministic linter is the
+hard gate, per the handoff.
+
+**Verification**: `npm run verify:chartroom` — typecheck across the four
+workspaces, 96 unit tests (55 spec, 31 server, 10 widgets), and 9 Playwright
+checks that execute the Phase-1 acceptance loop against the built studio and a
+real server: load the seeded LCR monitor, break it through the form, watch the
+findings arrive, apply a fix, save a version, reload, find it kept — plus a
+conflicting save refused with a 409 and the widget-states harness at
+`#/widgets` rendering every catalog widget in every state.
+
 ## Testing
 
 `npm run test` runs 603 tests — 379 in `src/engine/`, 168 in `server/`, 58 in `mcp/` — covering
