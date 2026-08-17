@@ -76,6 +76,14 @@ const WindowSchema = z.strictObject({
 const CompareSchema = z.strictObject({
   vs: z.union([MetricRefSchema, z.literal('prior_period')]),
   style: z.enum(['threshold', 'delta']),
+  /**
+   * Which side of the threshold is safe (Phase 9). A coverage ratio must stay
+   * *above* its floor; a concentration must stay *below* its ceiling — and the
+   * two are indistinguishable from the numbers alone, so a widget that renders
+   * a breach has to be told. Optional because only the gauge family currently
+   * asserts a breach; GAUGE-01 requires it there.
+   */
+  limit: z.enum(['floor', 'ceiling']).optional(),
 });
 export type CompareSpec = z.infer<typeof CompareSchema>;
 

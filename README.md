@@ -8,6 +8,11 @@ Built from the Claude Design handoff in `project/` (the original brief is
 `project/HANDOFF.md`) as a React + TypeScript app with a real CodeMirror 6
 editor.
 
+`product.md` states what this product is and what it refuses to do;
+`IMPLEMENTATION.md` records how it was built and what broke on the way.
+[`chartroom/`](chartroom/README.md) is the consumption half — an agent-guided
+studio for dashboards bound to these definitions.
+
 ```
 npm install
 pip install -r requirements.txt   # only for the executed backends and Dremio
@@ -415,39 +420,50 @@ report still looks clean.
 
 ## Chartroom — dashboards over the registry
 
-A second app in the monorepo (`chartroom/` — seven npm workspaces): an
-**agent-guided studio for governed analytics dashboards** whose every number
-traces to a registry function and whose every visual clears an executable
-design guide. A dashboard is a declarative spec — schema-validated,
-content-hashed, versioned, diffed in reviewer vocabulary — never freeform
-code; the renderer is a deterministic interpreter over a versioned widget
-catalog. The linter carries the design guide as rules with IDs and one-click
-JSON Patch fixes; governance status derives from the registry's own
-release/channel system, so a dashboard cannot leave draft while binding a
-measure production has never served.
+A second app in the monorepo (`chartroom/` — seven npm workspaces plus a
+Python agent service): an **agent-guided studio for governed analytics
+dashboards** whose every number traces to a registry function and whose every
+visual clears an executable design guide. A dashboard is a declarative spec —
+schema-validated, content-hashed, versioned, diffed in reviewer vocabulary —
+never freeform code; the renderer is a deterministic interpreter over a
+versioned catalog of 12 widgets. The linter carries the design guide as 20
+rules with IDs and one-click JSON Patch fixes; governance status derives from
+the registry's own release/channel system, so a dashboard cannot leave draft
+while binding a measure production has never served.
 
-The agent loop is governed the same way: an MCP server exposes 18 tools, the
+The agent loop is governed the same way: an MCP server exposes 25 tools, the
 intake interview's eight slots are a schema (`create_brief` rejects an
 incomplete brief naming the slot), and an agent session cannot compose until a
 human approves the design brief in the studio — nor approve anything itself,
 ever. An LLM design critic judges composition against the brief and degrades
 to a WARN when no model is available; the deterministic linter stays the hard
-gate.
+gate. Since Phase 7 the loop itself is a Python LangGraph + deepagents service
+consuming that same MCP roster.
+
+Queries route by backend — `CHARTROOM_BACKEND=fixtures|duckdb|dremio`. The
+fixture path stays the default *and the oracle*: a parity harness runs every
+query shape against both engines over identical rows and requires agreement to
+1e-6, and warehouse execution compiles the engine's own measure SQL rather than
+a second implementation of it.
 
 ```
-npm run chartroom:server   # :8788 — contracts, queries, dashboards, briefs
+npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance
 npm run chartroom:studio   # :5174 — the studio (brief approval lives here)
 npm run chartroom:mcp      # stdio — the agent's tool surface
+# the Python agent service (:8789) — see chartroom/agent/README.md
 ```
 
-Two dogfood dashboards (an LCR monitor and a limit board) seed on first boot,
-bound to the real shipped measures. [`chartroom/README.md`](chartroom/README.md)
-is the tour; [`chartroom/ADRS.md`](chartroom/ADRS.md) records every deviation
-from the design handoff's pinned decisions.
+Three dogfood dashboards (an LCR monitor, a limit board, and a variance walk)
+seed on first boot, bound to the real shipped measures.
+[`chartroom/README.md`](chartroom/README.md) is the tour;
+[`chartroom/ADRS.md`](chartroom/ADRS.md) records every deviation from the design
+handoff's pinned decisions, including the ones that record a mistake and its
+correction.
 
 ## Where to read next
 
-`IMPLEMENTATION.md` covers the architecture, the diagnostic catalogue, the
+`product.md` states what the product is, who it is for, what ships today, and
+the four things it deliberately refuses to do. `IMPLEMENTATION.md` covers the architecture, the diagnostic catalogue, the
 classification layer, the conformance policy, every deliberate deviation from
 the prototype, and the limits that are still open — filed amounts are now exact
 to the cent but intermediate arithmetic is still binary floating point, PySpark is
@@ -461,7 +477,7 @@ against a real implementation of the protocol rather than against Dremio itself.
 npm run test         # 603 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e          # 89 browser checks against the built bundle
-npm run verify:chartroom  # the Chartroom workspaces: 132 unit tests + 11 browser checks
+npm run verify:chartroom  # Chartroom: 177 unit tests + 27 pytest + 21 browser checks
 ```
 
 The server tests include a live Flight SQL round trip. They skip themselves,

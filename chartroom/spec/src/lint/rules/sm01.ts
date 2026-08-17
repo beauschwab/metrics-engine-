@@ -27,8 +27,14 @@ export const SM_01: Rule = (spec, ctx) =>
   widgetsOf(spec, ctx).flatMap(({ w, path, widgetContract, metricContract }): LintFinding[] => {
     if (widgetContract?.widget !== 'small-multiples') return [];
 
+    // Categorical means "not the contract's time dim" — read from the
+    // contract, like every other rule, rather than assuming it is named
+    // `as_of_date` (a differently-named time dim would make this rule inert).
     const dims = w.bind.dims ?? [];
-    const catDims = dims.filter((d) => d !== 'as_of_date');
+    const isTime = (d: string) => metricContract
+      ? metricContract.dims.find((c) => c.name === d)?.type === 'time'
+      : d === 'as_of_date';
+    const catDims = dims.filter((d) => !isTime(d));
 
     // No split: one panel is a timeseries wearing the wrong widget.
     if (!catDims.length) {

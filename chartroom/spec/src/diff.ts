@@ -21,6 +21,8 @@ export interface SpecDiff {
   versionBumped: Array<{ id: string; metric: string; from: number; to: number }>;
   reformatted: string[];
   retitled: string[];
+  /** Commentary edited (annotation@1's `note`) — a reviewable change. */
+  annotated: string[];
   contextChanged: string[];
   dashboardChanged: string[];
   identical: boolean;
@@ -53,7 +55,7 @@ function bindDiff(id: string, a: WidgetInstance, b: WidgetInstance, out: SpecDif
 export function diffSpecs(a: DashboardSpec, b: DashboardSpec): SpecDiff {
   const out: SpecDiff = {
     added: [], removed: [], moved: [], resized: [], rebound: [], versionBumped: [],
-    reformatted: [], retitled: [], contextChanged: [], dashboardChanged: [],
+    reformatted: [], retitled: [], annotated: [], contextChanged: [], dashboardChanged: [],
     identical: false,
   };
 
@@ -72,6 +74,9 @@ export function diffSpecs(a: DashboardSpec, b: DashboardSpec): SpecDiff {
     else bindDiff(id, wa, wb, out);
     if (stable(wa.format) !== stable(wb.format)) out.reformatted.push(id);
     if ((wa.title ?? '') !== (wb.title ?? '')) out.retitled.push(id);
+    // Commentary is content a reviewer approves, not decoration: a note-only
+    // edit changes the spec hash, so the diff has to have something to show.
+    if ((wa.note ?? '') !== (wb.note ?? '')) out.annotated.push(id);
   }
 
   const ctxKeys = new Set([...Object.keys(a.context), ...Object.keys(b.context)]);
@@ -86,6 +91,7 @@ export function diffSpecs(a: DashboardSpec, b: DashboardSpec): SpecDiff {
   out.identical =
     !out.added.length && !out.removed.length && !out.moved.length && !out.resized.length
     && !out.rebound.length && !out.versionBumped.length && !out.reformatted.length
-    && !out.retitled.length && !out.contextChanged.length && !out.dashboardChanged.length;
+    && !out.retitled.length && !out.annotated.length
+    && !out.contextChanged.length && !out.dashboardChanged.length;
   return out;
 }

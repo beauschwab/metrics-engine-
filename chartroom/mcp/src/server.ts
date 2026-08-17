@@ -275,7 +275,8 @@ export function build(): McpServer {
 
   server.registerTool('diff_dashboard', {
     description: 'What changed between two versions, in reviewer vocabulary: '
-      + 'added, removed, moved, rebound, version-bumped, reformatted.',
+      + 'added, removed, moved, rebound, version-bumped, reformatted, '
+      + 'retitled, annotated.',
     inputSchema: {
       dashboard_id: z.string(),
       a: z.number().int().positive(),

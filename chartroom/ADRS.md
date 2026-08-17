@@ -585,6 +585,21 @@ Binding commentary to a pinned revision means the note travels with the
 number, the deck exports both on one slide, and when the metric's revision
 moves the upgrade notice can name the commentary as something to re-read.
 
+## ADR-45 — a threshold declares which side is safe
+
+**Decision:** `compare.limit` (`floor` | `ceiling`) is optional on the
+comparison and required by GAUGE-01 on a gauge. A coverage ratio must stay
+above its floor and a concentration below its ceiling, and nothing in the
+numbers distinguishes them — so a widget that colours a breach without being
+told is guessing, and guesses wrong exactly half the time. The first cut of
+`bullet@1` judged every threshold as a floor, which rendered a breached
+ceiling as compliant and a compliant one as breached: the failure mode this
+whole codebase exists to prevent, shipped inside the widget whose entire job
+is to show a limit. Where no side is declared the gauge still draws the value
+against the limit and simply declines to judge. GAUGE-01 also now requires
+`style: 'threshold'`, since a `delta` comparison renders a reference marker
+that can never breach.
+
 ## ADR-44 — the linter checks what it can see; the critic checks the rest
 
 **Decision:** WF-01 and SM-01 deliberately stop short of the arithmetic
@@ -595,8 +610,17 @@ claim is checkable there. The split: the **linter** blocks the bindings that
 make the claim impossible (a non-additive measure whose moves cannot compose
 a total; a filtered bridge whose excluded rows vanish into the gap between
 its own totals; a single-panel "comparison"), the **renderer** refuses to
-hide a failure it can see (the waterfall draws its closing bar where the data
-puts it, not where the steps end, so an unreconciled bridge shows its own
-discrepancy), and the **data critic** owns the numeric reconciliation over
-live values. This is the working agreement's graduation path read in reverse:
+draw something it cannot honestly draw (a stacked area whose bands go
+negative renders a refusal rather than clamping them to zero and overstating
+the total), and the **data critic** owns the numeric reconciliation over
+live values.
+
+A correction worth recording, since the first draft of this ADR got it
+wrong: the waterfall does **not** surface its own residual. Both totals are
+summed from the same rows as the steps, so the bridge reconciles by
+construction and no discrepancy can appear. The real exposure is a filtered
+binding, whose subset sums are labelled `prior`/`current` as though they were
+the population's — which is WF-01's warning, not the renderer's job. A
+renderer can refuse to draw a lie; it cannot detect one that is arithmetically
+consistent. This is the working agreement's graduation path read in reverse:
 a check belongs in the linter only when the contract alone decides it.

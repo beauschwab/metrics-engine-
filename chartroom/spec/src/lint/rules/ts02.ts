@@ -14,6 +14,10 @@ import { widgetsOf } from '../context';
 export const TS_02: Rule = (spec, ctx) =>
   widgetsOf(spec, ctx).flatMap(({ w, path, widgetContract, metricContract }) => {
     if (widgetContract?.family !== 'timeseries' || !metricContract) return [];
+    // Small multiples ARE this rule's remedy, so telling one to "split into
+    // small multiples" is advice that cannot be taken. SM-01 owns the panel
+    // ceiling for that widget (Phase 9).
+    if (widgetContract.widget === 'small-multiples') return [];
     const max = widgetContract.accepts.max_series ?? 8;
 
     let series = 1;

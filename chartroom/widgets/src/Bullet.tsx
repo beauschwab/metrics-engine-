@@ -8,9 +8,12 @@
  * spec. A hardcoded limit is a limit nobody owns, reviews, or updates when the
  * policy moves — and it looks identical to a real one.
  *
- * Breach direction is not assumed. A floor (liquidity coverage) and a ceiling
- * (concentration) both render here, so the widget states which side is safe
- * from the compare style rather than guessing from the numbers.
+ * Breach direction is not assumed, because it cannot be inferred: a coverage
+ * ratio must stay above its floor and a concentration below its ceiling, and
+ * the two look identical in the data. The binding declares it (`compare.limit`)
+ * and GAUGE-01 requires that declaration on a gauge. With no declaration the
+ * widget still draws the value against the limit — it just does not claim a
+ * breach it has no basis to claim.
  */
 
 import type { WidgetProps } from './types';
@@ -28,15 +31,21 @@ export function Bullet({ instance, data, status, error }: WidgetProps) {
   const value = scalar.value;
   const target = limit?.value;
 
-  // The track spans zero (or the low end) to whichever of value/limit reaches
-  // further, with headroom so a marker at the extreme is still visible.
-  const reach = Math.max(Math.abs(value), Math.abs(target ?? value)) * 1.15 || 1;
-  const pct = (v: number) => `${Math.min(100, Math.max(0, (Math.abs(v) / reach) * 100))}%`;
+  // The track spans zero to whichever of value/limit reaches further, with
+  // headroom so a marker at the extreme is still visible. Negative values
+  // measure their length from zero rather than being folded positive — a
+  // -50 against a 100 limit is not 43% of the way there.
+  const reach = Math.max(0, value, target ?? value) * 1.15 || 1;
+  const pct = (v: number) => `${Math.min(100, Math.max(0, (v / reach) * 100))}%`;
 
   // A threshold comparison implies a limit; a delta comparison is just a
-  // reference point. Only the former can be "breached".
-  const breached = limit?.style === 'threshold' && target !== undefined
-    ? (value < target ? 'below' : null)
+  // reference point. Only a threshold with a declared side can be breached —
+  // without one, the gauge shows the gap and says nothing about safety.
+  const side = instance.bind.compare?.limit;
+  const breached = limit?.style === 'threshold' && target !== undefined && side
+    ? ((side === 'floor' && value < target) || (side === 'ceiling' && value > target)
+      ? (side === 'floor' ? 'below' : 'above')
+      : null)
     : null;
 
   return (
@@ -59,8 +68,9 @@ export function Bullet({ instance, data, status, error }: WidgetProps) {
           ? <span className="cr-bullet-nolimit">no limit bound</span>
           : (
             <span className="tnum">
+              {side === 'ceiling' ? 'max ' : side === 'floor' ? 'min ' : ''}
               {limit!.label} {formatValue(target, data!.format, instance.format?.decimals)}
-              {breached ? ' · breached' : ''}
+              {breached ? ` · breached (${breached})` : ''}
             </span>
           )}
       </div>

@@ -37,9 +37,11 @@ export function Annotation({ instance, data, status, error }: WidgetProps) {
             <span className="cr-annotation-value tnum">
               {formatValue(scalar.value, data!.format, instance.format?.decimals)}
             </span>
-            <span className="cr-annotation-delta tnum">
-              {formatDelta(scalar.value, scalar.prior, data!.format)}
-            </span>
+            {Number.isFinite(scalar.prior) && (
+              <span className="cr-annotation-delta tnum">
+                {formatDelta(scalar.value, scalar.prior, data!.format)}
+              </span>
+            )}
           </>
         )}
         {status !== 'loading' && data?.asOf && (

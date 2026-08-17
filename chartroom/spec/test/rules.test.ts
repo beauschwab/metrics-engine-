@@ -423,15 +423,36 @@ function gauge(): DashboardSpec {
     id: 'lcr-gauge', type: 'bullet@1', pos: { x: 0, y: 0, w: 3, h: 2 },
     bind: {
       metric: 'keel://liquidity_pit.lcr_pct@4',
-      compare: { vs: 'keel://liquidity_pit.lcr_floor@4', style: 'threshold' },
+      compare: { vs: 'keel://liquidity_pit.lcr_floor@4', style: 'threshold', limit: 'floor' },
     },
   };
   return s;
 }
 
 describe('GAUGE-01 — a limit nobody governs is not a limit', () => {
-  it('lints clean when the threshold is a registry ref', () => {
+  it('lints clean for a governed threshold with a declared side', () => {
     expect(findingsFor(gauge(), 'GAUGE-01')).toEqual([]);
+  });
+
+  it('blocks a delta comparison, which renders a gauge that cannot breach', () => {
+    const s = gauge();
+    s.widgets[0].bind.compare = {
+      vs: 'keel://liquidity_pit.lcr_floor@4', style: 'delta', limit: 'floor',
+    };
+    const [f] = findingsFor(s, 'GAUGE-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('can never show a breach');
+    roundTrip(s, 'GAUGE-01');
+  });
+
+  it('blocks a gauge that does not say which side is safe', () => {
+    const s = gauge();
+    s.widgets[0].bind.compare = {
+      vs: 'keel://liquidity_pit.lcr_floor@4', style: 'threshold',
+    };
+    const [f] = findingsFor(s, 'GAUGE-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('which side of the limit is safe');
   });
 
   it('blocks a bullet with no comparison at all', () => {
@@ -521,9 +542,18 @@ describe('WF-01 — a bridge must actually bridge', () => {
     expect(f.message).toContain('go missing rather than showing up as a residual');
   });
 
-  it('does not warn on an `in` filter that excludes nothing meaningful', () => {
+  it('warns on a single-value `in` — the narrowest filter there is', () => {
     const s = bridge();
     s.widgets[1].bind.filters = [{ dim: 'scenario_code', op: 'in', value: ['BASE'] }];
+    const [f] = findingsFor(s, 'WF-01');
+    expect(f.severity).toBe('WARN');
+  });
+
+  it('does not warn on an `in` that names the dim’s whole domain', () => {
+    const s = bridge();
+    s.widgets[1].bind.filters = [
+      { dim: 'scenario_code', op: 'in', value: ['BASE', 'STRESS', 'SEVERE'] },
+    ];
     expect(findingsFor(s, 'WF-01').filter((f) => f.severity === 'WARN')).toEqual([]);
   });
 

@@ -110,7 +110,12 @@ const WIDGETS: Array<{
   { name: 'small-multiples@1', component: SmallMultiples, data: seriesData, bind: { dims: ['as_of_date', 'entity_id'] } },
   { name: 'heatmap@1', component: Heatmap, data: pivotData, bind: { dims: ['entity_id', 'bucket_code'], max_cells: 400 } },
   { name: 'distribution@1', component: Distribution, data: spreadData, bind: { dims: ['desk_code'] } },
-  { name: 'bullet@1', component: Bullet, data: kpiData, bind: { compare: { vs: 'keel://liquidity_pit.lcr_floor@1', style: 'threshold' } } },
+  {
+    name: 'bullet@1', component: Bullet, data: kpiData,
+    // `limit: floor` is what lets the gauge call 98.3% against 100% a breach;
+    // without it the widget draws the gap and declines to judge (GAUGE-01).
+    bind: { compare: { vs: 'keel://liquidity_pit.lcr_floor@1', style: 'threshold', limit: 'floor' } },
+  },
   {
     name: 'annotation@1', component: Annotation, data: kpiData,
     note: 'Coverage dipped below the floor on the 28th as quarter-end funding '
