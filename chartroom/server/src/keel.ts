@@ -38,7 +38,9 @@ export interface RegistryState {
   source: 'registry' | 'shipped';
 }
 
-const API = process.env.KEEL_API || 'http://127.0.0.1:8787';
+// Read per call, not at import: the process (and the tests) may point the
+// adapter at a registry after this module loads.
+const API = () => process.env.KEEL_API || 'http://127.0.0.1:8787';
 
 /**
  * Read the workspace and the production manifest.
@@ -50,7 +52,7 @@ const API = process.env.KEEL_API || 'http://127.0.0.1:8787';
  */
 export async function fetchRegistryState(): Promise<RegistryState> {
   try {
-    const res = await fetch(`${API}/api/artifacts`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(`${API()}/api/artifacts`, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) throw new Error(`registry said ${res.status}`);
     const data = (await res.json()) as {
       artifacts: Array<{ name: string; kind: string; revision: number; body: string }>;
@@ -58,7 +60,10 @@ export async function fetchRegistryState(): Promise<RegistryState> {
 
     const production = new Map<string, number>();
     try {
-      const man = await fetch(`${API}/runtime/production`, { signal: AbortSignal.timeout(3000) });
+      // /api/runtime/<channel> — the manifest the runtime clients poll. (The
+      // Phase-3 governance tests caught this path being wrong, which meant
+      // ADR-12's "approved" could never fire against a live registry.)
+      const man = await fetch(`${API()}/api/runtime/production`, { signal: AbortSignal.timeout(3000) });
       if (man.ok) {
         const m = (await man.json()) as { artifacts: Array<{ name: string; revision: number }> };
         m.artifacts.forEach((a) => production.set(a.name, a.revision));
@@ -91,7 +96,7 @@ export async function fetchRegistryState(): Promise<RegistryState> {
 export async function fetchRevision(name: string, revision: number): Promise<string | null> {
   try {
     const res = await fetch(
-      `${API}/api/artifacts/${encodeURIComponent(name)}?revision=${revision}`,
+      `${API()}/api/artifacts/${encodeURIComponent(name)}?revision=${revision}`,
       { signal: AbortSignal.timeout(3000) },
     );
     if (!res.ok) return null;

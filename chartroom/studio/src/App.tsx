@@ -19,6 +19,7 @@ import {
 import { Canvas } from './Canvas';
 import { Inspector, type Tab } from './Inspector';
 import { Harness } from './Harness';
+import { ProposalsPage } from './ProposalsPage';
 
 type SaveState =
   | { kind: 'clean'; version: number }
@@ -34,6 +35,7 @@ export function App() {
     return () => window.removeEventListener('hashchange', on);
   }, []);
   if (route === '#/widgets') return <Harness />;
+  if (route === '#/proposals') return <ProposalsPage />;
   return <Studio />;
 }
 
@@ -161,6 +163,7 @@ function Studio() {
           </span>
         )}
         <span className="cr-header-spacer" />
+        <a className="cr-header-link" href="#/proposals" data-testid="nav-proposals">proposals</a>
         <span className="cr-registry-source" data-source={source} title={
           source === 'shipped'
             ? 'no registry process reachable — contracts derive from the shipped documents'
@@ -261,6 +264,15 @@ function Studio() {
           onTab={setTab}
           onSpec={editSpec}
           onSelect={(id) => { setSelected(id); setTab('widget'); }}
+          onReload={() => {
+            // Promotion saved a new version server-side; drop the idempotence
+            // guard so open() actually refetches, and refresh the list chips.
+            if (openId) {
+              openRef.current = null;
+              open(openId);
+            }
+            void loadDashboards().then((r) => setDashboards(r.dashboards));
+          }}
         />
       </div>
     </div>

@@ -294,3 +294,63 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 }
 .cr-brief-actions { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .cr-brief-error { color: var(--cr-breach); font-size: 11px; }
+
+/* ---- governance (Phase 3) -------------------------------------------- */
+
+.cr-header-link {
+  font-size: 11px; color: var(--cr-text-muted); text-decoration: none;
+  border: 1px solid var(--cr-border); border-radius: 1px; padding: 3px 10px;
+}
+.cr-header-link:hover { color: var(--cr-accent); border-color: var(--cr-accent); }
+
+.cr-govern { padding: 14px; overflow-y: auto; font-size: 12px; display: flex; flex-direction: column; gap: 10px; }
+.cr-govern-reqs { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.cr-govern-req { display: flex; gap: 8px; align-items: baseline; line-height: 1.4; }
+.cr-govern-req[data-met='false'] { color: var(--cr-text-muted); }
+.cr-govern-mark { flex: none; width: 14px; color: var(--cr-up); }
+.cr-govern-req[data-met='false'] .cr-govern-mark { color: var(--cr-warn); }
+.cr-govern-detail { color: var(--cr-text-faint); font-size: 11px; }
+.cr-govern-tracks { display: flex; flex-direction: column; gap: 8px; }
+.cr-govern-track { display: flex; gap: 10px; align-items: center; }
+.cr-govern-track-name {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--cr-text-muted); width: 80px; flex: none;
+}
+
+.cr-upgrade {
+  border: 1px solid var(--cr-border); border-radius: 2px; padding: 10px;
+  background: var(--cr-panel-2);
+}
+.cr-upgrade[data-weakens] { border-color: var(--cr-breach); }
+.cr-upgrade-head { margin: 0 0 4px; }
+.cr-upgrade-weakens { color: var(--cr-breach); }
+.cr-upgrade-findings { padding-left: 16px; margin: 6px 0; color: var(--cr-text-muted); }
+.cr-upgrade-findings li[data-direction='weakens'] { color: var(--cr-breach); }
+
+.cr-proposals {
+  padding: 18px; overflow-y: auto; display: flex; flex-direction: column;
+  gap: 14px; max-width: 860px; margin: 0 auto; width: 100%;
+}
+.cr-proposal {
+  border: 1px solid var(--cr-border); border-radius: 2px; padding: 14px;
+  background: var(--cr-panel); font-size: 12px;
+}
+.cr-proposal-toggle {
+  background: none; border: 0; color: var(--cr-text); font: inherit;
+  cursor: pointer; padding: 0; font-size: 13px;
+}
+.cr-proposal-toggle:hover { color: var(--cr-accent); }
+.cr-proposal-rationale { color: var(--cr-text-muted); line-height: 1.5; margin: 6px 0 0; }
+.cr-proposal-body { margin-top: 10px; }
+.cr-evidence { list-style: none; padding: 0; margin: 0 0 10px; font-family: var(--cr-mono); font-size: 10.5px; display: flex; flex-direction: column; gap: 3px; }
+.cr-evidence li[data-ok='true']::before { content: '✓ '; color: var(--cr-up); }
+.cr-evidence li[data-ok='false']::before { content: '✗ '; color: var(--cr-breach); }
+.cr-evidence li[data-warn]::before { content: '! '; color: var(--cr-warn); }
+.cr-proposal-yaml {
+  font-family: var(--cr-mono); font-size: 10.5px; line-height: 1.4;
+  background: var(--cr-panel-2); border: 1px solid var(--cr-border);
+  padding: 10px; border-radius: 2px; overflow-x: auto; max-height: 320px; overflow-y: auto;
+}
+.cr-status-chip[data-status='approved'] { color: var(--cr-up); border-color: var(--cr-up); }
+.cr-status-chip[data-status='rejected'] { color: var(--cr-breach); border-color: var(--cr-breach); }
+.cr-status-chip[data-status='submitted'] { color: var(--cr-warn); border-color: var(--cr-warn); }

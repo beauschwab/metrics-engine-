@@ -16,6 +16,9 @@ const DASHBOARD = 'chartroom_dashboard';
 const VERSION = 'chartroom_version';
 const AUDIT = 'chartroom_audit';
 const BRIEF = 'chartroom_brief';
+const PROPOSAL = 'chartroom_proposal';
+const APPROVAL = 'chartroom_approval';
+const EXPOSURE = 'chartroom_exposure';
 
 const SQLITE_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS ${DASHBOARD} (
@@ -60,6 +63,46 @@ const SQLITE_SCHEMA = [
   approved_at  TEXT,
   created_at   TEXT NOT NULL,
   UNIQUE (dashboard_id, version_no)
+)`,
+  // A proposal is a working draft (its yaml and evidence update in place, each
+  // update audited); the *decision* is stamped once, and approval's real
+  // artifact is the registry revision it writes — recorded in the evidence.
+  `CREATE TABLE IF NOT EXISTS ${PROPOSAL} (
+  id           TEXT NOT NULL UNIQUE,
+  doc_name     TEXT NOT NULL,
+  yaml         TEXT NOT NULL,
+  rationale    TEXT NOT NULL,
+  status       TEXT NOT NULL,
+  evidence     TEXT NOT NULL,
+  author       TEXT NOT NULL,
+  dashboard_id TEXT,
+  steward      TEXT,
+  decision_comment TEXT,
+  decided_at   TEXT,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+)`,
+  // Approvals are append-only: a later rejection does not erase an earlier
+  // approval, it outdates it. The gate reads the newest row per track.
+  `CREATE TABLE IF NOT EXISTS ${APPROVAL} (
+  artifact_type TEXT NOT NULL,
+  artifact_id   TEXT NOT NULL,
+  track         TEXT NOT NULL,
+  approver      TEXT NOT NULL,
+  decision      TEXT NOT NULL,
+  comment       TEXT NOT NULL,
+  created_at    TEXT NOT NULL
+)`,
+  `CREATE INDEX IF NOT EXISTS ix_${APPROVAL}_artifact ON ${APPROVAL} (artifact_type, artifact_id)`,
+  // The catalog exposure written at certification — the DataHub registration's
+  // stand-in (ADR-24): what was certified, at which content hash, under what
+  // refresh promise.
+  `CREATE TABLE IF NOT EXISTS ${EXPOSURE} (
+  dashboard_id  TEXT NOT NULL,
+  spec_hash     TEXT NOT NULL,
+  refresh_slo   TEXT NOT NULL,
+  registered_by TEXT NOT NULL,
+  registered_at TEXT NOT NULL
 )`,
 ];
 
@@ -109,6 +152,42 @@ CREATE TABLE ${BRIEF} (
   created_at   NVARCHAR(30) NOT NULL,
   CONSTRAINT uq_${BRIEF} UNIQUE (dashboard_id, version_no)
 )`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${PROPOSAL}')
+CREATE TABLE ${PROPOSAL} (
+  id           NVARCHAR(120) NOT NULL UNIQUE,
+  doc_name     NVARCHAR(200) NOT NULL,
+  yaml         NVARCHAR(MAX) NOT NULL,
+  rationale    NVARCHAR(MAX) NOT NULL,
+  status       NVARCHAR(20) NOT NULL,
+  evidence     NVARCHAR(MAX) NOT NULL,
+  author       NVARCHAR(200) NOT NULL,
+  dashboard_id NVARCHAR(120),
+  steward      NVARCHAR(200),
+  decision_comment NVARCHAR(MAX),
+  decided_at   NVARCHAR(30),
+  created_at   NVARCHAR(30) NOT NULL,
+  updated_at   NVARCHAR(30) NOT NULL
+)`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${APPROVAL}')
+CREATE TABLE ${APPROVAL} (
+  artifact_type NVARCHAR(40) NOT NULL,
+  artifact_id   NVARCHAR(120) NOT NULL,
+  track         NVARCHAR(40) NOT NULL,
+  approver      NVARCHAR(200) NOT NULL,
+  decision      NVARCHAR(20) NOT NULL,
+  comment       NVARCHAR(MAX) NOT NULL,
+  created_at    NVARCHAR(30) NOT NULL
+)`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_${APPROVAL}_artifact')
+CREATE INDEX ix_${APPROVAL}_artifact ON ${APPROVAL} (artifact_type, artifact_id)`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${EXPOSURE}')
+CREATE TABLE ${EXPOSURE} (
+  dashboard_id  NVARCHAR(120) NOT NULL,
+  spec_hash     NVARCHAR(64) NOT NULL,
+  refresh_slo   NVARCHAR(120) NOT NULL,
+  registered_by NVARCHAR(200) NOT NULL,
+  registered_at NVARCHAR(30) NOT NULL
+)`,
 ];
 
 export const STATEMENTS = {
@@ -152,6 +231,36 @@ export const STATEMENTS = {
      WHERE dashboard_id = ? AND version_no = ? AND status = 'draft'`,
   supersedeBriefs:
     `UPDATE ${BRIEF} SET status = 'superseded' WHERE dashboard_id = ? AND status <> 'superseded'`,
+
+  insertProposal:
+    `INSERT INTO ${PROPOSAL} (id, doc_name, yaml, rationale, status, evidence, author, dashboard_id, steward, decision_comment, decided_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`,
+  updateProposalDraft:
+    `UPDATE ${PROPOSAL} SET yaml = ?, rationale = ?, evidence = ?, status = ?, updated_at = ?
+     WHERE id = ? AND status IN ('draft', 'submitted')`,
+  decideProposal:
+    `UPDATE ${PROPOSAL} SET status = ?, steward = ?, decision_comment = ?, decided_at = ?, evidence = ?, updated_at = ?
+     WHERE id = ? AND status = 'submitted'`,
+  proposal:
+    `SELECT id, doc_name, yaml, rationale, status, evidence, author, dashboard_id, steward, decision_comment, decided_at, created_at, updated_at
+     FROM ${PROPOSAL} WHERE id = ?`,
+  proposals:
+    `SELECT id, doc_name, yaml, rationale, status, evidence, author, dashboard_id, steward, decision_comment, decided_at, created_at, updated_at
+     FROM ${PROPOSAL} ORDER BY created_at`,
+
+  insertApproval:
+    `INSERT INTO ${APPROVAL} (artifact_type, artifact_id, track, approver, decision, comment, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  approvalsOf:
+    `SELECT artifact_type, artifact_id, track, approver, decision, comment, created_at
+     FROM ${APPROVAL} WHERE artifact_type = ? AND artifact_id = ? ORDER BY created_at`,
+
+  insertExposure:
+    `INSERT INTO ${EXPOSURE} (dashboard_id, spec_hash, refresh_slo, registered_by, registered_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  exposuresOf:
+    `SELECT dashboard_id, spec_hash, refresh_slo, registered_by, registered_at
+     FROM ${EXPOSURE} WHERE dashboard_id = ? ORDER BY registered_at`,
 
   insertAudit:
     `INSERT INTO ${AUDIT} (actor, action, artifact_type, artifact_id, payload_hash, created_at)

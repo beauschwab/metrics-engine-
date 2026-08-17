@@ -4,15 +4,18 @@ An agent-guided studio for governed analytics dashboards, where every number
 traces to a registry function and every visual clears the design guide before
 it renders. Phases 1 and 2 of the plan in `chartroom-prd.md` /
 `chartroom-implementation-spec.md` (the design uploads): the spec DSL, the
-linter, the widget catalog, the interpreter, two dogfood dashboards — and now
-the agent loop: an MCP server, the intake/brief protocol with a human approval
-gate, the pattern catalog, and the LLM design critic.
+linter, the widget catalog, the interpreter, two dogfood dashboards; the agent
+loop (MCP server, the intake/brief protocol with a human approval gate, the
+pattern catalog, the LLM design critic); and governance — metric proposals
+validated through the real engine, the draft → team → certified promotion
+matrix, exposure records at certification, and version-pin upgrade notices
+that carry the diff.
 
 ```
-npm run chartroom:server   # :8788 — contracts, queries, dashboards, briefs
-npm run chartroom:studio   # :5174 — the studio (brief approval lives here)
-npm run chartroom:mcp      # stdio — the agent's 18 tools
-npm run verify:chartroom   # typecheck ×7 + 133 unit tests + 11 browser checks
+npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance
+npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
+npm run chartroom:mcp      # stdio — the agent's 24 tools
+npm run verify:chartroom   # typecheck ×7 + 146 unit tests + 13 browser checks
 ```
 
 Run `npm run server` (the registry, :8787) alongside for live contracts;
@@ -28,9 +31,9 @@ never impersonate a governed workspace.
 | `chartroom-widgets` | The catalog: versioned contracts as data, presentation-only SVG renderers. Widgets receive numbers; they cannot fetch. |
 | `chartroom-patterns` | The reviewed archetypes (limit-utilization-board, liquidity-monitor, metric-deep-dive) with slots, wireframes and when-*not*-to-use — plus the design guide's rationale for all 14 rules, tested to cover exactly the linter's roster. |
 | `chartroom-critics` | The LLM design critic: composition, hierarchy, decision-alignment against the brief. Zod-validated findings, one retry, then a WARN "critic unavailable" — the deterministic linter is the hard gate, so a model outage never blocks anyone. Evals run live with `ANTHROPIC_API_KEY`, skip loudly without. |
-| `chartroom-server` | Contracts *derived* from the registry (unit from format, dims from derived rows, governance status from the production channel), grouped queries through the engine's own `Evaluator`, versioned dashboard persistence, briefs with a human-only approval gate, and an audit trail pairing every agent action with its principal. |
-| `chartroom-mcp` | Chartroom's 18 tools over stdio, thin by contract: validate → HTTP as `agent:mcp-<session>` → shape. The server's entitlements do the governing; there is deliberately **no approve tool**. The MCP instructions carry the intake protocol. |
-| `chartroom-studio` | The interpreter canvas, a contract-generated widget form, the spec source in CodeMirror, findings with one-click fixes, explicit versioned saves — and the **Brief tab**: the intake slots as an approvable card, with the Approve button that unlocks agent composition. `#/widgets` is the widget-states review harness. |
+| `chartroom-server` | Contracts *derived* from the registry (unit from format, dims from derived rows, governance status from the production channel), grouped queries through the engine's own `Evaluator`, versioned dashboard persistence, briefs with a human-only approval gate, metric proposals with engine-run evidence, the promotion gate matrix, exposure records, upgrade notices — and an audit trail pairing every agent action with its principal. |
+| `chartroom-mcp` | Chartroom's 24 tools over stdio, thin by contract: validate → HTTP as `agent:mcp-<session>` → shape. The server's entitlements do the governing; there is deliberately **no approve, decide, or promote tool** — the governance tools file proposals and read the gate. The MCP instructions carry the intake protocol. |
+| `chartroom-studio` | The interpreter canvas, a contract-generated widget form, the spec source in CodeMirror, findings with one-click fixes, explicit versioned saves — the **Brief tab** (the intake slots as an approvable card), the **Govern tab** (the promotion checklist with sign-offs, the promote act, and version-pin notices), and `#/proposals`, the steward queue. `#/widgets` is the widget-states review harness. |
 
 Three enforcement layers, strongest first: the **schema** cannot express raw
 SQL, freeform HTML, custom colors, or dual axes; the **linter** carries the
@@ -67,6 +70,31 @@ Governance is inherited, not invented: a metric is `approved` when the
 release the registry's `production` channel serves carries exactly that
 revision of its document (ADR-12), so GOV-02 means something real on day one.
 Every server mutation writes `chartroom_audit` with its actor.
+
+## Governance (Phase 3)
+
+- **Metric proposals** — a registry gap surfaced at intake becomes a KEEL
+  document filed via `propose_metric`, validated through the *real* engine
+  (parse, full diagnostics, every measure evaluated on the fixtures, semantic
+  view compiled) with the evidence stored on the proposal. A steward decides
+  in the studio's `#/proposals` queue; approval **is** a registry write,
+  authored by the steward, and refuses plainly when no registry is running
+  (ADR-23).
+- **Promotion matrix** — draft → team → certified, one server-side checklist
+  shared by the studio's Govern tab and the promote route. The latest spec is
+  linted *at the target status*, which is what arms GOV-01/02; team needs an
+  approved brief plus a peer sign-off, certified adds design and data-owner
+  sign-offs, a declared refresh SLO, and no weakening stale pins. Promotion
+  writes a new version with the status change, and certification records an
+  exposure row — the DataHub contract without the DataHub process (ADR-25).
+- **Upgrade notices** — a promoted dashboard pins revisions; when the
+  registry moves, `check_upgrades` reports each stale pin with the measures
+  that move (and by how much), anything that disappears, and the engine's
+  control-impact findings. Notify-with-a-diff; nothing re-pins silently
+  (ADR-26).
+- Every decision, sign-off, and promotion is human-only at the API — the
+  agent's half is filing artifacts worth approving and reading the gate
+  (ADR-24).
 
 ## The two dogfood dashboards
 

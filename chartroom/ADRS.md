@@ -264,3 +264,63 @@ One source for "what patterns exist" beats three bundled copies that drift —
 the same argument as deriving metric contracts instead of storing them. The
 patterns test asserts the rule-rationale roster covers exactly the linter's
 emittable rule ids, so a new lint rule without guide text fails CI.
+
+## Phase 3 ADRs
+
+## ADR-23 — proposal approval *is* the registry write
+
+**Pinned:** the metric-proposal loop files "a metric_proposal to the KEEL
+registry" with steward review (spec §9, E3.1).
+**Decision:** the proposal table holds the workflow (draft → submitted →
+decided, with the engine's validation evidence stored on the row); the
+*registry* holds the outcome. A steward's approval performs a `PUT` to
+`/api/artifacts/:name` authored by the steward, and the resulting revision is
+recorded on the proposal. If no registry process is reachable, the approval
+refuses with that stated plainly — an "approved" proposal whose document went
+nowhere would be the workflow lying about its one meaningful side effect.
+Validation is the real engine (parse → full diagnostic catalogue → every
+measure evaluated on the fixtures → semantic view compiled), so the steward
+reads what the validation found, not what the proposer claims.
+
+## ADR-24 — every governance act is human-only; MCP governance tools are read-and-propose
+
+**Pinned:** "promotion requires approvals" and the Phase-2 rule that the agent
+can never approve anything.
+**Decision:** deciding proposals, recording sign-offs (peer / design /
+data-owner), and promoting are all refused to `agent:*` identities at the API,
+and `chartroom-mcp` ships no tool for any of them (ADR-18's pattern,
+extended). The agent's governance tools are `propose_metric`,
+`submit_proposal`, `get_proposal`, `list_proposals`,
+`get_promotion_checklist`, and `check_upgrades` — file, validate, read the
+gate, and tell the human what remains. The checklist endpoint and the promote
+route share one server-side function, so the studio card, the MCP view, and
+the gate itself cannot disagree about what "promotable" means.
+
+## ADR-25 — exposure records stand in for DataHub
+
+**Pinned:** the spec names DataHub for lineage/exposure registration at
+certification (E3.3).
+**Decision:** certification writes a `chartroom_exposure` row — dashboard id,
+spec hash, declared refresh SLO, registrant — and contracts already carry
+`lineage_urn` from the document's declared source. That is the DataHub
+*contract* (what would be pushed) without the DataHub *process*; a real
+integration is an adapter that replays exposure rows outward, which can be
+added without touching the promotion path. Same posture as ADR-4's dialect
+seam: keep the boundary, defer the infrastructure. Git materialization of
+certified specs is deferred the same way — the registry's append-only
+versions already give diffable history with authors.
+
+## ADR-26 — upgrade notices carry measure-level findings computed in the adapter
+
+**Pinned:** "notify with a diff, never silently change numbers" (E3.4).
+**Decision:** notices reuse the engine's `assessChange` for control/
+classification/report/parameter-set consequences, but `assessChange` has no
+metrics-view branch — and a dashboard pin almost always points at a metrics
+view. So the server's upgrade module additionally evaluates every measure of
+the pinned and latest bodies on the nominal fixture and reports, in the same
+`Finding` shape: values that move (with the delta), measures that disappear
+(direction `weakens` — a dangling binding is the one upgrade outcome that
+breaks a widget), and measures that appear. Computed in `chartroom-server`
+rather than the engine so the registry's own promotion-gate semantics stay
+untouched; if the engine later grows a metrics-view branch, the adapter's
+supplement collapses into it.
