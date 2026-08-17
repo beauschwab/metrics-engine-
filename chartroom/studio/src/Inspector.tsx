@@ -337,18 +337,107 @@ function SourceEditor({ spec, onSpec }: { spec: DashboardSpec; onSpec(s: Dashboa
 
 // ---------------------------------------------------------------------------
 
+interface DataFinding {
+  code: string;
+  severity: string;
+  widget?: string;
+  message: string;
+  evidence?: Record<string, unknown>;
+}
+
+/**
+ * The data critic, on demand (ADR-33): it runs every query leg of the spec,
+ * so unlike the linter it is not free — a button, not a keystroke debounce.
+ */
+function DataCritic({ spec }: { spec: DashboardSpec }) {
+  const [state, setState] = useState<'idle' | 'running' | DataFinding[]>('idle');
+
+  const run = async () => {
+    setState('running');
+    try {
+      const r = await fetch('/api/data-critique', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ spec }),
+      });
+      const body = await r.json() as { findings?: DataFinding[]; error?: string };
+      setState(r.ok
+        ? body.findings ?? []
+        : [{ code: 'QUERY', severity: 'BLOCK', message: body.error ?? `the server said ${r.status}` }]);
+    } catch (e) {
+      setState([{ code: 'QUERY', severity: 'BLOCK', message: (e as Error).message }]);
+    }
+  };
+
+  return (
+    <div className="cr-datacritic">
+      <div className="cr-datacritic-head">
+        <span className="cr-side-head">Data critic</span>
+        <button
+          type="button"
+          className="cr-fix"
+          data-testid="run-data-critic"
+          disabled={state === 'running'}
+          onClick={() => void run()}
+        >
+          {state === 'running' ? 'running the numbers…' : 'Run data critic'}
+        </button>
+      </div>
+      {Array.isArray(state) && (
+        state.length === 0
+          ? (
+            <p className="cr-hint" data-testid="data-critic-clean">
+              The numbers hold: grouped sums reconcile, one as-of everywhere,
+              everything finite.
+            </p>
+          )
+          : (
+            <ul className="cr-findings" data-testid="data-critic-findings">
+              {state.map((f, i) => (
+                <li key={`${f.code}-${i}`} className="cr-finding" data-severity={f.severity}>
+                  <div className="cr-finding-head">
+                    <span className="cr-finding-rule">{f.code}</span>
+                    <span className="cr-finding-sev">{f.severity}</span>
+                    {f.widget && <span className="cr-finding-jump">{f.widget}</span>}
+                  </div>
+                  <p className="cr-finding-msg">{f.message}</p>
+                  {f.evidence && (
+                    <pre className="cr-finding-evidence">{JSON.stringify(f.evidence, null, 1)}</pre>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )
+      )}
+    </div>
+  );
+}
+
 function Findings({ spec, report, onSpec, onSelect }: Props) {
   if (!report) return <div className="cr-pane-empty">lint has not run yet</div>;
   if (!report.findings.length) {
-    return <div className="cr-pane-empty" data-testid="findings-clean">No findings — the guide is satisfied.</div>;
+    return (
+      <div className="cr-findings-pane">
+        <div className="cr-pane-empty" data-testid="findings-clean">No findings — the guide is satisfied.</div>
+        <DataCritic spec={spec} />
+      </div>
+    );
   }
 
   const apply = (f: LintFinding) => {
     if (!f.fix) return;
     onSpec(applyPatch(spec, f.fix));
+    // Fire-and-forget pilot instrumentation (E2.5): fix acceptance is a fact
+    // only the client can see, so it reports one — into the audit log.
+    void fetch('/api/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-identity': 'studio-author' },
+      body: JSON.stringify({ kind: 'fix.apply', artifact_id: f.rule }),
+    }).catch(() => { /* metrics never block an edit */ });
   };
 
   return (
+    <div className="cr-findings-pane">
     <ul className="cr-findings" data-testid="findings">
       {report.findings.map((f, i) => (
         <li key={`${f.rule}-${f.path}-${i}`} className="cr-finding" data-severity={f.severity}>
@@ -375,5 +464,7 @@ function Findings({ spec, report, onSpec, onSelect }: Props) {
         </li>
       ))}
     </ul>
+    <DataCritic spec={spec} />
+    </div>
   );
 }

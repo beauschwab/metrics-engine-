@@ -558,6 +558,31 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
       });
     }
 
+    // ---- pilot instrumentation (E2.5, Phase 5) ---------------------------
+    // The studio reports facts the server cannot see (a fix applied client-
+    // side); they land in the audit log, and the metrics are derived reads.
+    if (method === 'POST' && path === '/api/events') {
+      const kind = String(body.kind ?? '');
+      // Unlike reads, an event asserts *who did something* — anonymous rows
+      // would make the acceptance metrics unattributable.
+      if (!req.identity) return json(401, { error: 'events carry the actor who caused them' });
+      if (kind !== 'fix.apply' && kind !== 'view.open') {
+        return json(400, { error: 'kind must be fix.apply or view.open' });
+      }
+      const artifactId = String(body.artifact_id ?? '');
+      if (!artifactId) return json(400, { error: 'artifact_id names the rule or dashboard' });
+      await deps.repo.event({
+        actor: identity, kind,
+        artifactType: kind === 'fix.apply' ? 'rule' : 'dashboard',
+        artifactId,
+      });
+      return json(201, { recorded: true });
+    }
+
+    if (method === 'GET' && path === '/api/metrics') {
+      return json(200, await deps.repo.pilotMetrics());
+    }
+
     // ---- the committee pack (Phase 4) ------------------------------------
     // spec → deterministic plan → deck. Same QueryService, same formatting as
     // the widgets: the deck cannot say a number the dashboard would not.

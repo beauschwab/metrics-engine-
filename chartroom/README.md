@@ -10,13 +10,15 @@ pattern catalog, the LLM design critic); and governance — metric proposals
 validated through the real engine, the draft → team → certified promotion
 matrix, exposure records at certification, and version-pin upgrade notices
 that carry the diff. Phase 4 adds scale: the deterministic data critic,
-spec-declared cross-filtering, and the PPTX committee pack.
+spec-declared cross-filtering, and the PPTX committee pack. Phase 5 adds
+pilot readiness: the shareable read-only view mode and the E2.5 usage
+instrumentation.
 
 ```
 npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
 npm run chartroom:mcp      # stdio — the agent's 25 tools
-npm run verify:chartroom   # typecheck ×7 + 163 unit tests + 15 browser checks
+npm run verify:chartroom   # typecheck ×7 + 166 unit tests + 19 browser checks
 ```
 
 Run `npm run server` (the registry, :8787) alongside for live contracts;
@@ -119,6 +121,21 @@ Every server mutation writes `chartroom_audit` with its actor.
   from the live dashboard (ADR-29).
 - Deephaven streaming, the Slack/Claude Tag entry, and catalog growth ship as
   seams awaiting their forcing functions (ADR-30).
+
+## Pilot readiness (Phase 5)
+
+- **View mode** — `#/view/<dashboard-id>`: the latest *saved* version, pure
+  read, same interpreter — no editing chrome, cross-filtering intact,
+  print-stylesheet PDF via the browser (ADR-31). The `view` header link opens
+  it for the current dashboard.
+- **Pilot metrics** — `GET /api/metrics` derives the spec's E2.5
+  instrumentation on read: brief-acceptance rate and median time-to-approval,
+  versions per dashboard, lint-fix acceptance by rule (the studio reports
+  applied fixes into the audit stream via `POST /api/events`), dashboards and
+  proposals by status (ADR-32).
+- **The data critic in the studio** — a "Run data critic" button in the
+  Findings tab (a button, not a keystroke — it runs every query leg), with
+  findings and their computed evidence inline (ADR-33).
 
 ## The two dogfood dashboards
 

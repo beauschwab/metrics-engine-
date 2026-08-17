@@ -268,6 +268,16 @@ export const STATEMENTS = {
   auditOf:
     `SELECT actor, action, artifact_type, artifact_id, payload_hash, created_at
      FROM ${AUDIT} WHERE artifact_type = ? AND artifact_id = ? ORDER BY created_at`,
+
+  // ---- pilot metrics (E2.5) — read-only aggregates over what already exists.
+  briefStats:
+    `SELECT dashboard_id, status, created_at, approved_at FROM ${BRIEF}`,
+  versionCounts:
+    `SELECT dashboard_id, COUNT(*) AS versions FROM ${VERSION} GROUP BY dashboard_id`,
+  actionRows:
+    `SELECT actor, artifact_type, artifact_id, created_at FROM ${AUDIT} WHERE action = ?`,
+  proposalStatuses:
+    `SELECT status FROM ${PROPOSAL}`,
 };
 
 export function chartroomDialect(name: DialectName): Dialect {
