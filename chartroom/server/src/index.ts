@@ -10,6 +10,7 @@
 import { createServer } from 'node:http';
 import { migrate, openMssql, openSqlite, type Db } from '../../../server/db';
 import { handle, ContractCache, type ApiRequest } from './api';
+import { WarehouseExecutor } from './executor';
 import { chatFrames } from './proxy';
 import { chartroomDialect } from './dialect';
 import { fetchRegistryState } from './keel';
@@ -74,11 +75,17 @@ async function main(): Promise<void> {
   const db = await connect();
   await migrate(db);
 
-  const state = await fetchRegistryState();
+  let state = await fetchRegistryState();
+  // E8.1: which backend answers queries. Fixtures stay the default — and the
+  // oracle; duckdb/dremio route through the Python service's /query executor.
+  const backend = process.env.CHARTROOM_BACKEND || 'fixtures';
+  const executor = backend === 'duckdb' || backend === 'dremio'
+    ? new WarehouseExecutor(backend, () => state)
+    : undefined;
   const deps = {
     repo: new ChartroomRepository(db),
     contracts: new ContractCache(),
-    queries: new QueryService({ state }),
+    queries: new QueryService({ state }, executor),
   };
 
   const seeded = await seedDogfood(deps.repo, state);
@@ -87,7 +94,10 @@ async function main(): Promise<void> {
   // The query cache keys on workspace identity; refresh it as the registry
   // moves so pinned-latest queries follow saves within a few seconds.
   setInterval(() => {
-    void fetchRegistryState().then((s) => deps.queries.setState(s));
+    void fetchRegistryState().then((s) => {
+      state = s;
+      deps.queries.setState(s);
+    });
   }, 5_000).unref();
 
   const server = createServer(async (req, res) => {
@@ -158,7 +168,7 @@ async function main(): Promise<void> {
   });
 
   server.listen(PORT, () => {
-    console.log(`chartroom-server on :${PORT} (db: ${db.dialect.name}, registry: ${state.source})`);
+    console.log(`chartroom-server on :${PORT} (db: ${db.dialect.name}, registry: ${state.source}, queries: ${deps.queries.backend()})`);
   });
 }
 

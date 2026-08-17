@@ -18,13 +18,18 @@ conversational surface, in the studio.
 Phase 7 moves the agent runtime to Python: `chartroom/agent` is a LangGraph +
 deepagents loop on FastAPI whose tools are `chartroom-mcp` — see
 [`chartroom/agent/README.md`](agent/README.md) and `PLAN-PHASES-7-11.md`.
+Phase 8 makes the query backend a routing decision (ADRs 39–41):
+`CHARTROOM_BACKEND=fixtures|duckdb|dremio` on chartroom-server — fixtures
+stay the default and the parity oracle; duckdb/dremio delegate to the agent
+service's `/query/run`, which compiles the engine's own SQL (measures + the
+row-stage derivations) into the semantic views' CTE shape.
 
 ```
 npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance, chat proxy
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
 npm run chartroom:mcp      # stdio — the agent's 25 tools
 # python agent (chat backend): see chartroom/agent/README.md  → :8789
-npm run verify:chartroom   # typecheck ×7 + 168 TS unit tests + 18 pytest + 20 browser checks
+npm run verify:chartroom   # typecheck ×7 + 177 TS unit tests + 27 pytest + 20 browser checks
 ```
 
 Run `npm run server` (the registry, :8787) alongside for live contracts;
