@@ -33,6 +33,21 @@ export function StackedArea({ data, status, error }: WidgetProps) {
   const dates = lines[0].points.map((p) => p.date);
   const n = dates.length;
 
+  // A stack is only meaningful over nonnegative bands. AREA-01 blocks the
+  // bindings it can prove wrong from the contract, but its signed-measure
+  // check is a heuristic, so the renderer refuses rather than clamping: a
+  // silently truncated band draws a total that overstates the real one, and
+  // the reader has no way to see that it happened.
+  const negative = lines.some((l) => l.points.some((p) => Number.isFinite(p.value) && p.value < 0));
+  if (negative) {
+    return (
+      <div className="cr-widget-error">
+        this measure goes negative, so stacking it would draw a total larger than
+        the real one — plot the bands as separate lines instead
+      </div>
+    );
+  }
+
   // Running cumulative tops, one row per band. A non-finite point contributes
   // nothing rather than poisoning the whole stack above it.
   const tops: number[][] = [];
@@ -40,7 +55,7 @@ export function StackedArea({ data, status, error }: WidgetProps) {
   lines.forEach((line) => {
     for (let i = 0; i < n; i++) {
       const v = line.points[i]?.value;
-      running[i] += Number.isFinite(v) ? Math.max(0, v) : 0;
+      running[i] += Number.isFinite(v) ? v : 0;
     }
     tops.push([...running]);
   });

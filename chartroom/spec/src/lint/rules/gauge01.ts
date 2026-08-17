@@ -45,5 +45,30 @@ export const GAUGE_01: Rule = (spec, ctx) =>
       }];
     }
 
+    // `delta` styles the comparison as a reference point, which renders a
+    // gauge that can never breach: governed limit, ungoverned reading.
+    if (w.bind.compare.style !== 'threshold') {
+      return [{
+        rule: 'GAUGE-01', severity: 'BLOCK' as const,
+        path: `${path}/bind/compare/style`, widget: w.id,
+        message: 'a bullet compares against a limit, so its compare style must be '
+          + '`threshold` — as `delta` the reference renders as a movement marker and '
+          + 'the gauge can never show a breach.',
+        fix: [{ op: 'replace' as const, path: `${path}/bind/compare/style`, value: 'threshold' }],
+        fixLabel: 'Compare as a threshold',
+      }];
+    }
+
+    // Which side is safe cannot be inferred from the numbers — a floor and a
+    // ceiling look identical — so a gauge that renders breaches must say.
+    if (!w.bind.compare.limit) {
+      return [{
+        rule: 'GAUGE-01', severity: 'BLOCK' as const, path: `${path}/bind/compare`, widget: w.id,
+        message: 'this gauge does not say which side of the limit is safe, so it cannot '
+          + 'colour a breach without guessing — declare `compare.limit` as `floor` (the '
+          + 'measure must stay above) or `ceiling` (it must stay below).',
+      }];
+    }
+
     return [];
   });

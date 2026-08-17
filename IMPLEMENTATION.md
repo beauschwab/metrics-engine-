@@ -1536,3 +1536,55 @@ that a check nobody has watched fail is not evidence of anything.
 
 `npm run verify` runs all three typecheck projects, the unit and conformance
 suites, and the end-to-end suite in one pass.
+
+## What a review pass caught that a green suite did not
+
+Phase 9 shipped twelve widgets, twenty lint rules and a full-green
+verification run — 603 engine tests, 89 browser checks, 177 chartroom tests,
+27 Python tests, 21 studio checks. A review pass over the same diff then found
+eleven defects, every one in a path the new tests exercised without asserting
+on. Three are worth recording because of what they have in common.
+
+**A gauge that guessed which way was safe.** `bullet@1` renders a value
+against a limit and colours a breach. It judged every threshold as a floor —
+`value < target` — so a *ceiling* limit read clean when breached and red when
+compliant. The tests passed because the fixture was a coverage ratio, which
+really is a floor. Nothing in the data distinguishes the two cases, so the
+binding now declares it (`compare.limit: floor | ceiling`) and GAUGE-01
+requires the declaration on a gauge. This is the exact failure mode the whole
+codebase exists to prevent, and it shipped inside the widget whose entire job
+is to show a limit.
+
+**A docstring that claimed a property the arithmetic could not have.**
+`waterfall@1`'s header — and ADR-44, written to explain it — said that an
+unreconciled bridge would show its own discrepancy, because the closing bar is
+drawn where the data puts it rather than where the steps end. It cannot. Both
+totals are summed from the same rows as the steps, so the bridge reconciles by
+construction and no residual can ever appear. The claim was plausible, it was
+written down twice, and it was false. The ADR now records the correction
+alongside the original decision, because an architecture note that quietly
+edits away its own mistake is worth less than one that shows it.
+
+**A rule whose exemption was exactly backwards.** WF-01 warns when a filtered
+bridge presents subset sums as totals. Its check exempted `in` filters with a
+single value — the *narrowest* filter possible — while warning on broader
+ones, and a golden test locked the inverted behaviour in. The intent had been
+"an `in` that lists everything excludes nothing", which is a real distinction
+but one the contract can decide: the exemption now compares the list against
+the dim's enumerated domain.
+
+Two smaller ones make the same point about what tests measure. A stacked area
+clamped negative bands to zero with `Math.max(0, v)`, silently drawing a total
+larger than the real one — in a file whose own header said that a renderer
+which dropped negative bands would be hiding what the reader needs to see; it
+now refuses to draw instead. And `Heatmap.tsx` used a literal NUL byte as a
+cell-key separator, which made git classify the file as binary: the only new
+widget in the phase with no reviewable diff, in a codebase whose central claim
+is that every artifact is reviewable.
+
+The pattern is not "write more tests". Every one of these lives in code the
+tests ran. It is that a test asserts the behaviour its author already had in
+mind, and none of these authors had a ceiling limit, a negative band, or a
+non-UTF-8 byte in mind. Review reads the code for what it *says* rather than
+for what it was meant to do — which is why `npm run verify` being green is a
+precondition for review, not a substitute for it.

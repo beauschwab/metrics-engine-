@@ -44,7 +44,17 @@ export const WF_01: Rule = (spec, ctx) =>
 
     // A filter narrows the bars but not the story the two totals tell: the
     // excluded rows are part of the real change and land nowhere on the chart.
-    const narrowing = (w.bind.filters ?? []).filter((f) => f.op !== 'in' || f.value.length > 1);
+    //
+    // The one filter that excludes nothing is an `in` naming every value the
+    // contract enumerates for that dim — so that is the exemption, decided
+    // from the contract rather than guessed from the list's length. (A short
+    // list is the *most* narrowing, not the least.)
+    const narrowing = (w.bind.filters ?? []).filter((f) => {
+      if (f.op !== 'in') return true;
+      const domain = metricContract.dims.find((d) => d.name === f.dim)?.values;
+      if (!domain) return true; // unknown domain — assume it narrows
+      return !domain.every((v) => (f.value as Array<string | number>).some((x) => String(x) === v));
+    });
     if (narrowing.length) {
       const dims = narrowing.map((f) => f.dim).join(', ');
       findings.push({

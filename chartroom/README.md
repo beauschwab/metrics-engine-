@@ -24,7 +24,7 @@ stay the default and the parity oracle; duckdb/dremio delegate to the agent
 service's `/query/run`, which compiles the engine's own SQL (measures + the
 row-stage derivations) into the semantic views' CTE shape.
 
-Phase 9 deepens the catalog (ADRs 42–44): seven widgets — `stacked-area`,
+Phase 9 deepens the catalog (ADRs 42–45): seven widgets — `stacked-area`,
 `waterfall`, `small-multiples`, `heatmap`, `distribution`, `bullet`,
 `annotation` — four rules that keep them honest (AREA-01 a stack claims the
 parts make the whole, WF-01 a bridge must actually bridge, SM-01 panels
@@ -33,12 +33,19 @@ patterns (variance-walk, scenario-comparison, exec-summary). The seeded
 `outflow-walk` board is the first dogfood dashboard built on a shipped
 pattern rather than a `none` justification.
 
+A gauge must also say **which side of its limit is safe** — `compare.limit`
+is `floor` or `ceiling`, and GAUGE-01 requires it. Nothing in the numbers
+distinguishes a coverage ratio that must stay above its floor from a
+concentration that must stay below its ceiling, so a widget that colours a
+breach without being told is guessing, and guesses wrong half the time
+(ADR-45).
+
 ```
 npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance, chat proxy
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
 npm run chartroom:mcp      # stdio — the agent's 25 tools
 # python agent (chat backend): see chartroom/agent/README.md  → :8789
-npm run verify:chartroom   # typecheck ×7 + 177 TS unit tests + 27 pytest + 20 browser checks
+npm run verify:chartroom   # typecheck ×7 + 180 TS unit tests + 27 pytest + 21 browser checks
 ```
 
 Run `npm run server` (the registry, :8787) alongside for live contracts;

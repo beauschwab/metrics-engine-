@@ -35,7 +35,7 @@ on the other.
 
 ---
 
-## Phase 7 — the Python agent service (langgraph / deepagents / FastAPI)
+## Phase 7 — the Python agent service (langgraph / deepagents / FastAPI) — SHIPPED
 
 Replaces the TS chat loop (ADR-34) with a durable, graph-structured agent
 runtime. The studio pane and its SSE event protocol are **frozen contracts**
@@ -61,7 +61,7 @@ threads move server-side (revises ADR-34's text-replay).
 
 ---
 
-## Phase 8 — real data backends (PRD promise #2)
+## Phase 8 — real data backends (PRD promise #2) — SHIPPED
 
 The biggest gap: queries currently evaluate in-process against governed
 fixtures. This phase makes the backend a routing decision, per the PRD.
@@ -84,7 +84,7 @@ warehouse execution; ADR-41 staleness derives from warehouse as-of.
 
 ---
 
-## Phase 9 — catalog depth (7 widgets, 3 patterns)
+## Phase 9 — catalog depth (7 widgets, 3 patterns) — SHIPPED
 
 | Epic | Scope | Size |
 |---|---|---|

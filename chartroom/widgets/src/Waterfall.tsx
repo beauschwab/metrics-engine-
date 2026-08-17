@@ -6,10 +6,12 @@
  * read out of order is not a waterfall, which is why this family is not `bar`
  * and BAR-02's value-sort does not reach it.
  *
- * The renderer draws what the data says and lets WF-01 judge whether the
- * contributions actually reconcile. If they don't, the closing bar simply
- * won't land where the last step left off — the discrepancy is visible rather
- * than quietly absorbed, which is the whole point of showing a bridge.
+ * Both totals are computed from the same rows as the steps, so this bridge
+ * reconciles by construction — it cannot show a residual, and it is not the
+ * thing that catches an unreconciled walk. What it *can* misrepresent is a
+ * filtered binding, where `prior` and `current` are subset sums presented as
+ * the totals; WF-01 warns about exactly that, and the data critic checks the
+ * arithmetic against the real population (ADR-44).
  */
 
 import type { WidgetProps } from './types';
