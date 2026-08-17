@@ -1,5 +1,5 @@
 /**
- * E1.5, the hard gate: the two dogfood dashboards exist, bind only measures
+ * E1.5, the hard gate: the dogfood dashboards exist, bind only measures
  * the registry really carries, lint with zero BLOCKs, and answer queries with
  * real numbers. If someone renames a measure or a dim, this is the test that
  * says the dogfood no longer describes the registry.
@@ -26,14 +26,16 @@ beforeAll(async () => {
 
 afterAll(async () => db.close());
 
+const BOARDS = ['lcr-monitor', 'limit-board', 'outflow-walk'];
+
 describe('the dogfood seed', () => {
-  it('seeds both boards once, and never again', async () => {
-    expect(await seedDogfood(repo, state)).toEqual(['lcr-monitor', 'limit-board']);
+  it('seeds every board once, and never again', async () => {
+    expect(await seedDogfood(repo, state)).toEqual(BOARDS);
     expect(await seedDogfood(repo, state)).toEqual([]);
   });
 
-  it('both lint clean of BLOCKs against fresh contracts', async () => {
-    for (const id of ['lcr-monitor', 'limit-board']) {
+  it('all lint clean of BLOCKs against fresh contracts', async () => {
+    for (const id of BOARDS) {
       const v = await repo.latest(id);
       expect(v, id).toBeTruthy();
       const blocks = v!.lintReport.findings.filter((f) => f.severity === 'BLOCK');
@@ -44,7 +46,7 @@ describe('the dogfood seed', () => {
 
   it('every widget answers with real numbers', async () => {
     const service = new QueryService({ state });
-    for (const id of ['lcr-monitor', 'limit-board']) {
+    for (const id of BOARDS) {
       const v = await repo.latest(id);
       for (const w of v!.spec.widgets) {
         const r = await service.run({

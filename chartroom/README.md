@@ -24,6 +24,15 @@ stay the default and the parity oracle; duckdb/dremio delegate to the agent
 service's `/query/run`, which compiles the engine's own SQL (measures + the
 row-stage derivations) into the semantic views' CTE shape.
 
+Phase 9 deepens the catalog (ADRs 42–44): seven widgets — `stacked-area`,
+`waterfall`, `small-multiples`, `heatmap`, `distribution`, `bullet`,
+`annotation` — four rules that keep them honest (AREA-01 a stack claims the
+parts make the whole, WF-01 a bridge must actually bridge, SM-01 panels
+share one scale, GAUGE-01 a limit nobody governs is not a limit), and three
+patterns (variance-walk, scenario-comparison, exec-summary). The seeded
+`outflow-walk` board is the first dogfood dashboard built on a shipped
+pattern rather than a `none` justification.
+
 ```
 npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance, chat proxy
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
@@ -41,9 +50,9 @@ never impersonate a governed workspace.
 
 | Package | The idea |
 | --- | --- |
-| `chartroom-spec` | The dashboard DSL as Zod schemas, canonical hashing, reviewer-vocabulary diffs, RFC-6902 fixes, a 16-rule linter — and the **brief schema**, where the grilling protocol's eight intake slots are required fields, not suggestions. Pure — runs identically in browser, server, and MCP. |
-| `chartroom-widgets` | The catalog: versioned contracts as data, presentation-only SVG renderers. Widgets receive numbers; they cannot fetch. |
-| `chartroom-patterns` | The reviewed archetypes (limit-utilization-board, liquidity-monitor, metric-deep-dive) with slots, wireframes and when-*not*-to-use — plus the design guide's rationale for all 16 rules, tested to cover exactly the linter's roster. |
+| `chartroom-spec` | The dashboard DSL as Zod schemas, canonical hashing, reviewer-vocabulary diffs, RFC-6902 fixes, a 20-rule linter — and the **brief schema**, where the grilling protocol's eight intake slots are required fields, not suggestions. Pure — runs identically in browser, server, and MCP. |
+| `chartroom-widgets` | The catalog of twelve: versioned contracts as data, presentation-only SVG renderers. Widgets receive numbers; they cannot fetch. |
+| `chartroom-patterns` | The six reviewed archetypes (limit-utilization-board, liquidity-monitor, metric-deep-dive, variance-walk, scenario-comparison, exec-summary) with slots, wireframes and when-*not*-to-use — plus the design guide's rationale for all 20 rules, tested to cover exactly the linter's roster. |
 | `chartroom-critics` | The LLM design critic: composition, hierarchy, decision-alignment against the brief. Zod-validated findings, one retry, then a WARN "critic unavailable" — the deterministic linter is the hard gate, so a model outage never blocks anyone. Evals run live with `ANTHROPIC_API_KEY`, skip loudly without. |
 | `chartroom-server` | Contracts *derived* from the registry (unit from format, dims from derived rows, governance status from the production channel), grouped queries through the engine's own `Evaluator`, versioned dashboard persistence, briefs with a human-only approval gate, metric proposals with engine-run evidence, the promotion gate matrix, exposure records, upgrade notices — and an audit trail pairing every agent action with its principal. |
 | `chartroom-mcp` | Chartroom's 25 tools over stdio, thin by contract: validate → HTTP as `agent:mcp-<session>` → shape. The server's entitlements do the governing; there is deliberately **no approve, decide, or promote tool** — the governance tools file proposals and read the gate. The MCP instructions carry the intake protocol. |

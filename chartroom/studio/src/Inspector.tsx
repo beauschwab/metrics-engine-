@@ -98,10 +98,17 @@ function WidgetForm({ spec, selected, contracts, onSpec }: Props) {
   const w = selected;
   const idx = spec.widgets.findIndex((x) => x.id === w.id);
   const contract = contracts.find((c) => c.ref === w.bind.metric);
-  const isGrid = w.type.startsWith('perspective-grid@');
-  const isBar = w.type.startsWith('bar@');
-  const isSeries = w.type.startsWith('timeseries@');
-  const isKpi = w.type.startsWith('kpi-tile@');
+  // Which controls a widget gets is a question about what its binding
+  // supports, so Phase 9's additions join the existing groups rather than
+  // growing a parallel set: anything that plots time takes a window, anything
+  // that crosses dims into cells takes a ceiling, anything judged against a
+  // reference takes a comparison.
+  const is = (...names: string[]) => names.some((n) => w.type.startsWith(`${n}@`));
+  const isGrid = is('perspective-grid', 'heatmap');
+  const isBar = is('bar');
+  const isSeries = is('timeseries', 'stacked-area', 'small-multiples');
+  const isKpi = is('kpi-tile', 'bullet');
+  const isNote = is('annotation');
 
   const patch = (mutate: (next: WidgetInstance) => void) => {
     const next = structuredClone(spec);
@@ -162,6 +169,29 @@ function WidgetForm({ spec, selected, contracts, onSpec }: Props) {
               <span className="cr-hint-inline">{d.type}{d.ordinal ? ' · ordinal' : ''}</span>
             </label>
           ))}
+        </div>
+      )}
+
+      {isNote && (
+        <div className="cr-field">
+          <label className="cr-label" htmlFor="f-note">commentary</label>
+          <textarea
+            id="f-note"
+            className="cr-input cr-textarea"
+            data-testid="form-note"
+            rows={5}
+            maxLength={600}
+            placeholder="What changed, and what is being done about it."
+            value={w.note ?? ''}
+            onChange={(e) => patch((x) => {
+              if (e.target.value.trim()) x.note = e.target.value;
+              else delete x.note;
+            })}
+          />
+          <span className="cr-hint">
+            Prose, not markup. The note binds to this widget’s metric, so it
+            travels with the revision it was written about.
+          </span>
         </div>
       )}
 

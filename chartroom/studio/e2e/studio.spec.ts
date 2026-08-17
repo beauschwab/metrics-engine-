@@ -138,7 +138,12 @@ test.describe('one document, two views', () => {
 test.describe('the widget-states harness (ADR-7)', () => {
   test('every catalog widget renders every state', async ({ page }) => {
     await page.goto('/#/widgets');
-    for (const widget of ['kpi-tile', 'timeseries', 'bar', 'delta-table', 'perspective-grid']) {
+    for (const widget of [
+      'kpi-tile', 'timeseries', 'bar', 'delta-table', 'perspective-grid',
+      // Phase 9 (E9.1)
+      'stacked-area', 'waterfall', 'small-multiples', 'heatmap', 'distribution',
+      'bullet', 'annotation',
+    ]) {
       const row = page.getByTestId(`harness-${widget}`);
       await expect(row).toBeVisible();
       await expect(row.locator('.cr-widget-error')).toHaveCount(1); // the error state
@@ -148,5 +153,34 @@ test.describe('the widget-states harness (ADR-7)', () => {
     await expect(
       page.getByTestId('harness-kpi-tile').locator('.cr-kpi-value').first(),
     ).toHaveText('98.3%');
+  });
+
+  test('the Phase-9 widgets draw their own geometry, not an empty frame', async ({ page }) => {
+    await page.goto('/#/widgets');
+
+    // A stack draws one band per series plus the total line on top.
+    const stack = page.getByTestId('harness-stacked-area').locator('.cr-frame').first();
+    await expect(stack.locator('.cr-area')).toHaveCount(3);
+    await expect(stack.locator('.cr-area-total')).toHaveCount(1);
+
+    // A bridge brackets its steps with two totals: 4 drivers + prior + current.
+    const bridge = page.getByTestId('harness-waterfall').locator('.cr-frame').first();
+    await expect(bridge.locator('.cr-wf-bar')).toHaveCount(6);
+    await expect(bridge.locator('.cr-wf-bar[data-kind="total"]')).toHaveCount(2);
+
+    // Small multiples: one panel per series, and SM-01's shared scale means
+    // every panel's svg has the same viewBox.
+    const multiples = page.getByTestId('harness-small-multiples').locator('.cr-frame').first();
+    await expect(multiples.locator('.cr-multiple')).toHaveCount(2);
+
+    // The bullet renders its limit marker — the mark that makes it a gauge.
+    const bullet = page.getByTestId('harness-bullet').locator('.cr-frame').first();
+    await expect(bullet.locator('.cr-bullet-marker')).toHaveCount(1);
+    // 98.3% against a 100% floor — breached, and the widget says which side.
+    await expect(bullet.locator('.cr-bullet')).toHaveAttribute('data-breached', 'below');
+
+    // The annotation shows its prose, not just the anchor number.
+    const note = page.getByTestId('harness-annotation').locator('.cr-frame').first();
+    await expect(note.locator('.cr-annotation-note')).toContainText('quarter-end funding');
   });
 });

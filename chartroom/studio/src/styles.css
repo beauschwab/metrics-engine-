@@ -495,3 +495,108 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   font: inherit; line-height: 1.4;
 }
 .cr-chat-textarea:focus { outline: none; border-color: var(--cr-accent); }
+
+/* ---- Phase 9 widgets ---------------------------------------------------- */
+
+/* stacked-area: bands carry the series colours at low opacity so the total
+   line on top stays the strongest mark in the chart. */
+.cr-area { opacity: 0.55; stroke: none; }
+.cr-area-total {
+  fill: none; stroke: var(--cr-text); stroke-width: 1.4;
+  vector-effect: non-scaling-stroke; opacity: 0.85;
+}
+
+/* waterfall: totals read as structure, steps as movement — up and down are
+   the only semantic colours here, and they mean direction, not breach. */
+.cr-wf-bar[data-kind='total'] { fill: var(--cr-s6); }
+.cr-wf-bar[data-kind='up'] { fill: var(--cr-s2); }
+.cr-wf-bar[data-kind='down'] { fill: var(--cr-down); }
+.cr-wf-connector {
+  stroke: var(--cr-border); stroke-width: 1; stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}
+.cr-wf-label { font-size: 9px; }
+.cr-wf-totals {
+  display: flex; justify-content: space-between; padding-top: 4px;
+  font-size: 11px; color: var(--cr-text-muted); flex: none;
+}
+
+/* small multiples: a grid of panels, each one small enough that the shared
+   scale is doing the comparing rather than the reader. */
+.cr-multiples {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px; height: 100%; overflow: auto; align-content: start;
+}
+.cr-multiple {
+  border: 1px solid var(--cr-border); border-radius: 4px; padding: 5px 6px;
+  background: var(--cr-panel-2);
+}
+.cr-multiple svg { width: 100%; height: 54px; display: block; }
+.cr-multiple-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.cr-multiple-label {
+  font-size: 10px; color: var(--cr-text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cr-multiple-value { font-size: 10.5px; color: var(--cr-text); }
+.cr-multiples[data-pickable] .cr-multiple { cursor: pointer; }
+.cr-multiple[data-picked] { outline: 1px solid var(--cr-accent); }
+
+/* heatmap: one hue, intensity by opacity — the theme owns chromatics, and a
+   rainbow ramp would invent category boundaries the data does not have. */
+.cr-heatmap-wrap { overflow: auto; height: 100%; }
+.cr-heatmap { width: 100%; border-collapse: collapse; font-size: 11px; }
+.cr-heatmap th {
+  text-align: left; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--cr-text-faint); font-weight: 600; padding: 3px 6px; white-space: nowrap;
+}
+.cr-heatmap-corner { color: var(--cr-text-faint); font-weight: 500; text-transform: none; }
+.cr-heat-cell {
+  padding: 4px 6px; text-align: right; white-space: nowrap;
+  background: color-mix(in srgb, var(--cr-s1) calc(var(--cr-heat, 0) * 100%), transparent);
+}
+.cr-heat-cell[data-sign='neg'] {
+  background: color-mix(in srgb, var(--cr-down) calc(var(--cr-heat, 0) * 100%), transparent);
+}
+.cr-heat-cell[data-empty] { color: var(--cr-text-faint); }
+.cr-heatmap[data-pickable] .cr-heat-cell { cursor: pointer; }
+.cr-heat-cell[data-picked] { outline: 1px solid var(--cr-accent); }
+
+/* distribution */
+.cr-dist-bar { fill: var(--cr-s1); }
+.cr-dist-axis { stroke: var(--cr-border); stroke-width: 1; }
+.cr-dist-median {
+  stroke: var(--cr-warn); stroke-width: 1.2; stroke-dasharray: 3 2;
+  vector-effect: non-scaling-stroke;
+}
+.cr-dist-caption { font-size: 11px; color: var(--cr-text-muted); padding-top: 4px; flex: none; }
+
+/* bullet: the marker is the limit, so it is the mark that must stay visible
+   at any bar width — breach recolours the fill, never the marker. */
+.cr-bullet { display: flex; flex-direction: column; gap: 6px; justify-content: center; height: 100%; }
+.cr-bullet-value { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.cr-bullet-track {
+  position: relative; height: 16px; background: var(--cr-panel-2); border-radius: 1px;
+}
+.cr-bullet-fill { display: block; height: 100%; background: var(--cr-s2); border-radius: 1px; }
+.cr-bullet[data-breached] .cr-bullet-fill { background: var(--cr-breach); }
+.cr-bullet-marker {
+  position: absolute; top: -3px; bottom: -3px; width: 2px;
+  background: var(--cr-text); transform: translateX(-1px);
+}
+.cr-bullet-foot { font-size: 11px; color: var(--cr-text-muted); }
+.cr-bullet[data-breached] .cr-bullet-foot { color: var(--cr-breach); }
+.cr-bullet-nolimit { color: var(--cr-warn); }
+
+/* annotation: prose first, the number as its anchor. */
+.cr-annotation { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.cr-annotation-note { font-size: 12.5px; line-height: 1.5; color: var(--cr-text); overflow: auto; }
+.cr-annotation-empty { color: var(--cr-text-faint); font-style: italic; }
+.cr-annotation-anchor {
+  display: flex; align-items: baseline; gap: 8px; flex: none;
+  padding-top: 6px; border-top: 1px solid var(--cr-border);
+}
+.cr-annotation-value { font-size: 16px; font-weight: 600; }
+.cr-annotation-delta { font-size: 11px; color: var(--cr-text-muted); }
+.cr-annotation-asof { font-size: 10px; color: var(--cr-text-faint); margin-left: auto; }
+.cr-skeleton-inline { display: inline-block; width: 70px; height: 14px; }
+.cr-textarea { resize: vertical; font: inherit; line-height: 1.45; min-height: 72px; }

@@ -21,7 +21,11 @@ import pytest
 from chartroom_agent.warehouse import QueryError, Warehouse
 
 REPO = Path(__file__).resolve().parents[3]
-PORT = 8600 + (os.getpid() % 90)
+# 8900-block: 8500 is test_governed_live, 8700 the Dremio smoke, and 8600 is
+# governance.test.ts's spawned KEEL registry — which answers /api/health but
+# serves no warehouse manifest, so a collision there used to hand this suite a
+# stranger's server and fail with a bare KeyError.
+PORT = 8900 + (os.getpid() % 90)
 API = f"http://127.0.0.1:{PORT}"
 
 
@@ -40,13 +44,28 @@ def server():
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    # Wait on the manifest route itself, not /api/health: health is answered by
+    # every server in this repo, so polling it proves only that *something* is
+    # listening. Waiting on the route under test means a port collision fails
+    # here, loudly, instead of surfacing as a KeyError three fixtures later.
+    ready = False
     for _ in range(120):
         try:
-            if httpx.get(f"{API}/api/health", timeout=1).status_code == 200:
+            r = httpx.get(f"{API}/api/warehouse/manifest", timeout=2)
+            if r.status_code == 200 and "docs" in r.json():
+                ready = True
                 break
-        except httpx.HTTPError:
+        except (httpx.HTTPError, ValueError):
             pass
+        if proc.poll() is not None:
+            break
         time.sleep(0.5)
+    if not ready:
+        proc.kill()
+        raise RuntimeError(
+            f"no chartroom-server serving a warehouse manifest on {API} "
+            f"(exit={proc.poll()}) — port taken, or the server failed to boot"
+        )
     yield proc
     proc.kill()
 

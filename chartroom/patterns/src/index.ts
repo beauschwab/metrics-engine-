@@ -12,7 +12,10 @@ import { z } from 'zod';
 export const PatternSlotSchema = z.strictObject({
   name: z.string().min(1),
   /** Widget families that can fill this slot — families, not type refs, so a catalog upgrade does not orphan patterns. */
-  families: z.array(z.enum(['kpi', 'timeseries', 'bar', 'table', 'grid', 'part_to_whole'])).min(1),
+  families: z.array(z.enum([
+    'kpi', 'timeseries', 'bar', 'table', 'grid', 'part_to_whole',
+    'waterfall', 'heatmap', 'annotation',
+  ])).min(1),
   count: z.strictObject({ min: z.number().int().min(0), max: z.number().int().min(1) }),
   required: z.boolean(),
   intent: z.string().min(10),
@@ -138,6 +141,115 @@ export const PATTERNS: Pattern[] = [
       '└───────────┴───────────┘',
     ].join('\n'),
   },
+
+  // ---- Phase 9 (E9.3) ----------------------------------------------------
+
+  {
+    pattern: 'variance-walk',
+    version: 1,
+    title: 'Variance Walk',
+    serves: 'What explains the move between two dates — the bridge from prior to current, '
+      + 'the drivers behind each step, and the written reason the committee will actually '
+      + 'quote back. The decision is whether the move is understood well enough to accept.',
+    when_not: 'If the question is whether a number is inside a limit rather than why it '
+      + 'moved, use limit-utilization-board. A walk over a non-additive measure explains '
+      + 'nothing — the steps cannot compose the total, which WF-01 blocks outright.',
+    audience_default: 'treasury-committee',
+    slots: [
+      {
+        name: 'bridge', families: ['waterfall'], count: { min: 1, max: 1 }, required: true,
+        intent: 'Opening total, one step per driver, closing total — the arithmetic of the '
+          + 'move, over the whole population so the steps actually reconcile.',
+      },
+      {
+        name: 'drivers', families: ['timeseries'], count: { min: 1, max: 1 }, required: true,
+        intent: 'The same split as the bridge, over time and on a shared scale, so a step '
+          + 'that looks like a one-day shock can be told from one that has been building.',
+      },
+      {
+        name: 'commentary', families: ['annotation'], count: { min: 1, max: 2 }, required: true,
+        intent: 'The written explanation, bound to the metric it explains — so the sentence '
+          + 'travels with the revision it was written about instead of drifting in an email.',
+      },
+    ],
+    wireframe: [
+      '┌───────────────────────┐',
+      '│      waterfall        │  bridge',
+      '├───────────┬───────────┤',
+      '│  small-   │ annotation│  drivers · commentary',
+      '│ multiples │           │',
+      '└───────────┴───────────┘',
+    ].join('\n'),
+  },
+  {
+    pattern: 'scenario-comparison',
+    version: 1,
+    title: 'Scenario Comparison',
+    serves: 'How the picture changes under each scenario — the same measure across '
+      + 'scenarios on one scale, and the arithmetic difference between them. The decision '
+      + 'is which scenario to plan against, so the comparison must be like-for-like.',
+    when_not: 'If only one scenario matters, this is a deep-dive with extra chrome. If the '
+      + 'scenarios use different denominators the comparison is not like-for-like at all — '
+      + 'DEN-01 catches the side-by-side case, but the judgment is yours.',
+    audience_default: 'treasury-committee',
+    slots: [
+      {
+        name: 'panels', families: ['timeseries'], count: { min: 1, max: 1 }, required: true,
+        intent: 'One panel per scenario on a shared scale — the comparison the pattern '
+          + 'exists for, and the reason SM-01 refuses per-panel scaling.',
+      },
+      {
+        name: 'delta', families: ['table'], count: { min: 1, max: 1 }, required: true,
+        intent: 'The scenario-versus-base arithmetic per group, because "visibly lower" is '
+          + 'not a number anyone can put in minutes.',
+      },
+      {
+        name: 'headline', families: ['kpi'], count: { min: 0, max: 2 }, required: false,
+        intent: 'The selected scenario\'s headline value, judged against its limit.',
+      },
+    ],
+    wireframe: [
+      '┌─────┬─────┬─────┬─────┐',
+      '│  ▁▂▃│  ▁▂▃│  ▁▂▃│  ▁▂▃│  panels (one per scenario, shared scale)',
+      '├─────┴─────┴─────┴─────┤',
+      '│      delta-table      │  delta',
+      '└───────────────────────┘',
+    ].join('\n'),
+  },
+  {
+    pattern: 'exec-summary',
+    version: 1,
+    title: 'Executive Summary',
+    serves: 'Is anything wrong, and where do I look next — a small set of judged headlines '
+      + 'and the two trends that carry the story. The decision is whether to delegate or '
+      + 'to dig, so density is the design constraint, not a preference.',
+    when_not: 'If the reader needs to explain a move rather than notice one, use '
+      + 'metric-deep-dive or variance-walk. An exec summary that grows past a handful of '
+      + 'tiles has become a monitor, and stops being readable in the thirty seconds it gets.',
+    audience_default: 'exec',
+    slots: [
+      {
+        name: 'headlines', families: ['kpi'], count: { min: 3, max: 6 }, required: true,
+        intent: 'Each governed headline as one judged number against its limit — six is the '
+          + 'ceiling because a seventh tile is one nobody reads.',
+      },
+      {
+        name: 'trends', families: ['timeseries'], count: { min: 1, max: 2 }, required: true,
+        intent: 'The two series that carry the story, windowed to the reporting period.',
+      },
+      {
+        name: 'commentary', families: ['annotation'], count: { min: 0, max: 1 }, required: false,
+        intent: 'One short written note — what changed and what is being done about it.',
+      },
+    ],
+    wireframe: [
+      '┌────┬────┬────┬────┬────┐',
+      '│ KPI│ KPI│ KPI│ KPI│ KPI│  headlines (≤6)',
+      '├────┴────┴─┬──┴────┴────┤',
+      '│ timeseries│ timeseries │  trends',
+      '└───────────┴────────────┘',
+    ].join('\n'),
+  },
 ];
 
 export const PATTERNS_BY_REF: Map<string, Pattern> = new Map(
@@ -243,5 +355,33 @@ export const RULE_GUIDE: RuleGuide[] = [
     rationale: 'A cross-filter promises that a click narrows every target. A source that does '
       + 'not group by the dim has nothing to click; a target whose metric lacks the dim '
       + 'would show unfiltered numbers beside filtered ones — coherent-looking and wrong.',
+  },
+  {
+    rule: 'AREA-01', title: 'A stack claims the parts make the whole', enforced: 'linter', autofix: true,
+    rationale: 'Stacking asserts that the bands add up: the top edge is read as a total. Stack '
+      + 'a ratio and that edge is a sum of percentages — a number with no referent that still '
+      + 'looks authoritative. Stack a signed measure and the bands overlap each other, so the '
+      + 'picture is wrong about ordering, not merely imprecise.',
+  },
+  {
+    rule: 'GAUGE-01', title: 'A limit nobody governs is not a limit', enforced: 'linter', autofix: false,
+    rationale: 'A bullet\'s whole claim is "here is the number, here is the line it must not '
+      + 'cross", so the line has to be a governed metric with an owner and a revision. '
+      + 'Comparing to the prior period instead shows movement, not a limit: a measure that '
+      + 'drifts a little every day never breaches its own yesterday.',
+  },
+  {
+    rule: 'SM-01', title: 'Small multiples share one scale', enforced: 'linter', autofix: true,
+    rationale: 'Panels drawn to their own extents make a flat line and a cliff look identical, '
+      + 'which defeats the only reason to put them side by side. A single panel is a timeseries '
+      + 'wearing the wrong widget, and past the panel ceiling the shared scale that makes the '
+      + 'comparison honest renders the smaller panels flat.',
+  },
+  {
+    rule: 'WF-01', title: 'A bridge must actually bridge', enforced: 'linter', autofix: false,
+    rationale: 'A waterfall asserts that opening plus contributions equals closing. When that '
+      + 'fails it still looks like an explanation, so the reader concludes the move is '
+      + 'understood while part of it is unaccounted for. Non-additive measures cannot compose '
+      + 'a total, and a filtered bridge drops the excluded rows into the gap between its totals.',
   },
 ];

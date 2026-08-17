@@ -13,6 +13,13 @@ import { Timeseries } from './Timeseries';
 import { Bar } from './Bar';
 import { DeltaTable } from './DeltaTable';
 import { PerspectiveGrid } from './PerspectiveGrid';
+import { StackedArea } from './StackedArea';
+import { Waterfall } from './Waterfall';
+import { SmallMultiples } from './SmallMultiples';
+import { Heatmap } from './Heatmap';
+import { Distribution } from './Distribution';
+import { Bullet } from './Bullet';
+import { Annotation } from './Annotation';
 
 export { CATALOG, CATALOG_BY_REF } from './contracts';
 export { formatDate, formatDelta, formatTick, formatValue } from './format';
@@ -21,7 +28,10 @@ export type { Extent } from './scale';
 export type {
   GroupRow, SeriesLine, SeriesPoint, WidgetData, WidgetProps, WidgetStatus,
 } from './types';
-export { KpiTile, Timeseries, Bar, DeltaTable, PerspectiveGrid };
+export {
+  KpiTile, Timeseries, Bar, DeltaTable, PerspectiveGrid,
+  StackedArea, Waterfall, SmallMultiples, Heatmap, Distribution, Bullet, Annotation,
+};
 
 export const COMPONENTS: Record<string, ComponentType<WidgetProps>> = {
   'kpi-tile@1': KpiTile,
@@ -29,4 +39,11 @@ export const COMPONENTS: Record<string, ComponentType<WidgetProps>> = {
   'bar@1': Bar,
   'delta-table@1': DeltaTable,
   'perspective-grid@1': PerspectiveGrid,
+  'stacked-area@1': StackedArea,
+  'waterfall@1': Waterfall,
+  'small-multiples@1': SmallMultiples,
+  'heatmap@1': Heatmap,
+  'distribution@1': Distribution,
+  'bullet@1': Bullet,
+  'annotation@1': Annotation,
 };

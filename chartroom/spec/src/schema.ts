@@ -124,6 +124,13 @@ const WidgetInstanceSchema = z.strictObject({
   pos: PosSchema,
   bind: BindingSchema,
   format: FormatSchema.optional(),
+  /**
+   * Author commentary (Phase 9, `annotation@1`). Prose, not markup — the
+   * panel renders it as text. It lives on the widget rather than floating
+   * free so a comment always travels with the metric it is about: when that
+   * metric's revision moves, the upgrade notice names the commentary too.
+   */
+  note: z.string().max(600).optional(),
 });
 export type WidgetInstance = z.infer<typeof WidgetInstanceSchema>;
 

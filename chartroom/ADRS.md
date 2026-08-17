@@ -552,3 +552,51 @@ count over the filtered row stage on the executing backend. DuckDB
 for an in-memory dev backend the count IS the honest cost, and Dremio
 estimation belongs with the first real Dremio deployment rather than
 speculation ahead of it.
+
+## Phase 9 ADRs
+
+## ADR-42 — a widget family is a claim about which judgments apply
+
+**Decision:** three new families ship with Phase 9's catalog — `waterfall`,
+`heatmap`, `annotation` — rather than overloading the existing six. Families
+are not labels; several rules key off them, so putting a widget in a family
+subscribes it to that family's judgments. A waterfall filed under `bar` would
+inherit BAR-02's value-sort, which scrambles the bridge order that *is* the
+chart. A heatmap filed under `grid` would inherit AGG-01, which blocks
+non-additive measures because a grid's margins sum structurally — a heatmap
+draws no margins, so the block would be a false positive on a legitimate
+chart. An annotation filed under `kpi` would inherit KPI-02 and be told to
+add a comparison to a prose panel. GRID-01's cell ceiling *was* extended to
+`heatmap`, because crossing two dims into cells is the same judgment however
+the cells are painted. `stacked-area` deliberately takes the existing
+`part_to_whole` family, which PIE-01 was written for and has been waiting
+for since Phase 1 — the rule goes live this phase without being touched.
+
+## ADR-43 — commentary binds to a metric
+
+**Decision:** `annotation@1` carries prose in a new optional `note` field on
+the widget instance (≤600 chars, rendered as text — never markup, since a
+governed artifact that accepted HTML would be a stored-XSS hole and the value
+here is provenance, not typography). The panel binds a metric like any other
+widget. That binding is the point: a committee pack's standing failure is
+that the explanation lives in an email and the number lives in a deck, so
+the two drift until nobody can say which quarter the sentence described.
+Binding commentary to a pinned revision means the note travels with the
+number, the deck exports both on one slide, and when the metric's revision
+moves the upgrade notice can name the commentary as something to re-read.
+
+## ADR-44 — the linter checks what it can see; the critic checks the rest
+
+**Decision:** WF-01 and SM-01 deliberately stop short of the arithmetic
+their charts assert. A waterfall claims opening + contributions = closing,
+and small multiples claim a shared scale is informative — but the linter is
+a pure function of (spec, contracts) and never sees a value, so neither
+claim is checkable there. The split: the **linter** blocks the bindings that
+make the claim impossible (a non-additive measure whose moves cannot compose
+a total; a filtered bridge whose excluded rows vanish into the gap between
+its own totals; a single-panel "comparison"), the **renderer** refuses to
+hide a failure it can see (the waterfall draws its closing bar where the data
+puts it, not where the steps end, so an unreconciled bridge shows its own
+discrepancy), and the **data critic** owns the numeric reconciliation over
+live values. This is the working agreement's graduation path read in reverse:
+a check belongs in the linter only when the contract alone decides it.

@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { RULE_IDS } from 'chartroom-spec';
 import { fmt } from '../../../src/engine/format';
 import { CATALOG } from '../src/contracts';
 import { COMPONENTS } from '../src/index';
@@ -19,7 +20,10 @@ describe('the catalog', () => {
     const Contract = z.strictObject({
       widget: z.string().regex(/^[a-z][a-z0-9-]*$/),
       version: z.number().int().positive(),
-      family: z.enum(['kpi', 'timeseries', 'bar', 'table', 'grid', 'part_to_whole']),
+      family: z.enum([
+        'kpi', 'timeseries', 'bar', 'table', 'grid', 'part_to_whole',
+        'waterfall', 'heatmap', 'annotation',
+      ]),
       accepts: z.strictObject({
         requires_time_dim: z.boolean().optional(),
         max_series: z.number().int().positive().optional(),
@@ -32,12 +36,22 @@ describe('the catalog', () => {
     for (const c of CATALOG) expect(() => Contract.parse(c)).not.toThrow();
   });
 
-  it('ships the five Phase-1 widgets, each with a component, and no strays', () => {
+  it('ships the Phase-1 five and the Phase-9 seven, each with a component, and no strays', () => {
     const refs = CATALOG.map((c) => `${c.widget}@${c.version}`).sort();
-    expect(refs).toEqual(
-      ['bar@1', 'delta-table@1', 'kpi-tile@1', 'perspective-grid@1', 'timeseries@1'],
-    );
+    expect(refs).toEqual([
+      'annotation@1', 'bar@1', 'bullet@1', 'delta-table@1', 'distribution@1',
+      'heatmap@1', 'kpi-tile@1', 'perspective-grid@1', 'small-multiples@1',
+      'stacked-area@1', 'timeseries@1', 'waterfall@1',
+    ]);
     expect(Object.keys(COMPONENTS).sort()).toEqual(refs);
+  });
+
+  it('cites only rules the linter can actually emit', () => {
+    for (const c of CATALOG) {
+      for (const r of c.guide_rules) {
+        expect(RULE_IDS as readonly string[], `${c.widget}@${c.version}`).toContain(r);
+      }
+    }
   });
 });
 
