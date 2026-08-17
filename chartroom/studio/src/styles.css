@@ -354,3 +354,28 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .cr-status-chip[data-status='approved'] { color: var(--cr-up); border-color: var(--cr-up); }
 .cr-status-chip[data-status='rejected'] { color: var(--cr-breach); border-color: var(--cr-breach); }
 .cr-status-chip[data-status='submitted'] { color: var(--cr-warn); border-color: var(--cr-warn); }
+
+/* ---- cross-filtering (Phase 4) ---------------------------------------- */
+
+.cr-crossfilter-bar {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  z-index: 5; display: flex; gap: 8px; align-items: center;
+  background: var(--cr-panel); border: 1px solid var(--cr-accent);
+  border-radius: 2px; padding: 4px 10px; font-size: 11px;
+}
+.cr-crossfilter-chip { color: var(--cr-text); }
+.cr-crossfilter-src { color: var(--cr-text-faint); }
+.cr-crossfilter-clear {
+  background: none; border: 1px solid var(--cr-border); border-radius: 1px;
+  color: var(--cr-text-muted); font-size: 10px; cursor: pointer; padding: 1px 8px;
+}
+.cr-crossfilter-clear:hover { color: var(--cr-accent); border-color: var(--cr-accent); }
+.cr-frame-filtered {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--cr-accent); border: 1px solid var(--cr-accent);
+  border-radius: 1px; padding: 0 5px; margin-right: 6px;
+}
+.cr-bars[data-pickable] .cr-bar-row { cursor: pointer; }
+.cr-bars[data-pickable] .cr-bar-row:hover .cr-bar-label { color: var(--cr-accent); }
+.cr-bar-row[data-picked] .cr-bar-label { color: var(--cr-accent); font-weight: 700; }
+.cr-bar-row[data-picked] .cr-bar-fill { outline: 1px solid var(--cr-accent); }

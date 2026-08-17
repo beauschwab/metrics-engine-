@@ -15,6 +15,8 @@ import {
 import { CATALOG, CATALOG_BY_REF } from 'chartroom-widgets/contracts';
 import { PATTERNS, PATTERNS_BY_REF, RULE_GUIDE } from 'chartroom-patterns';
 import { runDesignCritic } from 'chartroom-critics';
+import { dataCritique } from './datacritic';
+import { buildDeckPlan, renderDeck } from './deck';
 import { deriveContracts, fetchRegistryState, type ContractSet } from './keel';
 import { registerDocument, submitBlockers, validateProposal, type ProposalEvidence } from './proposals';
 import { QueryRefused, QueryUnresolved, QueryService, type QueryRequest } from './query';
@@ -39,6 +41,8 @@ export interface ApiRequest {
 export interface ApiResponse {
   status: number;
   body: unknown;
+  /** Binary payload (the deck export); when set, `body` is ignored. */
+  raw?: { data: Buffer; contentType: string; filename: string };
 }
 
 const json = (status: number, body: unknown): ApiResponse => ({ status, body });
@@ -265,6 +269,17 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
         : null;
       const findings = await runDesignCritic(parsed.spec, brief?.brief ?? null);
       return json(200, { findings, brief_version: brief?.version ?? null });
+    }
+
+    // The data critic: deterministic checks only running the numbers can
+    // make — mass conservation, as-of coherence, finiteness. No model, no
+    // degrade path, every finding carries its computed evidence.
+    if (method === 'POST' && path === '/api/data-critique') {
+      const parsed = parseSpec(body.spec);
+      if (!parsed.ok) return json(422, { error: 'schema', problems: parsed.problems });
+      const set = await deps.contracts.current();
+      const critique = await dataCritique(parsed.spec, deps.queries, set.byRef);
+      return json(200, critique);
     }
 
     // ---- queries ---------------------------------------------------------
@@ -541,6 +556,30 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
         version: row.version,
         exposures: to === 'certified' ? await deps.repo.exposures(promotePath[1]) : [],
       });
+    }
+
+    // ---- the committee pack (Phase 4) ------------------------------------
+    // spec → deterministic plan → deck. Same QueryService, same formatting as
+    // the widgets: the deck cannot say a number the dashboard would not.
+    const deckPath = /^\/api\/dashboards\/([a-z][a-z0-9-]*)\/deck\.pptx$/.exec(path);
+    if (method === 'GET' && deckPath) {
+      const latest = await deps.repo.latest(deckPath[1]);
+      if (!latest) return json(404, { error: `no versions of ${deckPath[1]}` });
+      const plan = await buildDeckPlan(
+        latest.spec as DashboardSpec,
+        { version: latest.version, specHash: latest.specHash },
+        deps.queries,
+      );
+      const data = await renderDeck(plan);
+      return {
+        status: 200,
+        body: null,
+        raw: {
+          data,
+          contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          filename: `${deckPath[1]}-v${latest.version}.pptx`,
+        },
+      };
     }
 
     // ---- upgrade notifications (E3.4) ------------------------------------

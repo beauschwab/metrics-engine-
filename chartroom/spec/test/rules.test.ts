@@ -286,6 +286,72 @@ describe('CTX-01 — filter params are declared contexts', () => {
   });
 });
 
+describe('AGG-01 — totals only total what totals', () => {
+  const grid = (metric: string): DashboardSpec => {
+    const s = baseSpec();
+    s.widgets[1] = {
+      id: 'pivot', type: 'perspective-grid@1', pos: { x: 3, y: 0, w: 9, h: 4 },
+      bind: { metric, dims: ['entity_id'], max_cells: 50_000 },
+    };
+    return s;
+  };
+
+  it('a grid over a ratio measure blocks — the totals row would sum ratios', () => {
+    const [f] = findingsFor(grid('keel://liquidity_pit.lcr_pct@4'), 'AGG-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('does not re-aggregate by sum');
+    expect(f.fix).toBeUndefined(); // the right widget is a design decision
+  });
+
+  it('an additive measure grids freely', () => {
+    expect(findingsFor(grid('keel://liquidity_pit.hqla_total@4'), 'AGG-01')).toEqual([]);
+  });
+
+  it('a ratio on a bar or KPI is untouched — per-group ratios are valid', () => {
+    const s = baseSpec();
+    s.widgets[1] = {
+      id: 'by-entity', type: 'bar@1', pos: { x: 3, y: 0, w: 9, h: 4 },
+      bind: { metric: 'keel://liquidity_pit.lcr_pct@4', dims: ['entity_id'] },
+    };
+    expect(findingsFor(s, 'AGG-01')).toEqual([]);
+  });
+});
+
+describe('IX-01 — a cross-filter must be answerable on both ends', () => {
+  const wired = (): DashboardSpec => {
+    const s = baseSpec();
+    s.widgets[1] = {
+      id: 'by-entity', type: 'bar@1', pos: { x: 3, y: 0, w: 9, h: 4 },
+      bind: { metric: 'keel://liquidity_pit.hqla_total@4', dims: ['entity_id'] },
+    };
+    s.interactions = [{ cross_filter: { source: 'by-entity', dim: 'entity_id', targets: ['lcr-tile'] } }];
+    return s;
+  };
+
+  it('a well-wired cross-filter lints clean', () => {
+    expect(findingsFor(wired(), 'IX-01')).toEqual([]);
+  });
+
+  it('a source that does not group by the dim blocks, and the fix removes the interaction', () => {
+    const s = wired();
+    s.widgets[1].bind.dims = ['scenario_code'];
+    const [f] = findingsFor(s, 'IX-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('nothing on the widget to click');
+    roundTrip(s, 'IX-01');
+  });
+
+  it('a target whose metric lacks the dim blocks — a filter that cannot apply', () => {
+    const s = wired();
+    s.widgets[0].bind.metric = 'keel://liquidity_pit.group_total@4'; // headline-only, no entity_id
+    delete s.widgets[0].bind.compare;
+    const [f] = findingsFor(s, 'IX-01');
+    expect(f.severity).toBe('BLOCK');
+    expect(f.message).toContain('no entity_id dimension');
+    roundTrip(s, 'IX-01');
+  });
+});
+
 describe('the report', () => {
   it('orders findings BLOCK first and counts by severity', () => {
     const s = baseSpec();

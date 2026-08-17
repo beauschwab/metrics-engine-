@@ -51,8 +51,9 @@ The flow is fixed, and the server enforces it — skipping ahead returns 403s:
 4. COMPOSE — after approval, save_dashboard. The server lints with fresh
    contracts on every save; run lint_spec yourself first and apply the fixes
    it returns. Cite rules when you change a design ("routed to a sorted bar
-   per PIE-01 — get_design_rules has the rationale"). Run critique_spec
-   before calling a composition done.
+   per PIE-01 — get_design_rules has the rationale"). Run critique_spec and
+   data_critique before calling a composition done — the design critic judges
+   the composition, the data critic proves the numbers.
 5. ITERATE — preview_query for real numbers, diff_dashboard for what changed
    between versions. Every accepted change is a new version with a diff.
 6. GOVERN — when the registry lacks a metric, propose_metric files a KEEL
@@ -187,6 +188,15 @@ export function build(): McpServer {
       + 'be resolved before a dashboard leaves draft; the server enforces that.',
     inputSchema: { spec: z.record(z.unknown()) },
   }, async ({ spec }) => attempt(() => call('POST', '/api/lint', { spec })));
+
+  server.registerTool('data_critique', {
+    description: 'The data critic: deterministic checks only running the numbers can '
+      + 'make — grouped sums reconcile with the headline for additive measures, every '
+      + 'widget answers at one as-of date, nothing non-finite would render. Findings '
+      + 'carry the computed evidence. No model behind it, so it never degrades; run it '
+      + 'alongside lint_spec before calling a composition done.',
+    inputSchema: { spec: z.record(z.unknown()) },
+  }, async ({ spec }) => attempt(() => call('POST', '/api/data-critique', { spec })));
 
   server.registerTool('critique_spec', {
     description: 'The LLM design critic: composition, hierarchy, decision-alignment '

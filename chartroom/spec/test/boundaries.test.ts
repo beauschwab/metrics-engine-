@@ -52,10 +52,14 @@ describe('package boundaries', () => {
       || s.startsWith('node:'))).toEqual([]);
   });
 
-  it('server imports spec and widget contracts, never components or studio', () => {
+  it('server imports spec and widget contracts/format, never components or studio', () => {
+    // `/contracts` and `/format` are the React-free subpaths: catalog data and
+    // number formatting. The deck export uses `/format` so the committee pack
+    // formats numbers exactly as the widgets do (ADR-29). Components stay out.
     expect(offenders(join(ROOT, 'server', 'src'), (s) =>
       s.includes('chartroom-studio')
-      || (s.includes('chartroom-widgets') && !s.endsWith('/contracts')))).toEqual([]);
+      || (s.includes('chartroom-widgets')
+        && !s.endsWith('/contracts') && !s.endsWith('/format')))).toEqual([]);
   });
 
   it('nothing imports studio', () => {

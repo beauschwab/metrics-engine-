@@ -122,6 +122,16 @@ async function main(): Promise<void> {
     };
 
     const out = await handle(request, deps);
+    if (out.raw) {
+      res.writeHead(out.status, {
+        'content-type': out.raw.contentType,
+        'content-disposition': `attachment; filename="${out.raw.filename}"`,
+        'content-length': out.raw.data.length,
+        ...cors,
+      });
+      res.end(out.raw.data);
+      return;
+    }
     res.writeHead(out.status, { 'content-type': 'application/json', ...cors });
     res.end(JSON.stringify(out.body));
   });

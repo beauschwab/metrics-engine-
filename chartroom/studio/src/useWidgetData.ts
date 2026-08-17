@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import type { DashboardSpec, WidgetInstance } from 'chartroom-spec';
+import type { DashboardSpec, FilterExpr, WidgetInstance } from 'chartroom-spec';
 import type { WidgetData, WidgetStatus } from 'chartroom-widgets';
 import { assemble, requestsFor, type QueryResult } from './bindings';
 import { runQuery, type ContractSummary } from './data';
@@ -21,13 +21,15 @@ export function useWidgetData(
   w: WidgetInstance,
   spec: DashboardSpec,
   contracts: Map<string, ContractSummary>,
+  /** Cross-filter narrowing when this widget is an interaction target. */
+  extraFilters: FilterExpr[] = [],
 ): WidgetQueryState {
   const [state, setState] = useState<WidgetQueryState>({ data: null, status: 'loading' });
 
   // The dependency is the *meaning* of the binding — its resolved requests —
   // not object identity, which changes on every keystroke elsewhere.
-  const requests = useMemo(() => requestsFor(w, spec), [
-    JSON.stringify(w.bind), JSON.stringify(spec.context), w.type,
+  const requests = useMemo(() => requestsFor(w, spec, extraFilters), [
+    JSON.stringify(w.bind), JSON.stringify(spec.context), JSON.stringify(extraFilters), w.type,
   ]);
 
   useEffect(() => {

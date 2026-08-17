@@ -324,3 +324,60 @@ breaks a widget), and measures that appear. Computed in `chartroom-server`
 rather than the engine so the registry's own promotion-gate semantics stay
 untouched; if the engine later grows a metrics-view branch, the adapter's
 supplement collapses into it.
+
+## Phase 4 ADRs
+
+## ADR-27 — the data critic is deterministic, and its static half became lint rules
+
+**Pinned:** the PRD's data critic — grain compatibility, aggregation validity,
+denominator consistency, as-of coherence, staleness.
+**Decision:** no model anywhere in the data path. What is checkable from the
+spec and contracts alone graduated into the linter per the working agreement:
+AGG-01 (a grid's structural totals over a measure whose
+`allowed_aggregations` excludes sum — the summing-ratios mistake) and IX-01
+(cross-filter wiring answerable on both ends). What genuinely needs numbers
+lives in `/api/data-critique`, which runs the spec's own query legs through
+the QueryService: MASS-01 (grouped sums reconcile with the headline for
+additive measures), COHERE-01 (every leg answers at one as-of), FIN-01
+(nothing non-finite would render). Every finding carries its computed
+evidence, and — unlike the design critic — there is no degrade path because
+there is nothing to be unavailable.
+
+## ADR-28 — cross-filtering is declared in the spec and interpreted; Mosaic/DuckDB-WASM deferred
+
+**Pinned:** "cross-filter/Mosaic loop over DuckDB-WASM" (Phase 4).
+**Decision:** the *contract* ships without the substrate. `spec.interactions`
+already carried `cross_filter` declarations; Phase 4 makes the interpreter
+obey them: a widget is clickable only because the spec names it a source, a
+click narrows exactly the declared targets through the same aggregate query
+path (main leg only — thresholds and bands stay global), and the active
+filter is a visible chip, never ambient state. Widgets stay presentation-only
+via an `onPick` callback that reports the click and decides nothing. A
+client-side DuckDB-WASM loop is a performance substrate swap behind the same
+declared-interaction contract, when scale demands it; the aggregates-only
+server boundary is unchanged either way.
+
+## ADR-29 — the committee pack is a deterministic plan rendered to native PPTX
+
+**Pinned:** "exportable to PDF/PPTX for committee packs (spec → deterministic
+render → export, so the committee deck and the live dashboard can't diverge)".
+**Decision:** `buildDeckPlan` produces plain data — one title slide carrying
+version and spec hash, one slide per widget — from the same QueryService the
+widgets query and the same `formatValue` the widgets format with (exported
+React-free as `chartroom-widgets/format`). `renderDeck` feeds the plan to
+pptxgenjs as native charts, tables, and text — data all the way down, no
+screenshots. The plan is the tested artifact; the binary gets a structural
+smoke test. PDF export can be a second renderer over the same plan.
+
+## ADR-30 — streaming, Slack entry, and catalog growth wait for their forcing functions
+
+**Decision:** three Phase-4 items ship as seams, not features. Deephaven
+streaming: the `QueryResult` union and widget `status` vocabulary already
+carry `streaming`/`stale`; a `subscribe` path is additive behind the same
+request shapes when an intraday backend exists to subscribe to. Slack/Claude
+Tag entry: the MCP server is the portability layer by design (ADR-17) — a
+Slack surface is a client of the same tools, not new governance. Pattern
+catalog growth: the PRD says growth comes *from real usage*; inventing
+patterns ahead of pilot evidence would dilute the catalog's authority. Each
+returns when its forcing function (an intraday backend, a Slack pilot,
+recurring real briefs) arrives.

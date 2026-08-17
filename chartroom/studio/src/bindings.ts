@@ -10,7 +10,7 @@
 
 import {
   parseMetricRef,
-  type Binding, type DashboardSpec, type WidgetInstance,
+  type Binding, type DashboardSpec, type FilterExpr, type WidgetInstance,
 } from 'chartroom-spec';
 import type { WidgetData } from 'chartroom-widgets';
 import type { ContractSummary } from './data';
@@ -62,13 +62,21 @@ export function paramsOf(spec: DashboardSpec): Record<string, string> {
   );
 }
 
-export function requestsFor(w: WidgetInstance, spec: DashboardSpec): ResolvedRequests {
+export function requestsFor(
+  w: WidgetInstance,
+  spec: DashboardSpec,
+  // Cross-filter narrowing from an interaction source — main leg only:
+  // compare thresholds and bands stay global on purpose (a floor is a floor,
+  // whatever slice is highlighted).
+  extraFilters: FilterExpr[] = [],
+): ResolvedRequests {
   const params = paramsOf(spec);
   const bind = w.bind;
+  const filters = [...(bind.filters ?? []), ...extraFilters];
   const main: QueryRequest = {
     metric: bind.metric,
     ...(bind.dims?.length ? { dims: bind.dims } : {}),
-    ...(bind.filters?.length ? { filters: bind.filters } : {}),
+    ...(filters.length ? { filters } : {}),
     ...(bind.window ? { window: bind.window } : {}),
     ...(Object.keys(params).length ? { params } : {}),
     ...(bind.max_cells !== undefined ? { max_cells: bind.max_cells } : {}),

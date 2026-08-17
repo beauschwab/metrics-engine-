@@ -21,16 +21,20 @@ import { GRID_01 } from './rules/grid01';
 import { LAY_01 } from './rules/lay01';
 import { GOV_01, GOV_02 } from './rules/gov';
 import { CTX_01 } from './rules/ctx01';
+import { AGG_01 } from './rules/agg01';
+import { IX_01 } from './rules/ix01';
 
 export const RULES: Rule[] = [
   REF_01, TS_01, TS_02, BAR_02, PIE_01, COL_03, NUM_01,
   KPI_02, DEN_01, GRID_01, LAY_01, GOV_01, GOV_02, CTX_01,
+  AGG_01, IX_01,
 ];
 
 /** Every id the linter can emit — the roster guide text is checked against. */
 export const RULE_IDS = [
   'REF-01', 'TS-01', 'TS-02', 'BAR-02', 'PIE-01', 'COL-03', 'NUM-01',
   'KPI-02', 'DEN-01', 'GRID-01', 'LAY-01', 'GOV-01', 'GOV-02', 'CTX-01',
+  'AGG-01', 'IX-01',
 ] as const;
 
 const ORDER: Record<string, number> = { BLOCK: 0, WARN: 1, SUGGEST: 2 };

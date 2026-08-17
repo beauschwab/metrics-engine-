@@ -111,12 +111,12 @@ describe('the connection', () => {
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
       'check_upgrades', 'create_brief', 'create_dashboard', 'critique_spec',
-      'diff_dashboard', 'get_brief', 'get_dashboard', 'get_design_rules',
-      'get_metric_contract', 'get_pattern', 'get_promotion_checklist',
-      'get_proposal', 'get_widget_contract', 'lint_spec', 'list_dashboards',
-      'list_patterns', 'list_proposals', 'list_widgets', 'preview_query',
-      'propose_metric', 'save_dashboard', 'search_metrics', 'submit_proposal',
-      'update_brief',
+      'data_critique', 'diff_dashboard', 'get_brief', 'get_dashboard',
+      'get_design_rules', 'get_metric_contract', 'get_pattern',
+      'get_promotion_checklist', 'get_proposal', 'get_widget_contract',
+      'lint_spec', 'list_dashboards', 'list_patterns', 'list_proposals',
+      'list_widgets', 'preview_query', 'propose_metric', 'save_dashboard',
+      'search_metrics', 'submit_proposal', 'update_brief',
     ]);
     // The maker-checker seam, stated as an absence: no tool decides, approves,
     // or promotes. (get_promotion_checklist is read-only — "promotion", not
@@ -157,7 +157,7 @@ describe('reading over the wire', () => {
     expect(patterns.patterns[0].when_not.length).toBeGreaterThan(20);
 
     const rules = json(await client.callTool({ name: 'get_design_rules', arguments: {} }));
-    expect(rules.rules).toHaveLength(14);
+    expect(rules.rules).toHaveLength(16);
   });
 
   it('previews real numbers through the aggregates-only boundary', async () => {
@@ -174,6 +174,13 @@ describe('reading over the wire', () => {
     (bad.widgets[0] as { format?: unknown }).format = { decimals: 5 };
     const r = json(await client.callTool({ name: 'lint_spec', arguments: { spec: bad } }));
     expect(r.report.findings.some((f: { rule: string }) => f.rule === 'NUM-01')).toBe(true);
+  });
+
+  it('the data critic proves the numbers, deterministically', async () => {
+    const r = json(await client.callTool({ name: 'data_critique', arguments: { spec: SPEC } }));
+    expect(r.findings).toEqual([]);
+    expect(r.widgetsChecked).toBe(1);
+    expect(Object.keys(r.asOf)).toEqual(['tile']);
   });
 
   it('the critic degrades to WARN without a model — never a dead tool', async () => {
