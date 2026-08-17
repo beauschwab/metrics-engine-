@@ -55,7 +55,8 @@ export const loadContracts = () =>
 export const loadContract = (ref: string) =>
   api<{ contract: MetricContract }>(`/api/contracts/${encodeURIComponent(ref)}`);
 
-export const loadWidgets = () => api<{ widgets: WidgetContract[] }>('/api/widgets');
+export const loadWidgets = () =>
+  api<{ widgets: WidgetContract[]; unrenderable?: string[] }>('/api/widgets');
 
 // ---- queries ---------------------------------------------------------------
 

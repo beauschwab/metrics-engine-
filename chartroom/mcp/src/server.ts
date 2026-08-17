@@ -58,7 +58,10 @@ The flow is fixed, and the server enforces it — skipping ahead returns 403s:
    between versions. Every accepted change is a new version with a diff.
 6. GOVERN — when the registry lacks a metric, propose_metric files a KEEL
    document with engine-run evidence; submit it when the blockers list is
-   empty and ask a steward to decide in the studio. get_promotion_checklist
+   empty and ask a steward to decide in the studio. When the *catalog* lacks
+   the visual or the archetype the brief needs, propose_widget and
+   propose_pattern go through the same machinery — a custom visual enters by
+   review, never as freeform code in a dashboard. get_promotion_checklist
    shows what stands between a dashboard and its next status — your job is to
    clear the checkable items (lint BLOCKs, stale weakening pins via
    check_upgrades) and tell the humans which sign-offs remain.
@@ -301,6 +304,51 @@ export function build(): McpServer {
     },
   }, async ({ id, yaml, rationale, dashboard_id }) => attempt(() =>
     call('POST', '/api/proposals', { id, yaml, rationale, dashboard_id })));
+
+  // E10.3: the escape hatch, through the same machinery as metrics. A custom
+  // visual is proposed, reviewed by the design steward, and published as a
+  // catalog version — never smuggled in as freeform code in a dashboard.
+  server.registerTool('propose_widget', {
+    description: 'File a widget-contract proposal: the contract JSON (widget, version, '
+      + 'family, accepts, guide_rules, description) plus the design rationale a steward '
+      + 'will read. The server validates the schema and every reference — a cited '
+      + 'guide_rule the linter cannot emit is a blocker — and reports whether an '
+      + 'implementation exists. A contract with no renderer yet is still approvable, '
+      + 'and is flagged unrenderable until one lands.',
+    inputSchema: {
+      id: z.string().describe('slug id for the proposal'),
+      contract: z.string().describe('the widget contract, as JSON'),
+      rationale: z.string().describe('why this widget should exist, for the design steward (min 20 chars)'),
+      dashboard_id: z.string().optional().describe('the dashboard whose gap this fills'),
+    },
+  }, async ({ id, contract, rationale, dashboard_id }) => attempt(() =>
+    call('POST', '/api/proposals', {
+      id, contract, rationale, dashboard_id, artifact_type: 'widget',
+    })));
+
+  server.registerTool('propose_pattern', {
+    description: 'File a pattern proposal: the pattern JSON (pattern, version, title, '
+      + 'serves, when_not, audience_default, slots, wireframe) plus the rationale. Slot '
+      + 'families must be real widget families and at least one slot must be required — '
+      + 'a pattern that constrains nothing is not an archetype. Propose one when the '
+      + 'brief says no existing pattern fits.',
+    inputSchema: {
+      id: z.string().describe('slug id for the proposal'),
+      contract: z.string().describe('the pattern definition, as JSON'),
+      rationale: z.string().describe('why this archetype should exist (min 20 chars)'),
+      dashboard_id: z.string().optional().describe('the dashboard that surfaced the gap'),
+    },
+  }, async ({ id, contract, rationale, dashboard_id }) => attempt(() =>
+    call('POST', '/api/proposals', {
+      id, contract, rationale, dashboard_id, artifact_type: 'pattern',
+    })));
+
+  server.registerTool('list_catalog', {
+    description: 'The widget or pattern catalog with versions and provenance — which '
+      + 'entries were seeded from code, which came from an approved proposal, and which '
+      + 'are contract-only (approved but not yet renderable).',
+    inputSchema: { kind: z.enum(['widget', 'pattern']) },
+  }, async ({ kind }) => attempt(() => call('GET', `/api/catalog/${kind}`)));
 
   server.registerTool('submit_proposal', {
     description: 'Move a draft proposal to the steward queue. The server re-validates '

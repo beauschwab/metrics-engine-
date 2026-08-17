@@ -138,11 +138,15 @@ query shape against both engines over identical rows and requires agreement to
 1e-6. Warehouse execution compiles the engine's own measure SQL and row-stage
 derivations, so there is one definition of every number.
 
-**Not yet built:** widget and pattern *proposals* through the same machinery as
-metrics (Phase 10), and outward integrations — DataHub emission, git
-materialization at Team+, decommissioning, Rogo import (Phase 11). Streaming
-(Deephaven) remains a deliberate deferral behind an executor seam written to
-accept it.
+**The escape hatch is real.** Widget contracts and patterns are versioned rows
+in a table, not code constants, and they enter through the same proposal →
+steward → publish path metrics use. A contract may be approved before a
+renderer exists — flagged unrenderable rather than refused, so design review
+never queues behind implementation.
+
+**Not yet built:** outward integrations — DataHub emission, git materialization
+at Team+, decommissioning, Rogo import (Phase 11). Streaming (Deephaven)
+remains a deliberate deferral behind an executor seam written to accept it.
 
 ## 7. Boundaries
 
@@ -167,9 +171,9 @@ is renamed. `outflow-walk` is built on a shipped pattern rather than a "no
 pattern" justification.
 
 Verification is one command (`npm run verify`) and currently runs 603 engine
-unit tests, 89 browser checks, 177 chartroom unit tests, 27 Python tests
-including the cross-backend parity harness, and 21 studio browser checks.
+unit tests, 89 browser checks, 189 chartroom unit tests, 27 Python tests
+including the cross-backend parity harness, and 22 studio browser checks.
 
 Every architectural deviation from the pinned spec decisions is recorded in
-`chartroom/ADRS.md` — 45 entries, including the ones that record a mistake and
+`chartroom/ADRS.md` — 47 entries, including the ones that record a mistake and
 its correction.

@@ -431,7 +431,7 @@ rules with IDs and one-click JSON Patch fixes; governance status derives from
 the registry's own release/channel system, so a dashboard cannot leave draft
 while binding a measure production has never served.
 
-The agent loop is governed the same way: an MCP server exposes 25 tools, the
+The agent loop is governed the same way: an MCP server exposes 28 tools, the
 intake interview's eight slots are a schema (`create_brief` rejects an
 incomplete brief naming the slot), and an agent session cannot compose until a
 human approves the design brief in the studio — nor approve anything itself,
@@ -477,7 +477,7 @@ against a real implementation of the protocol rather than against Dremio itself.
 npm run test         # 603 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e          # 89 browser checks against the built bundle
-npm run verify:chartroom  # Chartroom: 177 unit tests + 27 pytest + 21 browser checks
+npm run verify:chartroom  # Chartroom: 189 unit tests + 27 pytest + 22 browser checks
 ```
 
 The server tests include a live Flight SQL round trip. They skip themselves,

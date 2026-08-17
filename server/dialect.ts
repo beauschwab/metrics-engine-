@@ -32,6 +32,16 @@ export interface Dialect {
   /** DDL, in dependency order. Each is separately executable and idempotent. */
   schema(): string[];
   /**
+   * Additive column adds for tables that already exist in a deployed database.
+   *
+   * `CREATE TABLE IF NOT EXISTS` silently skips a table that is already there,
+   * so a column added later never reaches an existing file. These statements
+   * are replayed on every boot and are *expected* to fail once the column is
+   * present — SQLite has no `ADD COLUMN IF NOT EXISTS` — so `migrate` runs
+   * them tolerantly. Only ever additive: nothing here may drop or rewrite.
+   */
+  alters?(): string[];
+  /**
    * Rewrite positional `?` markers into whatever the driver binds.
    *
    * The repository writes one flavour of SQL. Tedious wants `@p1`, `node:sqlite`

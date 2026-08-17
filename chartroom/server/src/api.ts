@@ -12,17 +12,25 @@ import {
   diffSpecs, lint, parseSpec,
   type DashboardSpec, type LintContext,
 } from 'chartroom-spec';
-import { CATALOG, CATALOG_BY_REF } from 'chartroom-widgets/contracts';
-import { PATTERNS, PATTERNS_BY_REF, RULE_GUIDE } from 'chartroom-patterns';
+import { CATALOG } from 'chartroom-widgets/contracts';
+import { RULE_GUIDE, type Pattern } from 'chartroom-patterns';
 import { runDesignCritic } from 'chartroom-critics';
 import { dataCritique } from './datacritic';
 import { buildDeckPlan, renderDeck } from './deck';
 import { deriveContracts, fetchRegistryState, type ContractSet } from './keel';
+import type { WidgetContract } from 'chartroom-spec';
 import { registerDocument, submitBlockers, validateProposal, type ProposalEvidence } from './proposals';
+import {
+  catalogBlockers, isCatalogArtifact, validatePatternProposal, validateWidgetProposal,
+  type CatalogEvidence,
+} from './catalog';
 import { QueryRefused, QueryUnresolved, QueryService, type QueryRequest } from './query';
 import { upgradeNotices } from './upgrades';
 import { buildManifest } from './warehouse';
-import { ChartroomRepository, Conflict, Forbidden, Invalid, NotFound, isAgent } from './repository';
+import {
+  ChartroomRepository, Conflict, Forbidden, Invalid, NotFound, isAgent,
+  type ProposalArtifact,
+} from './repository';
 
 export interface ApiRequest {
   method: string;
@@ -73,16 +81,90 @@ export class ContractCache {
   }
 }
 
+/**
+ * The widget catalog, read from the table rather than the code constants
+ * (E10.1). This is what makes an approved widget proposal *real*: the linter
+ * resolves its type ref, so REF-01 stops blocking a dashboard that binds it.
+ * Short TTL for the same reason the contract cache has one — an approval a
+ * steward just made should show up without a restart.
+ */
+export class CatalogCache {
+  private widgets: Map<string, WidgetContract> | null = null;
+  private patterns: Pattern[] | null = null;
+  private fetchedAt = 0;
+
+  constructor(private readonly repo: ChartroomRepository, private readonly ttlMs = 5_000) {}
+
+  private async refresh(): Promise<void> {
+    if (this.widgets && Date.now() - this.fetchedAt < this.ttlMs) return;
+    const [w, p] = await Promise.all([this.repo.catalog('widget'), this.repo.catalog('pattern')]);
+    // Latest version wins for the by-name map the studio lists; the ref map
+    // keys on name@version, so a pinned older contract still resolves.
+    this.widgets = new Map(w.map((r) => [`${r.name}@${r.version}`, r.body as WidgetContract]));
+    this.patterns = p.map((r) => r.body as Pattern);
+    this.fetchedAt = Date.now();
+  }
+
+  async widgetsByRef(): Promise<Map<string, WidgetContract>> {
+    await this.refresh();
+    return this.widgets!;
+  }
+
+  async widgetList(): Promise<WidgetContract[]> {
+    return [...(await this.widgetsByRef()).values()];
+  }
+
+  async patternList(): Promise<Pattern[]> {
+    await this.refresh();
+    return this.patterns!;
+  }
+}
+
 export interface ApiDeps {
   repo: ChartroomRepository;
   contracts: ContractCache;
   queries: QueryService;
+  catalog: CatalogCache;
 }
 
-const lintCtx = (set: ContractSet): LintContext => ({
+const lintCtx = (set: ContractSet, widgets: Map<string, WidgetContract>): LintContext => ({
   contracts: set.byRef,
-  widgets: CATALOG_BY_REF,
+  widgets,
 });
+
+/**
+ * The names the studio has a renderer for. Injected as data rather than
+ * imported, because the components are React and this file must not be — the
+ * same boundary the linter keeps. A widget outside this set is approvable as
+ * a *contract* and honestly flagged unrenderable (ADR-47).
+ */
+const RENDERABLE_WIDGETS: ReadonlySet<string> = new Set(CATALOG.map((c) => c.widget));
+
+/**
+ * Validate a proposal by what it proposes (E10.2). A metric is validated by
+ * running it through the engine; a catalog entry has nothing to run, so it is
+ * validated structurally — schema plus every reference it makes.
+ */
+async function validateAny(
+  artifactType: ProposalArtifact,
+  payload: string,
+  deps: ApiDeps,
+  set: ContractSet,
+): Promise<{ evidence: unknown; blockers: string[]; name: string | null }> {
+  if (artifactType === 'metric') {
+    const evidence = validateProposal(payload, set.state);
+    return { evidence, blockers: submitBlockers(evidence), name: evidence.docName };
+  }
+  const taken = await (async () => {
+    const rows = await deps.repo.catalog(artifactType);
+    const keys = new Set(rows.map((r) => `${r.name}@${r.version}`));
+    return (name: string, version: number) => keys.has(`${name}@${version}`);
+  })();
+  const evidence = artifactType === 'widget'
+    ? validateWidgetProposal(payload, RENDERABLE_WIDGETS, taken)
+    : validatePatternProposal(payload, taken);
+  return { evidence, blockers: catalogBlockers(evidence), name: evidence.name };
+}
 
 const truncate = (set: ContractSet) =>
   set.contracts.map((c) => ({
@@ -137,7 +219,7 @@ async function promotionChecklist(
       ...latest.spec,
       dashboard: { ...latest.spec.dashboard, status: next },
     };
-    lintAtTarget = lint(targetSpec, lintCtx(set));
+    lintAtTarget = lint(targetSpec, lintCtx(set, await deps.catalog.widgetsByRef()));
     const notices = await upgradeNotices(latest.spec as DashboardSpec, set.state);
     upgrades = {
       stale: notices.length,
@@ -239,19 +321,36 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
       return json(200, { contract: c });
     }
 
+    // Both catalogs are served from the table now (E10.1). The routes did not
+    // change; the source did — which was the point of the epic.
     if (method === 'GET' && path === '/api/widgets') {
-      return json(200, { widgets: CATALOG });
+      const rows = await deps.repo.catalog('widget');
+      return json(200, {
+        widgets: rows.map((r) => r.body),
+        // Contract-first entries are real catalog members that cannot be drawn
+        // yet (ADR-47). The studio needs to know which, to say so honestly.
+        unrenderable: rows.filter((r) => !r.renderable).map((r) => `${r.name}@${r.version}`),
+      });
     }
 
     if (method === 'GET' && path === '/api/patterns') {
-      return json(200, { patterns: PATTERNS });
+      return json(200, { patterns: await deps.catalog.patternList() });
     }
 
-    const patternPath = /^\/api\/patterns\/([a-z0-9@.-]+)$/.exec(path);
+    const patternPath = /^\/api\/patterns\/([a-z0-9-]+)@(\d+)$/.exec(path);
     if (method === 'GET' && patternPath) {
-      const p = PATTERNS_BY_REF.get(patternPath[1]);
-      if (!p) return json(404, { error: `no pattern called ${patternPath[1]} in the catalog` });
-      return json(200, { pattern: p });
+      const row = await deps.repo.catalogEntry('pattern', patternPath[1], Number(patternPath[2]));
+      if (!row) {
+        return json(404, { error: `no pattern called ${patternPath[1]}@${patternPath[2]} in the catalog` });
+      }
+      return json(200, { pattern: row.body });
+    }
+
+    // The catalog with its versions and provenance — what a design steward
+    // reads before deciding a proposal against it.
+    const catalogPath = /^\/api\/catalog\/(widget|pattern)$/.exec(path);
+    if (method === 'GET' && catalogPath) {
+      return json(200, { entries: await deps.repo.catalog(catalogPath[1] as 'widget' | 'pattern') });
     }
 
     if (method === 'GET' && path === '/api/design-rules') {
@@ -301,7 +400,8 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
       const parsed = parseSpec(body.spec);
       if (!parsed.ok) return json(422, { error: 'schema', problems: parsed.problems });
       const set = await deps.contracts.current();
-      return json(200, { report: lint(parsed.spec, lintCtx(set)) });
+      const widgets = await deps.catalog.widgetsByRef();
+      return json(200, { report: lint(parsed.spec, lintCtx(set, widgets)) });
     }
 
     // ---- dashboards ------------------------------------------------------
@@ -336,7 +436,7 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
       const parsed = parseSpec(body.spec);
       if (!parsed.ok) return json(422, { error: 'schema', problems: parsed.problems });
       const set = await deps.contracts.current();
-      const report = lint(parsed.spec, lintCtx(set));
+      const report = lint(parsed.spec, lintCtx(set, await deps.catalog.widgetsByRef()));
       const row = await deps.repo.saveVersion({
         dashboardId: versionsPath[1],
         spec: parsed.spec,
@@ -403,29 +503,37 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
     // ---- proposals (E3.1) ------------------------------------------------
     if (method === 'POST' && path === '/api/proposals') {
       const id = String(body.id ?? '');
-      const yaml = String(body.yaml ?? '');
+      // `yaml` for a metric document, `contract` for a catalog entry — one
+      // column underneath, since both are "the payload under review".
+      const payload = String(body.yaml ?? body.contract ?? '');
       const rationale = String(body.rationale ?? '');
-      if (!/^[a-z][a-z0-9-]*$/.test(id) || !yaml || rationale.length < 20) {
+      const artifactType = (body.artifact_type ?? 'metric') as ProposalArtifact;
+      if (!['metric', 'widget', 'pattern'].includes(artifactType)) {
+        return json(400, { error: 'artifact_type must be metric, widget, or pattern' });
+      }
+      if (!/^[a-z][a-z0-9-]*$/.test(id) || !payload || rationale.length < 20) {
         return json(400, {
-          error: 'a proposal needs a slug id, the KEEL YAML, and a rationale a steward can read '
+          error: 'a proposal needs a slug id, the payload (KEEL YAML for a metric, the '
+            + 'contract JSON for a widget or pattern), and a rationale a steward can read '
             + '(at least 20 characters)',
         });
       }
       const set = await deps.contracts.current();
-      const evidence = validateProposal(yaml, set.state);
-      // The document names itself; the caller does not get to. A proposal for
-      // an unparseable document still records, so the draft can be fixed.
+      const { evidence, blockers, name } = await validateAny(artifactType, payload, deps, set);
+      // The artifact names itself; the caller does not get to. A proposal that
+      // does not even parse still records, so the draft can be fixed.
       const row = await deps.repo.saveProposal({
         id,
-        docName: evidence.docName ?? id,
-        yaml,
+        artifactType,
+        docName: name ?? id,
+        yaml: payload,
         rationale,
         evidence,
         dashboardId: typeof body.dashboard_id === 'string' ? body.dashboard_id : null,
         author,
         actor: identity,
       });
-      return json(201, { proposal: row, blockers: submitBlockers(evidence) });
+      return json(201, { proposal: row, blockers });
     }
 
     if (method === 'GET' && path === '/api/proposals') {
@@ -436,7 +544,10 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
     if (method === 'GET' && proposalPath) {
       const p = await deps.repo.proposal(proposalPath[1]);
       if (!p) return json(404, { error: `no proposal called ${proposalPath[1]}` });
-      return json(200, { proposal: p, blockers: submitBlockers(p.evidence as ProposalEvidence) });
+      const blockers = isCatalogArtifact(p.artifactType)
+        ? catalogBlockers(p.evidence as CatalogEvidence)
+        : submitBlockers(p.evidence as ProposalEvidence);
+      return json(200, { proposal: p, blockers });
     }
 
     const submitPath = /^\/api\/proposals\/([a-z][a-z0-9-]*)\/submit$/.exec(path);
@@ -444,14 +555,16 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
       const p = await deps.repo.proposal(submitPath[1]);
       if (!p) return json(404, { error: `no proposal called ${submitPath[1]}` });
       // Re-validate at submission: the workspace may have moved since drafting,
-      // and the steward must see evidence for the world as it is now.
+      // and the steward must see evidence for the world as it is now. For a
+      // catalog entry that includes the name@version still being free.
       const set = await deps.contracts.current();
-      const evidence = validateProposal(p.yaml, set.state);
+      const { evidence, blockers } = await validateAny(p.artifactType, p.yaml, deps, set);
       await deps.repo.saveProposal({
-        id: p.id, docName: p.docName, yaml: p.yaml, rationale: p.rationale,
+        id: p.id, artifactType: p.artifactType, docName: p.docName, yaml: p.yaml,
+        rationale: p.rationale,
         evidence, dashboardId: p.dashboardId, author: p.author, actor: identity,
       });
-      const row = await deps.repo.submitProposal(p.id, identity, submitBlockers(evidence));
+      const row = await deps.repo.submitProposal(p.id, identity, blockers);
       return json(200, { proposal: row });
     }
 
@@ -460,9 +573,15 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
       // The steward is a human. Same boundary as brief approval: the agent
       // proposes and validates; a named person decides.
       if (isAgent(identity)) {
+        // The design steward decides widgets and patterns, the metric steward
+        // decides metrics — the same human-only boundary either way (ADR-24).
+        const pending = await deps.repo.proposal(decidePath[1]);
+        const who = pending && isCatalogArtifact(pending.artifactType)
+          ? 'design steward review is the human half of the catalog-governance seam'
+          : 'steward review is the human half of the metric-governance seam';
         return json(403, {
-          error: 'an agent session cannot decide a proposal — steward review is the human half '
-            + 'of the metric-governance seam. Ask the steward to decide it in the studio.',
+          error: `an agent session cannot decide a proposal — ${who}. `
+            + 'Ask the steward to decide it in the studio.',
         });
       }
       const decision = body.decision === 'approve' ? 'approved' : body.decision === 'reject' ? 'rejected' : null;
@@ -473,15 +592,37 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
       const p = await deps.repo.proposal(decidePath[1]);
       if (!p) return json(404, { error: `no proposal called ${decidePath[1]}` });
 
-      let evidence = p.evidence as ProposalEvidence;
-      if (decision === 'approved') {
-        // Approval's real act: the document enters the registry, authored by
+      let evidence = p.evidence;
+      if (decision === 'approved' && isCatalogArtifact(p.artifactType)) {
+        // Approval's real act for a catalog entry: a new, append-only catalog
+        // version, authored by the steward. Re-validated first, because the
+        // catalog may have moved since submission and publishing over a name
+        // that is now taken would silently lose whichever lost the race.
+        const set = await deps.contracts.current();
+        const fresh = await validateAny(p.artifactType, p.yaml, deps, set);
+        const blockers = fresh.blockers;
+        if (blockers.length) {
+          return json(422, {
+            error: 'the contract no longer validates against the catalog as it stands now',
+            blockers,
+          });
+        }
+        const ce = fresh.evidence as CatalogEvidence;
+        const published = await deps.repo.addCatalogVersion({
+          kind: p.artifactType, name: ce.name!, version: ce.version!,
+          body: JSON.parse(p.yaml), renderable: ce.renderable,
+          source: p.id, author: identity, actor: identity,
+        });
+        evidence = { ...ce, published: { name: published.name, version: published.version } };
+      } else if (decision === 'approved') {
+        // A metric's real act: the document enters the registry, authored by
         // the steward. If that write cannot happen, neither can the approval.
+        const metricEvidence = p.evidence as ProposalEvidence;
         const revision = await registerDocument(
           p.docName, p.yaml, identity,
           `Approved metric proposal ${p.id}: ${comment}`,
         );
-        evidence = { ...evidence, registered: { name: p.docName, revision } };
+        evidence = { ...metricEvidence, registered: { name: p.docName, revision } };
       }
       const row = await deps.repo.decideProposal({
         id: p.id, decision, steward: identity, comment, evidence,

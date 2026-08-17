@@ -56,8 +56,12 @@ async def test_roster_is_governed_and_full(server: subprocess.Popen) -> None:
     async with client.session("chartroom") as session:
         tools = assert_governed(await load_mcp_tools(session))
         names = {t.name for t in tools}
-        assert len(names) == 25
-        assert {"search_metrics", "propose_metric", "get_promotion_checklist"} <= names
+        assert len(names) == 28
+        assert {
+            "search_metrics", "propose_metric", "get_promotion_checklist",
+            # Phase 10: the escape hatch rides the same governed roster.
+            "propose_widget", "propose_pattern", "list_catalog",
+        } <= names
         # The absences that ARE the design.
         assert not [n for n in names if "approve" in n or "decide" in n or n == "promote_dashboard"]
 

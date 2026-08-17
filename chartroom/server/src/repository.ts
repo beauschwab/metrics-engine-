@@ -79,8 +79,26 @@ export interface AuditRow {
 
 export type ProposalStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 
+/** What a proposal proposes. Metric documents go to the KEEL registry;
+ *  widgets and patterns go to the catalog tables (ADR-46/47). */
+export type ProposalArtifact = 'metric' | 'widget' | 'pattern';
+
+export interface CatalogRow {
+  kind: 'widget' | 'pattern';
+  name: string;
+  version: number;
+  body: unknown;
+  /** False for an approved contract with no implementation yet (ADR-47). */
+  renderable: boolean;
+  /** `code` for the seeded catalog, else the proposal id that created it. */
+  source: string;
+  author: string;
+  createdAt: string;
+}
+
 export interface ProposalRow {
   id: string;
+  artifactType: ProposalArtifact;
   docName: string;
   yaml: string;
   rationale: string;
@@ -351,6 +369,7 @@ export class ChartroomRepository {
   async saveProposal(input: {
     id: string; docName: string; yaml: string; rationale: string;
     evidence: unknown; dashboardId: string | null; author: string; actor: string;
+    artifactType?: ProposalArtifact;
   }): Promise<ProposalRow> {
     const existing = await this.proposal(input.id);
     const at = now();
@@ -369,7 +388,8 @@ export class ChartroomRepository {
     } else {
       await this.db.transaction(async () => {
         await this.db.run(S.insertProposal, [
-          input.id, input.docName, input.yaml, input.rationale, 'draft',
+          input.id, input.artifactType ?? 'metric', input.docName, input.yaml,
+          input.rationale, 'draft',
           JSON.stringify(input.evidence), input.author, input.dashboardId, at, at,
         ]);
         await this.audit(input.actor, 'proposal.create', 'proposal', input.id, input.yaml);
@@ -428,6 +448,68 @@ export class ChartroomRepository {
     const rows = await this.db.all<Record<string, unknown>>(S.proposals);
     const all = rows.map(mapProposal);
     return status ? all.filter((p) => p.status === status) : all;
+  }
+
+  // ---- catalogs as data (E10.1) ------------------------------------------
+
+  /**
+   * Seed catalog entries that are not there yet, from the code constants.
+   *
+   * Idempotent and additive: an entry already in the table is left exactly as
+   * it is, because the table is the source of truth once seeded and a boot
+   * must never quietly rewrite a reviewed contract. New code entries (a widget
+   * shipped in a later phase) appear on the next boot.
+   */
+  async seedCatalog(
+    entries: Array<{ kind: 'widget' | 'pattern'; name: string; version: number; body: unknown }>,
+  ): Promise<string[]> {
+    const added: string[] = [];
+    for (const e of entries) {
+      const existing = await this.db.all(S.catalogEntry, [e.kind, e.name, e.version]);
+      if (existing.length) continue;
+      await this.db.run(S.insertCatalog, [
+        e.kind, e.name, e.version, JSON.stringify(e.body),
+        1, 'code', 'seed', now(),
+      ]);
+      added.push(`${e.kind}:${e.name}@${e.version}`);
+    }
+    return added;
+  }
+
+  async catalog(kind: 'widget' | 'pattern'): Promise<CatalogRow[]> {
+    const rows = await this.db.all<Record<string, unknown>>(S.catalogByKind, [kind]);
+    return rows.map(mapCatalog);
+  }
+
+  async catalogEntry(
+    kind: 'widget' | 'pattern', name: string, version: number,
+  ): Promise<CatalogRow | null> {
+    const rows = await this.db.all<Record<string, unknown>>(S.catalogEntry, [kind, name, version]);
+    return rows.length ? mapCatalog(rows[0]) : null;
+  }
+
+  /** The next free version for a catalog name — 1 when nothing exists yet. */
+  async nextCatalogVersion(kind: 'widget' | 'pattern', name: string): Promise<number> {
+    const rows = await this.db.all<{ v: number | null }>(S.maxCatalogVersion, [kind, name]);
+    return (rows[0]?.v ?? 0) + 1;
+  }
+
+  /** Approval's real act for a widget or pattern: a new catalog version. */
+  async addCatalogVersion(input: {
+    kind: 'widget' | 'pattern'; name: string; version: number; body: unknown;
+    renderable: boolean; source: string; author: string; actor: string;
+  }): Promise<CatalogRow> {
+    await this.db.transaction(async () => {
+      await this.db.run(S.insertCatalog, [
+        input.kind, input.name, input.version, JSON.stringify(input.body),
+        input.renderable ? 1 : 0, input.source, input.author, now(),
+      ]);
+      await this.audit(
+        input.actor, `catalog.${input.kind}.publish`, 'catalog',
+        `${input.name}@${input.version}`, input.source,
+      );
+    });
+    return (await this.catalogEntry(input.kind, input.name, input.version))!;
   }
 
   // ---- approvals & promotion ---------------------------------------------
@@ -614,9 +696,25 @@ function mapDashboard(r: Record<string, unknown>): DashboardRow {
   };
 }
 
+function mapCatalog(r: Record<string, unknown>): CatalogRow {
+  return {
+    kind: String(r.kind) as 'widget' | 'pattern',
+    name: String(r.name),
+    version: Number(r.version),
+    body: JSON.parse(String(r.body)),
+    // SQLite stores the flag as 0/1, SQL Server as a BIT that comes back
+    // boolean — Number() normalises both without trusting either driver.
+    renderable: Number(r.renderable) === 1,
+    source: String(r.source),
+    author: String(r.author),
+    createdAt: String(r.created_at),
+  };
+}
+
 function mapProposal(r: Record<string, unknown>): ProposalRow {
   return {
     id: String(r.id),
+    artifactType: (String(r.artifact_type ?? 'metric') as ProposalArtifact),
     docName: String(r.doc_name),
     yaml: String(r.yaml),
     rationale: String(r.rationale),

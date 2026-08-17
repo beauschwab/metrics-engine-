@@ -624,3 +624,60 @@ the population's — which is WF-01's warning, not the renderer's job. A
 renderer can refuse to draw a lie; it cannot detect one that is arithmetically
 consistent. This is the working agreement's graduation path read in reverse:
 a check belongs in the linter only when the contract alone decides it.
+
+## Phase 10 ADRs
+
+## ADR-46 — the catalogs are versioned data, seeded from code
+
+**Decision:** widget contracts and patterns move out of code constants into
+`chartroom_catalog`, append-only on `(kind, name, version)`, seeded from the
+shipped constants on every boot. The seed is *additive only*: an entry already
+in the table is never rewritten. That asymmetry is the whole point — once a
+contract is in the catalog it has been reviewed, and a deploy silently
+changing it would make the table's history a lie. A widget that ships in a
+later phase appears on the next boot; a *changed* one needs a proposal, same
+as anybody else's.
+
+The routes did not change, which was the epic's real test: `/api/widgets` and
+`/api/patterns` serve the same shapes from a different source. What did change
+is that the linter now reads its widget contracts from the table (through a
+short-TTL cache, like the contract cache), so an approved widget resolves and
+REF-01 stops blocking a dashboard that binds it — without a restart.
+
+Adding the column this needed exposed a gap: `CREATE TABLE IF NOT EXISTS`
+silently skips an existing table, so a column added later never reaches a
+deployed database. The dialect grew an `alters()` list — additive column adds,
+replayed every boot and *expected* to fail once present, since SQLite has no
+`ADD COLUMN IF NOT EXISTS` — which `migrate` runs tolerantly. Only additive:
+nothing there may drop or rewrite.
+
+## ADR-47 — a widget proposal is contract-first, and says so
+
+**Decision:** `chartroom_proposal` grows `artifact_type` (`metric | widget |
+pattern`), and the machinery generalizes rather than being duplicated. What
+differs is what "evidence" means. A metric is validated by *running* it —
+parse, diagnose, evaluate, compile. A catalog entry has nothing to run, so its
+evidence is structural: does it satisfy the contract schema, and does every
+reference it makes point at something real? A widget citing
+`guide_rules: [FOO-99]` claims the linter enforces a rule that does not exist,
+and a reviewer reading the contract has no way to notice — so that is a
+blocker, not a warning.
+
+Approval's real act follows the artifact: a metric enters the KEEL registry, a
+widget or pattern becomes a new catalog version. Both are re-validated at
+decision time, because the world may have moved since submission — publishing
+over a name that is now taken would silently lose whichever write lost the
+race.
+
+**A contract may be approved with no implementation.** That is the honest
+half: the design steward is approving a *contract*, and whether a renderer
+exists is a separate engineering fact. Such an entry is a real catalog member
+flagged `renderable: false`, the studio's canvas says "an approved contract
+with no renderer yet" rather than showing a broken binding, and `/api/widgets`
+reports the set so no surface has to guess. The alternative — refusing to
+approve until code lands — would put the design review behind the
+implementation it is supposed to govern.
+
+The design steward decides widgets and patterns; the metric steward decides
+metrics; both are refused to `agent:*` identities at the API, unchanged since
+ADR-24.
