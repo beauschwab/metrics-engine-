@@ -104,6 +104,53 @@ test('the steward queue: evidence, a recorded rejection, and the honest approve 
   await expect(page.getByTestId('proposal-status-e2e-approve-me')).toHaveText('submitted');
 });
 
+test('the catalog escape hatch: a widget contract is proposed, filtered, and published (E10.3)', async ({ page, request }) => {
+  const contract = JSON.stringify({
+    widget: 'e2e-sankey', version: 1, family: 'part_to_whole',
+    accepts: { categorical_dims: { min: 1, max: 2 }, supports: ['filters'] },
+    guide_rules: ['PIE-01'],
+    description: 'Flows between two dimensions, sized by an additive measure.',
+  });
+
+  const drafted = await request.post(`${API}/api/proposals`, {
+    headers: AGENT,
+    data: {
+      id: 'e2e-widget', artifact_type: 'widget', contract,
+      rationale: 'The funding-flow question recurs and no catalog widget shows flows.',
+    },
+  });
+  expect(drafted.status()).toBe(201);
+  expect((await drafted.json()).blockers).toEqual([]);
+  expect((await request.post(`${API}/api/proposals/e2e-widget/submit`, {
+    headers: AGENT, data: {},
+  })).status()).toBe(200);
+
+  await page.goto('/#/proposals');
+
+  // The queue carries three kinds now, and the filter separates them.
+  await expect(page.getByTestId('proposal-e2e-widget')).toBeVisible();
+  await expect(page.getByTestId('proposal-kind-e2e-widget')).toHaveText('widget');
+  await page.getByTestId('kind-metric').click();
+  await expect(page.getByTestId('proposal-e2e-widget')).toHaveCount(0);
+  await page.getByTestId('kind-widget').click();
+  await expect(page.getByTestId('proposal-e2e-widget')).toBeVisible();
+
+  // Contract-first, said out loud: approvable, but nothing can draw it yet.
+  await page.getByTestId('proposal-e2e-widget').getByRole('button', { name: /e2e-sankey/ }).click();
+  await expect(page.getByTestId('evidence-e2e-widget')).toBeVisible();
+  await expect(page.getByTestId('renderable-e2e-widget')).toContainText('no renderer yet');
+
+  // Approval publishes a catalog version — no registry needed, unlike a metric.
+  await page.getByTestId('decide-comment-e2e-widget').fill('reviewed against the guide; ships contract-first');
+  await page.getByTestId('approve-e2e-widget').click();
+  await expect(page.getByTestId('proposal-status-e2e-widget')).toHaveText('approved');
+
+  // And the catalog really carries it, flagged for what it is.
+  const widgets = await (await request.get(`${API}/api/widgets`)).json();
+  expect(widgets.widgets.map((w: { widget: string }) => w.widget)).toContain('e2e-sankey');
+  expect(widgets.unrenderable).toContain('e2e-sankey@1');
+});
+
 test('the promotion gate: GOV rules armed at the target status, sign-offs recorded, the button follows the gate', async ({ page, request }) => {
   // Seed: dashboard, approved brief, one saved version — the Phase-2 flow.
   await request.post(`${API}/api/dashboards`, {

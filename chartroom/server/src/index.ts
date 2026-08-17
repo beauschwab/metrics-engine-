@@ -9,14 +9,14 @@
 
 import { createServer } from 'node:http';
 import { migrate, openMssql, openSqlite, type Db } from '../../../server/db';
-import { handle, ContractCache, type ApiRequest } from './api';
+import { handle, CatalogCache, ContractCache, type ApiRequest } from './api';
 import { WarehouseExecutor } from './executor';
 import { chatFrames } from './proxy';
 import { chartroomDialect } from './dialect';
 import { fetchRegistryState } from './keel';
 import { QueryService } from './query';
 import { ChartroomRepository } from './repository';
-import { seedDogfood } from './seed';
+import { seedCatalog, seedDogfood } from './seed';
 
 const PORT = Number(process.env.CHARTROOM_PORT || 8788);
 const MAX_BODY = Number(process.env.CHARTROOM_MAX_BODY || 1_048_576);
@@ -82,11 +82,19 @@ async function main(): Promise<void> {
   const executor = backend === 'duckdb' || backend === 'dremio'
     ? new WarehouseExecutor(backend, () => state)
     : undefined;
+  const repo = new ChartroomRepository(db);
   const deps = {
-    repo: new ChartroomRepository(db),
+    repo,
     contracts: new ContractCache(),
     queries: new QueryService({ state }, executor),
+    catalog: new CatalogCache(repo),
   };
+
+  // E10.1: the catalogs live in the table now, seeded from the shipped code
+  // constants. Additive only — an entry already there is never rewritten, so
+  // a reviewed contract cannot be silently changed by a deploy.
+  const catalogued = await seedCatalog(repo);
+  if (catalogued.length) console.log(`seeded catalog entries: ${catalogued.length}`);
 
   const seeded = await seedDogfood(deps.repo, state);
   if (seeded.length) console.log(`seeded dogfood dashboards: ${seeded.join(', ')}`);

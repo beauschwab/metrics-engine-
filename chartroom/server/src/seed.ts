@@ -10,7 +10,8 @@
 
 import type { DashboardSpec } from 'chartroom-spec';
 import { lint, parseSpec, type LintContext } from 'chartroom-spec';
-import { CATALOG_BY_REF } from 'chartroom-widgets/contracts';
+import { CATALOG, CATALOG_BY_REF } from 'chartroom-widgets/contracts';
+import { PATTERNS } from 'chartroom-patterns';
 import { deriveContracts, type RegistryState } from './keel';
 import { ChartroomRepository } from './repository';
 
@@ -182,6 +183,28 @@ function varianceWalk(rev: (doc: string) => number): DashboardSpec {
     ],
     interactions: [],
   };
+}
+
+/**
+ * Seed the widget and pattern catalogs from the shipped code constants
+ * (E10.1, ADR-46).
+ *
+ * Runs on every boot and is additive only: an entry already in the table is
+ * left exactly as it is. That asymmetry is deliberate — once a contract is in
+ * the catalog it has been reviewed, and a deploy quietly rewriting it would
+ * make the table's history a lie. New code entries (a widget that ships in a
+ * later phase) appear on the next boot; changed ones need a proposal, same as
+ * anybody else's.
+ */
+export async function seedCatalog(repo: ChartroomRepository): Promise<string[]> {
+  return repo.seedCatalog([
+    ...CATALOG.map((c) => ({
+      kind: 'widget' as const, name: c.widget, version: c.version, body: c,
+    })),
+    ...PATTERNS.map((p) => ({
+      kind: 'pattern' as const, name: p.pattern, version: p.version, body: p,
+    })),
+  ]);
 }
 
 /** Seed the boards if the repository is empty. Lint runs exactly as a save would. */

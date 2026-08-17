@@ -600,3 +600,26 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .cr-annotation-asof { font-size: 10px; color: var(--cr-text-faint); margin-left: auto; }
 .cr-skeleton-inline { display: inline-block; width: 70px; height: 14px; }
 .cr-textarea { resize: vertical; font: inherit; line-height: 1.45; min-height: 72px; }
+
+/* ---- Phase 10: proposal kinds and contract-first widgets ---------------- */
+
+.cr-kind-filter { display: flex; gap: 6px; padding-bottom: 10px; }
+.cr-kind-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--cr-panel-2); color: var(--cr-text-muted);
+  border: 1px solid var(--cr-border); border-radius: 999px;
+  padding: 3px 10px; font: inherit; font-size: 11px; cursor: pointer;
+}
+.cr-kind-chip[data-active] {
+  border-color: var(--cr-accent); color: var(--cr-text);
+}
+.cr-kind-count { font-size: 10px; color: var(--cr-text-faint); }
+.cr-kind-badge { cursor: default; text-transform: lowercase; }
+
+/* An approved contract with nothing to draw it: a real catalog entry, said
+   plainly, so it never reads as a broken binding. */
+.cr-widget-pending {
+  display: flex; align-items: center; justify-content: center; height: 100%;
+  padding: 10px; text-align: center; font-size: 11.5px; line-height: 1.45;
+  color: var(--cr-warn); border: 1px dashed var(--cr-border); border-radius: 4px;
+}

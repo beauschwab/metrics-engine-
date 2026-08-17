@@ -115,8 +115,9 @@ describe('the connection', () => {
       'data_critique', 'diff_dashboard', 'get_brief', 'get_dashboard',
       'get_design_rules', 'get_metric_contract', 'get_pattern',
       'get_promotion_checklist', 'get_proposal', 'get_widget_contract',
-      'lint_spec', 'list_dashboards', 'list_patterns', 'list_proposals',
-      'list_widgets', 'preview_query', 'propose_metric', 'save_dashboard',
+      'lint_spec', 'list_catalog', 'list_dashboards', 'list_patterns',
+      'list_proposals', 'list_widgets', 'preview_query', 'propose_metric',
+      'propose_pattern', 'propose_widget', 'save_dashboard',
       'search_metrics', 'submit_proposal', 'update_brief',
     ]);
     // The maker-checker seam, stated as an absence: no tool decides, approves,

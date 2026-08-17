@@ -40,12 +40,22 @@ concentration that must stay below its ceiling, so a widget that colours a
 breach without being told is guessing, and guesses wrong half the time
 (ADR-45).
 
+Phase 10 turns the catalogs into data and generalizes the proposal machinery
+(ADRs 46–47): widget contracts and patterns live in an append-only table
+seeded from code, and `chartroom_proposal` carries `artifact_type` —
+`metric | widget | pattern`. A metric is validated by running it and approval
+writes a registry revision; a catalog entry is validated structurally (schema
+plus every reference — a cited `guide_rule` the linter cannot emit is a
+blocker) and approval publishes a catalog version. A contract with no renderer
+yet is approvable and honestly flagged unrenderable, because the design review
+should not queue behind the implementation it governs.
+
 ```
 npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance, chat proxy
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
-npm run chartroom:mcp      # stdio — the agent's 25 tools
+npm run chartroom:mcp      # stdio — the agent's 28 tools
 # python agent (chat backend): see chartroom/agent/README.md  → :8789
-npm run verify:chartroom   # typecheck ×7 + 180 TS unit tests + 27 pytest + 21 browser checks
+npm run verify:chartroom   # typecheck ×7 + 189 TS unit tests + 27 pytest + 22 browser checks
 ```
 
 Run `npm run server` (the registry, :8787) alongside for live contracts;
@@ -62,7 +72,7 @@ never impersonate a governed workspace.
 | `chartroom-patterns` | The six reviewed archetypes (limit-utilization-board, liquidity-monitor, metric-deep-dive, variance-walk, scenario-comparison, exec-summary) with slots, wireframes and when-*not*-to-use — plus the design guide's rationale for all 20 rules, tested to cover exactly the linter's roster. |
 | `chartroom-critics` | The LLM design critic: composition, hierarchy, decision-alignment against the brief. Zod-validated findings, one retry, then a WARN "critic unavailable" — the deterministic linter is the hard gate, so a model outage never blocks anyone. Evals run live with `ANTHROPIC_API_KEY`, skip loudly without. |
 | `chartroom-server` | Contracts *derived* from the registry (unit from format, dims from derived rows, governance status from the production channel), grouped queries through the engine's own `Evaluator`, versioned dashboard persistence, briefs with a human-only approval gate, metric proposals with engine-run evidence, the promotion gate matrix, exposure records, upgrade notices — and an audit trail pairing every agent action with its principal. |
-| `chartroom-mcp` | Chartroom's 25 tools over stdio, thin by contract: validate → HTTP as `agent:mcp-<session>` → shape. The server's entitlements do the governing; there is deliberately **no approve, decide, or promote tool** — the governance tools file proposals and read the gate. The MCP instructions carry the intake protocol. |
+| `chartroom-mcp` | Chartroom's 28 tools over stdio, thin by contract: validate → HTTP as `agent:mcp-<session>` → shape. The server's entitlements do the governing; there is deliberately **no approve, decide, or promote tool** — the governance tools file proposals and read the gate. The MCP instructions carry the intake protocol. |
 | `chartroom-studio` | The interpreter canvas, a contract-generated widget form, the spec source in CodeMirror, findings with one-click fixes, explicit versioned saves — the **Brief tab** (the intake slots as an approvable card), the **Govern tab** (the promotion checklist with sign-offs, the promote act, and version-pin notices), and `#/proposals`, the steward queue. `#/widgets` is the widget-states review harness. |
 
 Three enforcement layers, strongest first: the **schema** cannot express raw

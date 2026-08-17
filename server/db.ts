@@ -192,4 +192,18 @@ export async function openMssql(config: MssqlConfig, dialect: Dialect): Promise<
 /** Create the tables if they are not there. Safe to run on every boot. */
 export async function migrate(db: Db): Promise<void> {
   for (const stmt of db.dialect.schema()) await db.run(stmt);
+  // Additive column adds for already-created tables. Replayed every boot, so
+  // "already exists" is the normal outcome rather than a fault; anything else
+  // is a real migration failure and still throws.
+  for (const stmt of db.dialect.alters?.() ?? []) {
+    try {
+      await db.run(stmt);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message.toLowerCase() : String(e);
+      const alreadyThere = msg.includes('duplicate column')
+        || msg.includes('already exists')
+        || msg.includes('duplicate object');
+      if (!alreadyThere) throw e;
+    }
+  }
 }

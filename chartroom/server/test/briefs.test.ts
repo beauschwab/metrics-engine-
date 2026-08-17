@@ -8,11 +8,12 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import type { Brief, DashboardSpec } from 'chartroom-spec';
 import { migrate, openSqlite, type Db } from '../../../server/db';
-import { ContractCache, handle, type ApiDeps } from '../src/api';
+import { CatalogCache, ContractCache, handle, type ApiDeps } from '../src/api';
 import { chartroomDialect } from '../src/dialect';
 import { fetchRegistryState } from '../src/keel';
 import { QueryService } from '../src/query';
 import { ChartroomRepository } from '../src/repository';
+import { seedCatalog } from '../src/seed';
 
 let db: Db;
 let deps: ApiDeps;
@@ -27,10 +28,15 @@ beforeAll(async () => {
   const state = await fetchRegistryState();
   const rev = state.docs.find((d) => d.name === 'liquidity_pit')!.revision;
   ref = (m: string) => `keel://liquidity_pit.${m}@${rev}`;
+  const repo = new ChartroomRepository(db);
+  // The catalogs live in the table now (E10.1); without the seed the linter
+  // would have no widget contracts and REF-01 would block every fixture.
+  await seedCatalog(repo);
   deps = {
-    repo: new ChartroomRepository(db),
+    repo,
     contracts: new ContractCache(60_000),
     queries: new QueryService({ state }),
+    catalog: new CatalogCache(repo),
   };
   await handle({
     method: 'POST', path: '/api/dashboards',

@@ -12,11 +12,12 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Brief, DashboardSpec } from 'chartroom-spec';
 import { migrate, openSqlite, type Db } from '../../../server/db';
-import { ContractCache, handle, type ApiDeps } from '../src/api';
+import { CatalogCache, ContractCache, handle, type ApiDeps } from '../src/api';
 import { chartroomDialect } from '../src/dialect';
 import { fetchRegistryState } from '../src/keel';
 import { QueryService } from '../src/query';
 import { ChartroomRepository } from '../src/repository';
+import { seedCatalog } from '../src/seed';
 
 const dir = mkdtempSync(join(tmpdir(), 'chartroom-gov-'));
 const KEEL_PORT = 8600 + (process.pid % 90);
@@ -59,10 +60,15 @@ beforeAll(async () => {
   expect(state.source).toBe('registry'); // the test is meaningless offline
   const rev = state.docs.find((d) => d.name === 'liquidity_pit')!.revision;
   ref = (m: string) => `keel://liquidity_pit.${m}@${rev}`;
+  const repo = new ChartroomRepository(db);
+  // The catalogs live in the table now (E10.1); without the seed the linter
+  // would have no widget contracts and REF-01 would block every fixture.
+  await seedCatalog(repo);
   deps = {
-    repo: new ChartroomRepository(db),
+    repo,
     contracts: new ContractCache(1_000),
     queries: new QueryService({ state }),
+    catalog: new CatalogCache(repo),
   };
 }, 120_000);
 

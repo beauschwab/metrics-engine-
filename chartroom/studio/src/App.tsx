@@ -47,6 +47,7 @@ function Studio() {
   const [dashboards, setDashboards] = useState<DashboardSummary[]>([]);
   const [contracts, setContracts] = useState<ContractSummary[]>([]);
   const [widgets, setWidgets] = useState<WidgetContract[]>([]);
+  const [unrenderable, setUnrenderable] = useState<ReadonlySet<string>>(new Set());
   const [source, setSource] = useState<string>('…');
 
   const [openId, setOpenId] = useState<string | null>(null);
@@ -72,7 +73,12 @@ function Studio() {
       setContracts(r.contracts);
       setSource(r.source);
     });
-    void loadWidgets().then((r) => setWidgets(r.widgets));
+    void loadWidgets().then((r) => {
+      setWidgets(r.widgets);
+      // Approved contracts with no renderer yet — the canvas says so rather
+      // than reading as a broken binding (ADR-47).
+      setUnrenderable(new Set(r.unrenderable ?? []));
+    });
     void loadDashboards().then((r) => {
       setDashboards(r.dashboards);
       if (r.dashboards.length) open(r.dashboards[0].id);
@@ -276,6 +282,7 @@ function Studio() {
                 contracts={contractsByRef}
                 selected={selected}
                 onSelect={(id) => { setSelected(id); setTab('widget'); }}
+                unrenderable={unrenderable}
               />
             )
             : (

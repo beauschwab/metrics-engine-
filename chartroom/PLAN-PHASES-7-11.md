@@ -99,7 +99,7 @@ set.
 
 ---
 
-## Phase 10 — widget & pattern proposal machinery (the escape hatch, for real)
+## Phase 10 — widget & pattern proposal machinery (the escape hatch, for real) — SHIPPED
 
 The PRD's credibility argument: custom widgets/patterns enter through
 review, "same machinery as metrics." Metrics got the machinery in Phase 3;

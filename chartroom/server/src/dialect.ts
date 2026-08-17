@@ -19,6 +19,7 @@ const BRIEF = 'chartroom_brief';
 const PROPOSAL = 'chartroom_proposal';
 const APPROVAL = 'chartroom_approval';
 const EXPOSURE = 'chartroom_exposure';
+const CATALOG = 'chartroom_catalog';
 
 const SQLITE_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS ${DASHBOARD} (
@@ -80,7 +81,25 @@ const SQLITE_SCHEMA = [
   decision_comment TEXT,
   decided_at   TEXT,
   created_at   TEXT NOT NULL,
-  updated_at   TEXT NOT NULL
+  updated_at   TEXT NOT NULL,
+  artifact_type TEXT NOT NULL DEFAULT 'metric'
+)`,
+  // The widget and pattern catalogs, as data (ADR-46). Append-only like every
+  // other versioned thing here: approving a revised contract writes a new
+  // (kind, name, version) row, so a dashboard pinned to `bar@1` keeps reading
+  // the `bar@1` that was reviewed. `renderable` is the contract-first honesty
+  // marker — an approved contract with no implementation yet is a real catalog
+  // entry that cannot be drawn, and says so rather than failing at the frame.
+  `CREATE TABLE IF NOT EXISTS ${CATALOG} (
+  kind       TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  version    INTEGER NOT NULL,
+  body       TEXT NOT NULL,
+  renderable INTEGER NOT NULL,
+  source     TEXT NOT NULL,
+  author     TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (kind, name, version)
 )`,
   // Approvals are append-only: a later rejection does not erase an earlier
   // approval, it outdates it. The gate reads the newest row per track.
@@ -166,7 +185,20 @@ CREATE TABLE ${PROPOSAL} (
   decision_comment NVARCHAR(MAX),
   decided_at   NVARCHAR(30),
   created_at   NVARCHAR(30) NOT NULL,
-  updated_at   NVARCHAR(30) NOT NULL
+  updated_at   NVARCHAR(30) NOT NULL,
+  artifact_type NVARCHAR(20) NOT NULL CONSTRAINT df_${PROPOSAL}_artifact_type DEFAULT 'metric'
+)`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${CATALOG}')
+CREATE TABLE ${CATALOG} (
+  kind       NVARCHAR(20) NOT NULL,
+  name       NVARCHAR(120) NOT NULL,
+  version    INT NOT NULL,
+  body       NVARCHAR(MAX) NOT NULL,
+  renderable BIT NOT NULL,
+  source     NVARCHAR(200) NOT NULL,
+  author     NVARCHAR(200) NOT NULL,
+  created_at NVARCHAR(30) NOT NULL,
+  CONSTRAINT uq_${CATALOG} UNIQUE (kind, name, version)
 )`,
   `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${APPROVAL}')
 CREATE TABLE ${APPROVAL} (
@@ -233,8 +265,8 @@ export const STATEMENTS = {
     `UPDATE ${BRIEF} SET status = 'superseded' WHERE dashboard_id = ? AND status <> 'superseded'`,
 
   insertProposal:
-    `INSERT INTO ${PROPOSAL} (id, doc_name, yaml, rationale, status, evidence, author, dashboard_id, steward, decision_comment, decided_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`,
+    `INSERT INTO ${PROPOSAL} (id, artifact_type, doc_name, yaml, rationale, status, evidence, author, dashboard_id, steward, decision_comment, decided_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`,
   updateProposalDraft:
     `UPDATE ${PROPOSAL} SET yaml = ?, rationale = ?, evidence = ?, status = ?, updated_at = ?
      WHERE id = ? AND status IN ('draft', 'submitted')`,
@@ -242,11 +274,24 @@ export const STATEMENTS = {
     `UPDATE ${PROPOSAL} SET status = ?, steward = ?, decision_comment = ?, decided_at = ?, evidence = ?, updated_at = ?
      WHERE id = ? AND status = 'submitted'`,
   proposal:
-    `SELECT id, doc_name, yaml, rationale, status, evidence, author, dashboard_id, steward, decision_comment, decided_at, created_at, updated_at
+    `SELECT id, artifact_type, doc_name, yaml, rationale, status, evidence, author, dashboard_id, steward, decision_comment, decided_at, created_at, updated_at
      FROM ${PROPOSAL} WHERE id = ?`,
   proposals:
-    `SELECT id, doc_name, yaml, rationale, status, evidence, author, dashboard_id, steward, decision_comment, decided_at, created_at, updated_at
+    `SELECT id, artifact_type, doc_name, yaml, rationale, status, evidence, author, dashboard_id, steward, decision_comment, decided_at, created_at, updated_at
      FROM ${PROPOSAL} ORDER BY created_at`,
+
+  // ---- catalogs as data (E10.1) -----------------------------------------
+  insertCatalog:
+    `INSERT INTO ${CATALOG} (kind, name, version, body, renderable, source, author, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  catalogByKind:
+    `SELECT kind, name, version, body, renderable, source, author, created_at
+     FROM ${CATALOG} WHERE kind = ? ORDER BY name, version`,
+  catalogEntry:
+    `SELECT kind, name, version, body, renderable, source, author, created_at
+     FROM ${CATALOG} WHERE kind = ? AND name = ? AND version = ?`,
+  maxCatalogVersion:
+    `SELECT MAX(version) AS v FROM ${CATALOG} WHERE kind = ? AND name = ?`,
 
   insertApproval:
     `INSERT INTO ${APPROVAL} (artifact_type, artifact_id, track, approver, decision, comment, created_at)
@@ -280,10 +325,23 @@ export const STATEMENTS = {
     `SELECT status FROM ${PROPOSAL}`,
 };
 
+/**
+ * Columns added after the tables shipped (Phase 10). Replayed on every boot
+ * and expected to fail once present — `migrate` tolerates that and only that.
+ */
+const SQLITE_ALTERS = [
+  `ALTER TABLE ${PROPOSAL} ADD COLUMN artifact_type TEXT NOT NULL DEFAULT 'metric'`,
+];
+
+const MSSQL_ALTERS = [
+  `ALTER TABLE ${PROPOSAL} ADD artifact_type NVARCHAR(20) NOT NULL CONSTRAINT df_${PROPOSAL}_artifact_type_add DEFAULT 'metric'`,
+];
+
 export function chartroomDialect(name: DialectName): Dialect {
   return {
     name,
     schema: () => (name === 'mssql' ? MSSQL_SCHEMA.slice() : SQLITE_SCHEMA.slice()),
+    alters: () => (name === 'mssql' ? MSSQL_ALTERS.slice() : SQLITE_ALTERS.slice()),
     // The registry's own marker rewriter — string-literal-aware, tested there.
     bind: name === 'mssql' ? (sql) => toNamedParameters(sql) : (sql) => sql,
   };

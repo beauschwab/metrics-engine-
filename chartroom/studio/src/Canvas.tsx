@@ -37,10 +37,13 @@ interface FrameProps {
   pickDim: string | null;
   picked: CrossFilter | null;
   onPick(key: Record<string, string>): void;
+  /** Type refs the catalog carries but nothing can draw yet (ADR-47). */
+  unrenderable: ReadonlySet<string>;
 }
 
 function Frame({
   w, spec, contracts, selected, onSelect, extraFilters, pickDim, picked, onPick,
+  unrenderable,
 }: FrameProps) {
   const { data, status, error } = useWidgetData(w, spec, contracts, extraFilters);
   const Component = COMPONENTS[w.type];
@@ -89,7 +92,17 @@ function Frame({
               picked={picked && picked.source === w.id ? { [picked.dim]: picked.value } : null}
             />
           )
-          : <div className="cr-widget-error">{w.type} is not in the catalog</div>}
+          : unrenderable.has(w.type)
+            ? (
+              // Contract-first (ADR-47): the catalog really does carry this
+              // widget — a design steward approved the contract — but no
+              // implementation has landed, so the frame says which of the two
+              // is missing rather than reading as a broken binding.
+              <div className="cr-widget-pending" data-testid={`pending-${w.id}`}>
+                {w.type} is an approved contract with no renderer yet
+              </div>
+            )
+            : <div className="cr-widget-error">{w.type} is not in the catalog</div>}
       </div>
     </section>
   );
@@ -100,9 +113,13 @@ interface CanvasProps {
   contracts: Map<string, ContractSummary>;
   selected: string | null;
   onSelect(id: string): void;
+  /** From /api/widgets — approved contracts with no renderer yet (ADR-47). */
+  unrenderable?: ReadonlySet<string>;
 }
 
-export function Canvas({ spec, contracts, selected, onSelect }: CanvasProps) {
+export function Canvas({
+  spec, contracts, selected, onSelect, unrenderable = new Set<string>(),
+}: CanvasProps) {
   const [cross, setCross] = useState<CrossFilter | null>(null);
   // A filter belongs to the dashboard it was clicked on.
   useEffect(() => setCross(null), [spec.dashboard.id]);
@@ -177,6 +194,7 @@ export function Canvas({ spec, contracts, selected, onSelect }: CanvasProps) {
             pickDim={sourceDim(w.id)}
             picked={cross}
             onPick={pickFor(w)}
+            unrenderable={unrenderable}
           />
         ))}
       </div>
