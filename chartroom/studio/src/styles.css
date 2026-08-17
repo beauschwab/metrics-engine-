@@ -379,3 +379,30 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .cr-bars[data-pickable] .cr-bar-row:hover .cr-bar-label { color: var(--cr-accent); }
 .cr-bar-row[data-picked] .cr-bar-label { color: var(--cr-accent); font-weight: 700; }
 .cr-bar-row[data-picked] .cr-bar-fill { outline: 1px solid var(--cr-accent); }
+
+/* ---- view mode (Phase 5) ---------------------------------------------- */
+
+.cr-view { display: flex; flex-direction: column; height: 100vh; }
+.cr-view-body { flex: 1; overflow: auto; position: relative; }
+.cr-view-body .cr-canvas-wrap { height: 100%; }
+.cr-view-version { font-size: 11px; color: var(--cr-text-faint); }
+
+@media print {
+  .cr-noprint, .cr-crossfilter-bar { display: none !important; }
+  .cr-view { height: auto; }
+  .cr-view-body { overflow: visible; }
+  .cr-app, .cr-frame, .cr-header { background: #fff !important; color: #111 !important; }
+  .cr-frame { border-color: #ccc !important; break-inside: avoid; }
+}
+
+/* ---- data critic panel (Phase 5) --------------------------------------- */
+
+.cr-findings-pane { display: flex; flex-direction: column; overflow-y: auto; }
+.cr-findings-pane .cr-pane-empty { flex: none; }
+.cr-datacritic { padding: 12px 14px; border-top: 1px solid var(--cr-border); }
+.cr-datacritic-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.cr-finding-evidence {
+  font-family: var(--cr-mono); font-size: 10px; line-height: 1.4;
+  background: var(--cr-panel-2); border: 1px solid var(--cr-border);
+  padding: 6px 8px; border-radius: 2px; overflow-x: auto; margin: 6px 0 0;
+}

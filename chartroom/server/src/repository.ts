@@ -516,6 +516,72 @@ export class ChartroomRepository {
     });
   }
 
+  // ---- pilot instrumentation (E2.5) --------------------------------------
+
+  /**
+   * A studio-reported fact, recorded as an audit row (ADR-32): the audit log
+   * is already the append-only, actor-stamped event stream — a second events
+   * table would be the same thing with a different name.
+   */
+  async event(input: {
+    actor: string; kind: 'fix.apply' | 'view.open'; artifactType: string; artifactId: string;
+  }): Promise<void> {
+    await this.audit(input.actor, input.kind, input.artifactType, input.artifactId, input.kind);
+  }
+
+  /** The spec's pilot metrics, derived — never stored, so never stale. */
+  async pilotMetrics(): Promise<{
+    briefs: { filed: number; approved: number; acceptanceRate: number | null; medianMinutesToApproval: number | null };
+    edits: { dashboards: number; versions: number; versionsPerDashboard: number | null };
+    fixes: { applied: number; byRule: Record<string, number> };
+    dashboardsByStatus: Record<string, number>;
+    proposalsByStatus: Record<string, number>;
+  }> {
+    const briefs = await this.db.all<{ status: string; created_at: string; approved_at: string | null }>(
+      S.briefStats,
+    );
+    const approvedWaits = briefs
+      .filter((b) => b.approved_at)
+      .map((b) => (Date.parse(b.approved_at!) - Date.parse(b.created_at)) / 60_000)
+      .sort((a, b) => a - b);
+    const approved = briefs.filter((b) => b.status === 'approved' || b.approved_at).length;
+
+    const counts = await this.db.all<{ dashboard_id: string; versions: number }>(S.versionCounts);
+    const versions = counts.reduce((a, c) => a + Number(c.versions), 0);
+
+    const fixRows = await this.db.all<{ artifact_id: string }>(S.actionRows, ['fix.apply']);
+    const byRule: Record<string, number> = {};
+    for (const r of fixRows) byRule[r.artifact_id] = (byRule[r.artifact_id] ?? 0) + 1;
+
+    const dashboards = await this.dashboards();
+    const dashboardsByStatus: Record<string, number> = {};
+    for (const d of dashboards) {
+      dashboardsByStatus[d.status] = (dashboardsByStatus[d.status] ?? 0) + 1;
+    }
+    const proposals = await this.db.all<{ status: string }>(S.proposalStatuses);
+    const proposalsByStatus: Record<string, number> = {};
+    for (const p of proposals) proposalsByStatus[p.status] = (proposalsByStatus[p.status] ?? 0) + 1;
+
+    return {
+      briefs: {
+        filed: briefs.length,
+        approved,
+        acceptanceRate: briefs.length ? approved / briefs.length : null,
+        medianMinutesToApproval: approvedWaits.length
+          ? approvedWaits[Math.floor(approvedWaits.length / 2)]
+          : null,
+      },
+      edits: {
+        dashboards: counts.length,
+        versions,
+        versionsPerDashboard: counts.length ? versions / counts.length : null,
+      },
+      fixes: { applied: fixRows.length, byRule },
+      dashboardsByStatus,
+      proposalsByStatus,
+    };
+  }
+
   async exposures(dashboardId: string): Promise<ExposureRow[]> {
     const rows = await this.db.all<Record<string, unknown>>(S.exposuresOf, [dashboardId]);
     return rows.map((r) => ({

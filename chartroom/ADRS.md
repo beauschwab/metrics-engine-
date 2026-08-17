@@ -381,3 +381,46 @@ catalog growth: the PRD says growth comes *from real usage*; inventing
 patterns ahead of pilot evidence would dilute the catalog's authority. Each
 returns when its forcing function (an intraday backend, a Slack pilot,
 recurring real briefs) arrives.
+
+## Phase 5 ADRs
+
+## ADR-31 — view mode is a pure read, and browser print is the PDF export
+
+**Pinned:** "View mode is a pure read of the spec — shareable via URL …
+exportable to PDF/PPTX" (PRD).
+**Decision:** `#/view/<id>` renders the latest *saved* version through the
+same interpreter Canvas the studio uses — no sidebar, no inspector, no save.
+A reader always sees what review saw, never a draft in progress (a dashboard
+with no versions says so rather than rendering one). Cross-filtering still
+works because it is a declared view interaction, not an edit. PDF is the
+browser's print over a print stylesheet, not a third renderer: the deck
+(ADR-29) covers the committee-pack case, and a second server-side PDF
+pipeline would be a second thing to keep from diverging.
+
+## ADR-32 — the audit log is the event stream; pilot metrics are derived
+
+**Pinned:** E2.5 — "instrument brief-acceptance rate, edits-per-dashboard,
+lint-fix acceptance."
+**Decision:** no separate analytics table and no stored aggregates. Facts the
+server already witnesses (briefs, approvals, versions) are read straight from
+their tables; the one fact only the client sees — a lint fix actually applied
+— is reported to `POST /api/events` and recorded as an ordinary audit row
+(action `fix.apply`, artifact the rule id), because the audit log already is
+the append-only, actor-stamped event stream. `GET /api/metrics` derives
+everything on read: acceptance rate and median time-to-approval, versions per
+dashboard, fix applications by rule, dashboards and proposals by status.
+Derived beats stored for the same reason contracts are derived (ADR-12):
+there is no second copy to fall out of date. Events require an identity —
+anonymous rows would make acceptance unattributable — and event reporting
+never blocks an edit.
+
+## ADR-33 — the data critic is a button, not a keystroke
+
+**Decision:** in the studio the data critic runs on demand from the Findings
+tab, unlike the linter's 250ms debounce. The linter is pure computation over
+the spec; the data critic runs every query leg of the dashboard, and wiring
+that to keystrokes would make editing cost a full query sweep per pause. The
+findings render with their computed evidence inline, and the clean state is
+worded as the critic's actual verdict ("grouped sums reconcile, one as-of
+everywhere, everything finite") — a reader should know what was checked, not
+just that nothing was found.

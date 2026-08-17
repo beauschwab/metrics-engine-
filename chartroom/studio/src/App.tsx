@@ -20,6 +20,7 @@ import { Canvas } from './Canvas';
 import { Inspector, type Tab } from './Inspector';
 import { Harness } from './Harness';
 import { ProposalsPage } from './ProposalsPage';
+import { ViewPage } from './ViewPage';
 
 type SaveState =
   | { kind: 'clean'; version: number }
@@ -36,6 +37,8 @@ export function App() {
   }, []);
   if (route === '#/widgets') return <Harness />;
   if (route === '#/proposals') return <ProposalsPage />;
+  const view = /^#\/view\/([a-z][a-z0-9-]*)$/.exec(route);
+  if (view) return <ViewPage id={view[1]} />;
   return <Studio />;
 }
 
@@ -164,14 +167,24 @@ function Studio() {
         )}
         <span className="cr-header-spacer" />
         {openId && save.kind === 'clean' && save.version > 0 && (
-          <a
-            className="cr-header-link"
-            href={`/api/dashboards/${openId}/deck.pptx`}
-            data-testid="export-deck"
-            title="The committee pack: the saved version's numbers, as native PPTX charts"
-          >
-            deck ↓
-          </a>
+          <>
+            <a
+              className="cr-header-link"
+              href={`#/view/${openId}`}
+              data-testid="open-view"
+              title="The shareable read-only view of the latest saved version"
+            >
+              view
+            </a>
+            <a
+              className="cr-header-link"
+              href={`/api/dashboards/${openId}/deck.pptx`}
+              data-testid="export-deck"
+              title="The committee pack: the saved version's numbers, as native PPTX charts"
+            >
+              deck ↓
+            </a>
+          </>
         )}
         <a className="cr-header-link" href="#/proposals" data-testid="nav-proposals">proposals</a>
         <span className="cr-registry-source" data-source={source} title={
