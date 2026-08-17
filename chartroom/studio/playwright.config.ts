@@ -35,7 +35,9 @@ export default defineConfig({
 
   webServer: [
     {
-      command: `CHARTROOM_SQLITE_FILE=${DB} KEEL_API=http://127.0.0.1:9 npx tsx ../server/src/index.ts`,
+      // ANTHROPIC_API_KEY is blanked so the chat's no-model degrade path is
+      // what the suite exercises, whatever the host env carries.
+      command: `CHARTROOM_SQLITE_FILE=${DB} KEEL_API=http://127.0.0.1:9 ANTHROPIC_API_KEY= npx tsx ../server/src/index.ts`,
       url: 'http://127.0.0.1:8788/api/health',
       reuseExistingServer: false,
       timeout: 30_000,

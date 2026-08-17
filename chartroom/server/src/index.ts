@@ -10,6 +10,7 @@
 import { createServer } from 'node:http';
 import { migrate, openMssql, openSqlite, type Db } from '../../../server/db';
 import { handle, ContractCache, type ApiRequest } from './api';
+import { runChatTurn, type ChatTurnRequest } from './chat';
 import { chartroomDialect } from './dialect';
 import { fetchRegistryState } from './keel';
 import { QueryService } from './query';
@@ -112,6 +113,28 @@ async function main(): Promise<void> {
     }
 
     const url = new URL(req.url || '/', 'http://localhost');
+
+    // The embedded chat streams SSE — a transport the pure handle() contract
+    // doesn't model, so it gets its own route here (like the deck's binary).
+    if (req.method === 'POST' && url.pathname === '/api/chat') {
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+        ...cors,
+      });
+      const abort = new AbortController();
+      req.on('close', () => abort.abort());
+      await runChatTurn(
+        body as ChatTurnRequest,
+        deps,
+        (e) => res.write(`data: ${JSON.stringify(e)}\n\n`),
+        abort.signal,
+      );
+      res.end();
+      return;
+    }
+
     const request: ApiRequest = {
       method: req.method || 'GET',
       path: url.pathname,

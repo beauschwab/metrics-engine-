@@ -89,13 +89,20 @@ test.describe('the E1.4 loop: form edit → lint → fix → save → reload', (
   });
 
   test('a conflicting save is refused, not woven in', async ({ page, request }) => {
-    // Someone else saves v3 behind our back…
+    // Anchor first: the page has finished loading some version. Only then may
+    // "someone else" save past it — otherwise the page could load the bumped
+    // version and save cleanly, and the test would race itself.
+    await expect(page.getByTestId('save-state')).toContainText(/^v\d+$/);
+    const loaded = await page.getByTestId('save-state').textContent();
+
     const current = await request.get('http://127.0.0.1:8788/api/dashboards/lcr-monitor');
     const { latest } = await current.json();
-    await request.post('http://127.0.0.1:8788/api/dashboards/lcr-monitor/versions', {
+    expect(`v${latest.version}`).toBe(loaded);
+    const bumped = await request.post('http://127.0.0.1:8788/api/dashboards/lcr-monitor/versions', {
       data: { spec: latest.spec, expectedVersion: latest.version },
       headers: { 'x-identity': 'someone-else' },
     });
+    expect(bumped.ok()).toBeTruthy();
 
     // …while our page still edits the version it loaded.
     await page.getByTestId('widget-lcr-tile').click();
