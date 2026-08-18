@@ -91,9 +91,17 @@ test.beforeAll(async () => {
   });
   await waitFor(`${API}/api/health`);
 
-  start('npx', ['vite', 'preview', '--port', String(previewPort), '--strictPort'], {
-    KEEL_API: API,
-  });
+  // `--host 127.0.0.1` for the same reason the playwright configs pass it:
+  // vite previews on `localhost`, and where that resolves to `::1` first — a
+  // GitHub runner does — the server comes up on IPv6 while `APP` below is
+  // fetched over IPv4, and this hook dies on its 30s timeout with nothing to
+  // say why. The registry above needs no such flag: it listens without a host
+  // and so binds dual-stack.
+  start(
+    'npx',
+    ['vite', 'preview', '--port', String(previewPort), '--strictPort', '--host', '127.0.0.1'],
+    { KEEL_API: API },
+  );
   await waitFor(APP);
 });
 
