@@ -21,6 +21,28 @@ import { formatValue } from 'chartroom-widgets/format';
 import type { QueryResult, QueryService } from './query';
 import { legsOf } from './datacritic';
 
+/**
+ * The committee pack's palette, named from Aperture Risk.
+ *
+ * A deck prints and projects, so it inverts the system's dark-first surfaces
+ * onto white — but the *semantics* stay Aperture's: the same danger red for a
+ * skipped slide, the same neutral greys for secondary and tertiary text, the
+ * same hairline for table rules. Scattered literals (`666666`, `AA3333`) were
+ * a third palette nobody owned, drifting from both the studio and the system.
+ */
+const DECK = {
+  /** --gray-600, the system's strong border, as body-secondary on white. */
+  textSecondary: '474C54',
+  /** --gray-400, tertiary text / captions. */
+  textTertiary: '757A82',
+  /** --gray-800, near-black body text for prose. */
+  textBody: '2A2D33',
+  /** --danger-500, unchanged from the system — a refusal reads as a refusal. */
+  danger: 'F5454F',
+  /** --gray-200, the hairline that organises a table. */
+  rule: 'AFB4BC',
+} as const;
+
 export interface KpiSlide {
   type: 'kpi';
   widget: string;
@@ -193,31 +215,31 @@ export async function renderDeck(plan: DeckPlan): Promise<Buffer> {
   t.addText(plan.title.heading, { x: 0.6, y: 1.6, w: 12, h: 1, fontSize: 36, bold: true });
   t.addText(
     `${plan.title.status.toUpperCase()} · ${plan.title.audience} · ${plan.title.cadence} · as of ${plan.title.asOf}`,
-    { x: 0.6, y: 2.7, w: 12, h: 0.5, fontSize: 16, color: '666666' },
+    { x: 0.6, y: 2.7, w: 12, h: 0.5, fontSize: 16, color: DECK.textSecondary },
   );
   t.addText(
     `version ${plan.title.version} · spec ${plan.title.specHash.slice(0, 12)}`,
-    { x: 0.6, y: 6.8, w: 12, h: 0.4, fontSize: 10, color: '999999' },
+    { x: 0.6, y: 6.8, w: 12, h: 0.4, fontSize: 10, color: DECK.textTertiary },
   );
 
   for (const s of plan.slides) {
     const slide = pptx.addSlide();
     slide.addText(s.title, { x: 0.6, y: 0.4, w: 12, h: 0.6, fontSize: 22, bold: true });
     if (s.type === 'skipped') {
-      slide.addText(s.reason, { x: 0.6, y: 3, w: 12, h: 1, fontSize: 14, color: 'AA3333' });
+      slide.addText(s.reason, { x: 0.6, y: 3, w: 12, h: 1, fontSize: 14, color: DECK.danger });
       continue;
     }
-    slide.addText(`as of ${s.asOf}`, { x: 0.6, y: 7, w: 6, h: 0.3, fontSize: 10, color: '999999' });
+    slide.addText(`as of ${s.asOf}`, { x: 0.6, y: 7, w: 6, h: 0.3, fontSize: 10, color: DECK.textTertiary });
 
     if (s.type === 'kpi') {
       slide.addText(s.value, { x: 0.6, y: 2.6, w: 12, h: 1.6, fontSize: 54, bold: true });
-      slide.addText(`prior ${s.prior}`, { x: 0.6, y: 4.3, w: 12, h: 0.5, fontSize: 16, color: '666666' });
+      slide.addText(`prior ${s.prior}`, { x: 0.6, y: 4.3, w: 12, h: 0.5, fontSize: 16, color: DECK.textSecondary });
     } else if (s.type === 'note') {
       if (s.value) {
         slide.addText(s.value, { x: 0.6, y: 1.3, w: 12, h: 1, fontSize: 32, bold: true });
       }
       slide.addText(s.note, {
-        x: 0.6, y: s.value ? 2.5 : 1.3, w: 12, h: 4, fontSize: 16, color: '333333', valign: 'top',
+        x: 0.6, y: s.value ? 2.5 : 1.3, w: 12, h: 4, fontSize: 16, color: DECK.textBody, valign: 'top',
       });
     } else if (s.type === 'line' || s.type === 'bar') {
       slide.addChart(s.type === 'line' ? 'line' : 'bar', s.series.map((line) => ({
@@ -229,7 +251,7 @@ export async function renderDeck(plan: DeckPlan): Promise<Buffer> {
           s.headers.map((h) => ({ text: h, options: { bold: true } })),
           ...s.rows.map((row) => row.map((cell) => ({ text: cell }))),
         ],
-        { x: 0.6, y: 1.2, w: 12, fontSize: 11, border: { type: 'solid', color: 'DDDDDD', pt: 0.5 } },
+        { x: 0.6, y: 1.2, w: 12, fontSize: 11, border: { type: 'solid', color: DECK.rule, pt: 0.5 } },
       );
     }
   }

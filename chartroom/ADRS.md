@@ -681,3 +681,55 @@ implementation it is supposed to govern.
 The design steward decides widgets and patterns; the metric steward decides
 metrics; both are refused to `agent:*` identities at the API, unchanged since
 ADR-24.
+
+## ADR-48 — Chartroom renders on Aperture Risk, by reference not by copy
+
+**Decision:** the studio imports the vendored Aperture Risk token files
+directly (`src/styles/aperture/tokens/*`), and every `--cr-*` name is an
+*alias* onto an Aperture semantic token rather than a value of its own.
+
+The stylesheet already claimed this. Its header read "the Aperture Risk
+system's tokens, `--cr-*` scoped" while carrying hand-copied hexes that had
+wandered off the system: `--cr-panel` at `#171a20` against Aperture's
+`#22252A` surface, borders three steps too dark, gains at `#4cc38a` against a
+system that specifies `#2ED389`. Nothing was wrong on screen — it simply was
+not the design system it said it was. That is the same failure this product
+exists to prevent, one layer over: a copy that keeps a provenance claim it no
+longer earns. Aliasing makes the claim structural, the way binding a widget
+to a registry ref makes a number's provenance structural.
+
+Alignment beyond colour, since a design system is not a palette:
+
+- **Inter, self-hosted.** The studio pulled Inter from the Google Fonts CDN
+  while the root app self-hosts it with a written rationale — a webfont that
+  arrives over the network is one that sometimes does not, and behind a proxy
+  or offline every numeric column reflows out of tabular alignment. The studio
+  now serves the same woff2 files.
+- **Inter exclusively.** `--cr-mono` was an `SF Mono` stack; Aperture aligns
+  columns with Inter's tabular figures rather than by swapping typeface, so it
+  now resolves to `--font-mono` (Inter) and the tabular feature settings are
+  global.
+- **Crisp radii.** 4/6/8px corners became the system's 1–2px scale. Aperture
+  is explicit that this is an instrument, not a toy.
+- **A visible focus ring.** The sheet removed the UA outline and replaced it
+  with a border tint on inputs only, leaving every button silent to keyboard
+  focus. Aperture's 3px yellow ring now applies to anything focusable.
+- **Viz order.** Series run Aperture's `viz-1 → viz-2 → viz-3`
+  (yellow → sky → violet); semantic red and amber stay out of the series
+  palette, which is COL-03's chromatic half and the reason a breach still
+  reads as a breach.
+- **The deck too.** The PPTX export carried a third palette of scattered
+  literals (`666666`, `AA3333`) that belonged to neither the studio nor the
+  system. It now names its greys from Aperture's ramp. A deck inverts onto
+  white because it prints — the surfaces flip, the semantics do not.
+
+**Two deliberate departures, both for contrast.** Aperture's `--text-tertiary`
+(#757A82) reaches 3.2:1 on `--surface-2`, and this surface uses tertiary text
+for 10–11px axis ticks and hints where WCAG allows no large-text exemption; the
+text ramp therefore steps up one, to `--gray-200` for muted and `--gray-300`
+for faint, both of which clear 4.5:1 everywhere they land. Breach *text* takes
+`--danger-500` mixed 75% toward `--gray-0`, because the raw danger red reaches
+only 4.28:1 on a panel; fills, borders and marks keep the token unchanged.
+Both stay inside Aperture's own scale — a different step on the ramp, not a
+colour invented beside it — and the root app made the same call for the same
+reason.

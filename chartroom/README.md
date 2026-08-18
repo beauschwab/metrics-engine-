@@ -50,6 +50,16 @@ blocker) and approval publishes a catalog version. A contract with no renderer
 yet is approvable and honestly flagged unrenderable, because the design review
 should not queue behind the implementation it governs.
 
+The studio renders on the **Aperture Risk** design system (ADR-48): the
+vendored token files are imported directly and every `--cr-*` name is an alias
+onto an Aperture semantic token, so the palette has one source of truth. Inter
+is self-hosted for the same reason the root app self-hosts it — tabular
+figures are what make a numeric column scannable, and a CDN webfont that fails
+silently takes them with it. Two contrast departures are documented in the
+ADR: the text ramp steps up one because Aperture's tertiary grey misses AA at
+11px, and breach text is the danger red lightened toward the system's
+lightest grey.
+
 ```
 npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance, chat proxy
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
