@@ -63,7 +63,13 @@ beforeAll(async () => {
   const rows = TABLES.nominal[SOURCE][AS_OF];
   writeFileSync(join(dir, 'seed.sql'), `${seedStatements(SOURCE, rows).join(';\n')};`);
 
-  stub = spawn('python3', ['server/query/flight_sql_stub.py', '0', join(dir, 'seed.sql')], {
+  // Resolved against this module, not the working directory — the same way
+  // `query.ts` reaches `dremio.py`. A cwd-relative path here said
+  // `server/query/...` and survived the move to `packages/registry` only
+  // because nothing local runs it: this suite skips itself without
+  // pyarrow.flight, so it is green everywhere except CI, which installs
+  // requirements.txt precisely so it runs.
+  stub = spawn('python3', [new URL('query/flight_sql_stub.py', import.meta.url).pathname, '0', join(dir, 'seed.sql')], {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const port = await new Promise<string>((resolve, reject) => {
