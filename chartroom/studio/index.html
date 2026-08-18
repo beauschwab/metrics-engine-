@@ -4,12 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1600" />
     <title>Chartroom</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Inter is self-hosted (see styles.css). Aperture leans on Inter's
+         tabular figures for every numeric column here, and a webfont that
+         arrives over the network is one that sometimes does not: behind a
+         proxy or offline the import fails silently and every number reflows
+         into whatever proportional stack the OS supplies. -->
+    <link rel="preload" as="font" type="font/woff2"
+      href="/fonts/inter-latin.woff2" crossorigin />
   </head>
   <body>
     <div id="root"></div>
