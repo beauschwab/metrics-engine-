@@ -82,6 +82,30 @@ describe('package boundaries', () => {
     }
   });
 
+  it('stylesheets name the design system too, rather than climbing to it', () => {
+    // The scan above reads `import`/`export`, so it cannot see `@import` in a
+    // stylesheet. `studio/src/styles.css` reached Aperture's tokens at
+    // `../../../src/styles/aperture/...` — precisely the copy-that-claims-
+    // provenance its own header warns about. They are `keel-design-system`.
+    const SKIP = new Set(['node_modules', 'dist', 'test-results', 'playwright-report']);
+    const sheets = (dir: string): string[] => {
+      const out: string[] = [];
+      for (const name of readdirSync(dir)) {
+        if (SKIP.has(name)) continue;
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) out.push(...sheets(p));
+        else if (name.endsWith('.css')) out.push(p);
+      }
+      return out;
+    };
+    const bad = sheets(ROOT).flatMap((f) =>
+      [...readFileSync(f, 'utf8').matchAll(/@import\s+['"]([^'"]+)['"]/g)]
+        .map((m) => m[1])
+        .filter((spec) => /^\.\.\/\.\.\/\.\./.test(spec))
+        .map((spec) => `${f.replace(ROOT, 'chartroom')} imports ${spec}`));
+    expect(bad).toEqual([]);
+  });
+
   it('widgets never fetch — presentation only', () => {
     const hits = sources(join(ROOT, 'widgets', 'src')).filter((f) =>
       /\bfetch\s*\(|XMLHttpRequest|WebSocket/.test(readFileSync(f, 'utf8')));

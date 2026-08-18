@@ -5,6 +5,7 @@
   "type": "module",
   "workspaces": [
     "src/engine",
+    "src/styles/aperture",
     "server",
     "chartroom/spec",
     "chartroom/patterns",

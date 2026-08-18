@@ -1,0 +1,12 @@
+{
+  "name": "keel-design-system",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The Aperture Risk token files, as both apps consume them: fonts, colours, typography, spacing, radii.",
+  "//": "A package for the same reason keel-engine is one (ADR-49): chartroom-studio consumes these across a workspace boundary. It reached them at '../../../src/styles/aperture/tokens/*.css', which is the provenance claim this stylesheet's own header warns about — a copy-by-path that nothing enforces. Only the token files and the sheet are exported; there is no bare entry point, because there is no single stylesheet that means 'the design system'.",
+  "exports": {
+    "./tokens/*": "./tokens/*",
+    "./styles.css": "./styles.css"
+  }
+}

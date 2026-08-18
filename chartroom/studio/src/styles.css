@@ -17,11 +17,11 @@
  * change here reaches every renderer without touching one.
  */
 
-@import '../../../src/styles/aperture/tokens/fonts.css';
-@import '../../../src/styles/aperture/tokens/colors.css';
-@import '../../../src/styles/aperture/tokens/typography.css';
-@import '../../../src/styles/aperture/tokens/spacing.css';
-@import '../../../src/styles/aperture/tokens/radii.css';
+@import 'keel-design-system/tokens/fonts.css';
+@import 'keel-design-system/tokens/colors.css';
+@import 'keel-design-system/tokens/typography.css';
+@import 'keel-design-system/tokens/spacing.css';
+@import 'keel-design-system/tokens/radii.css';
 
 :root {
   /* ---- surfaces: Aperture's layered near-blacks ---- */
