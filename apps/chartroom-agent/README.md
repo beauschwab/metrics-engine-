@@ -6,12 +6,17 @@ governed tools every other agent surface sees, under an `agent:lg-<session>`
 identity the server refuses at every approval route.
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
+uv sync                    # or, from the repo root: npm run setup:agent
 
 ANTHROPIC_API_KEY=… CHARTROOM_MCP_USER=you \
-  .venv/bin/uvicorn chartroom_agent.app:app --port 8789
+  uv run uvicorn chartroom_agent.app:app --port 8789
 ```
+
+uv-managed (ADR-51). `uv.lock` beside `pyproject.toml` pins the whole resolved
+graph, and the dev tooling is a PEP 735 dependency group, so `uv run pytest`
+and `uv run ruff` work with no extra flag and no venv to remember to build —
+`uv run` creates it from the lock on demand. The gate is
+`npm run verify --workspace=chartroom-agent`.
 
 chartroom-server proxies `/api/chat` here (set `CHARTROOM_AGENT_URL` to move
 it); the studio pane is unchanged. Without a key — or with this service down —
@@ -36,7 +41,7 @@ MCP session — the chat loop and the query path share a process, not a fate.
 The fixture path is the oracle: `tests/test_warehouse_parity.py` runs every
 query shape against both engines and requires 1e-6 relative agreement.
 Dremio rides the same compiler over Flight SQL with a PAT (`DREMIO_URL` +
-`DREMIO_PAT`, plus `pip install pyarrow`); its smoke test is env-gated and
+`DREMIO_PAT`; pyarrow comes from the root `uv sync`). Its smoke test is env-gated and
 skips loudly in CI.
 
 Verify: `npm run verify:agent` from the repo root (ruff + mypy + pytest; the

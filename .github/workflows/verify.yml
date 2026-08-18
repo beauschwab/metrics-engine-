@@ -32,6 +32,10 @@ env:
   # The suites are noisy about a TTY they do not have.
   CI: 'true'
   TURBO_TELEMETRY_DISABLED: '1'
+  # uv's default is 30s per download, which the Python side overruns on a slow
+  # link — polars-runtime and pyarrow alone are ~100MB. A timeout here reads as
+  # a dependency that cannot be resolved rather than as a slow network.
+  UV_HTTP_TIMEOUT: '180'
 
 jobs:
   typecheck:
@@ -58,15 +62,20 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.11'
-          cache: pip
+          enable-cache: true
       - run: npm ci
-      # Pinned exactly. `flightsql-dbapi` pins `sqlalchemy<2` and installing it
-      # once silently broke PyIceberg's catalogue here — a failure that
-      # presented as an Iceberg conformance bug with nothing to do with Iceberg.
-      - run: pip install -r requirements.txt
+      # From uv.lock, exactly — `--frozen` fails rather than re-resolving, so a
+      # lockfile nobody regenerated is an error here instead of a drift nobody
+      # sees. The pins matter: `flightsql-dbapi` pins `sqlalchemy<2` and
+      # installing it once silently broke PyIceberg's catalogue, presenting as
+      # an Iceberg conformance bug with nothing to do with Iceberg.
+      - run: uv sync --frozen
+      # The conformance and Flight SQL suites shell out to a bare `python3`, so
+      # the synced environment has to *be* that python3 for them to run rather
+      # than skip themselves into a green tick that means nothing.
+      - run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - uses: actions/cache@v4
         with:
           path: .turbo
@@ -130,17 +139,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.11'
-          cache: pip
+          enable-cache: true
       # Node, not just Python. `test_governed_live` drives the real
       # `chartroom-mcp` server over stdio and `test_warehouse_parity` boots a
       # real `chartroom-api` — both are TypeScript run through tsx, so without
       # `node_modules` they die on `@modelcontextprotocol/sdk` and the parity
       # suite reports a port that never opened.
       - run: npm ci
-      # The venv was a manual prerequisite, which is why this gate had never run
-      # anywhere but on a machine somebody had set up by hand.
-      - run: npm run setup:agent
+      # No setup step: the gate is `uv run`, which builds the environment from
+      # `apps/chartroom-agent/uv.lock` on demand. The venv used to be a manual
+      # prerequisite, which is why this gate had never run anywhere but on a
+      # machine somebody had configured by hand.
       - run: npx turbo run verify

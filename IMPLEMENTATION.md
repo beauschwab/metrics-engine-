@@ -5,10 +5,10 @@ React + TypeScript app with a real CodeMirror 6 editor.
 
 ```
 npm install
-pip install -r requirements.txt   # only for the executed backends and Dremio
+uv sync            # the Python side: only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
-npm run server     # the registry API on :8787 (SQLite by default)
-npm run mcp        # the MCP server on stdio (read-only by default)
+npm run registry   # the registry API on :8787 (SQLite by default)
+npm run registry:mcp   # the MCP server on stdio (read-only by default)
 npm run test       # 603 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e        # 89 browser checks against the built bundle
@@ -125,7 +125,7 @@ packages/                    what other workspaces import, by name
   typescript-config/         the tsconfig bases every workspace extends
 docs/
   brand/final-marks.svg      the Atlas · Prism · Ballast marks and their usage rules
-  chartroom/ADRS.md          50 records; read these before changing a boundary
+  chartroom/ADRS.md          51 records; read these before changing a boundary
   handoff/                   the design handoffs this was built from — provenance
 turbo.json                   the task graph: what depends on what, and what caches
 ```
@@ -1095,7 +1095,7 @@ Three things this layer cost, all of them dependency archaeology rather than
 design. `flightsql-dbapi` pins `sqlalchemy<2` and installing it silently
 downgraded the SQLAlchemy that PyIceberg's `SqlCatalog` needs — the Iceberg
 conformance leg started failing for a reason that had nothing to do with Iceberg,
-which is why `requirements.txt` now exists and pins exactly. ADBC replaced it:
+which is why the Python side is locked, not merely pinned (ADR-51). ADBC replaced it:
 same protocol, no pin, and the Arrow batches arrive without a DB-API layer in
 between. ADBC also *always* prepares a statement, so the stub returned `EOF`
 until the prepared-statement actions were implemented — which meant hand-rolling

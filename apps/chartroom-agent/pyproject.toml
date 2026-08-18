@@ -2,6 +2,8 @@
 name = "chartroom-agent"
 version = "0.1.0"
 description = "Chartroom's agent runtime: a LangGraph/deepagents loop on FastAPI, fronting the governed chartroom-mcp toolset (ADR-36)."
+# uv-managed (ADR-51): `uv.lock` beside this file pins the full resolved graph,
+# not just the names below. `npm run setup:agent` is `uv sync`.
 requires-python = ">=3.11"
 # Pinned exactly (plan E7.1 step zero): these libraries move fast, and the
 # spike that validated their APIs validated *these* versions.
@@ -17,7 +19,11 @@ dependencies = [
     "httpx==0.28.1",
 ]
 
-[project.optional-dependencies]
+# A dependency group (PEP 735), not an optional-dependencies extra: `uv sync`
+# and `uv run` include it by default, so the gate is `uv run pytest` with no
+# flag to forget. Extras are for things a consumer might install; nobody
+# consumes this service as a library.
+[dependency-groups]
 dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",

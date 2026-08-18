@@ -15,19 +15,25 @@ studio for dashboards bound to these definitions.
 
 ```
 npm install
-pip install -r requirements.txt   # only for the executed backends and Dremio
+uv sync            # the Python side: only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
-npm run server     # the registry API on :8787 (SQLite by default)
-npm run mcp        # the MCP server on stdio (read-only by default)
+npm run registry   # the registry API on :8787 (SQLite by default)
+npm run registry:mcp   # the MCP server on stdio (read-only by default)
 npm run verify     # typecheck, 603 unit tests, 89 browser checks
 npm run build      # typecheck + production bundle
 ```
 
-The surface itself needs no Python — rules are evaluated in the browser.
-`requirements.txt` is for `npm run conformance`, which runs the compiled Polars
-and Iceberg plans in a real interpreter, and for the warehouse connection below.
-The pins are exact on purpose: `flightsql-dbapi` pins `sqlalchemy<2` and
-installing it once silently broke PyIceberg's catalogue in this repo.
+The surface itself needs no Python — rules are evaluated in the browser. The
+Python side is uv-managed (ADR-51): `pyproject.toml` + `uv.lock` at the root
+describe the environment `npm run conformance` needs to run the compiled Polars
+and Iceberg plans in a real interpreter, and the warehouse connection below.
+`uv sync` builds it from the lock; `.venv/bin` on your PATH is what makes the
+suites run rather than skip, since they shell out to a bare `python3`.
+
+The lock is the point, not the seven names in `pyproject.toml`: `flightsql-dbapi`
+pins `sqlalchemy<2` and installing it once silently broke PyIceberg's catalogue
+here, and the pinned `polars==1.43.1` turned out to resolve to a *yanked*
+runtime wheel that pip had been installing with a warning nobody read.
 
 ## What it does
 

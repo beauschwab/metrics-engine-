@@ -181,9 +181,9 @@ For clients that reshape a DataFrame instead of standing up a view,
 ## Running the example
 
 ```
-pip install duckdb
+pip install duckdb   # or: uv pip install duckdb
 
-python clients/python/run_2052a_duckdb.py \
+python packages/registry/clients/python/run_2052a_duckdb.py \
     --base http://localhost:8787 \
     --channel production \
     --report fr2052a_submission \

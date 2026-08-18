@@ -838,3 +838,50 @@ downstream suite waiting sixty seconds for a server that was never going to
 listen. Both are `import.meta.url === pathToFileURL(process.argv[1]).href` now.
 Four test fixtures and one Python module located their siblings by relative
 depth and had to be repointed. None of that was visible to a typechecker.
+
+---
+
+## ADR-51 — uv for both Python environments, with lockfiles
+
+**Decision:** uv manages the Python side. Two projects, each with a committed
+`uv.lock`: the root `pyproject.toml` (the compute backends and the warehouse
+transport, replacing `requirements.txt`) and `apps/chartroom-agent`.
+
+This is less a new decision than the one E7.1 already made. The plan specified
+"`pyproject.toml` (uv)"; what shipped was `python3 -m venv .venv &&
+.venv/bin/pip install -e '.[dev]'`, and the root stayed a `requirements.txt`
+installed with `pip install -r`. Two tools, no lockfile, and a venv that was a
+manual prerequisite — which is exactly why that gate had never run anywhere but
+on a machine somebody had configured by hand (ADR-49).
+
+**What a lockfile is for here.** `requirements.txt` pinned seven names exactly.
+It did not pin what those seven resolve to, and the transitive set is what has
+actually broken this repo: `flightsql-dbapi` dragging `sqlalchemy` back to 1.4
+and taking PyIceberg's catalogue with it. `uv.lock` pins the whole graph — 37
+packages at the root, 88 for the agent — and `--frozen` in CI turns a
+regenerated-but-uncommitted lock into an error rather than a drift nobody sees.
+
+**It found something on the first run.** `polars==1.43.1` resolves to
+`polars-runtime-32==1.43.1`, which is **yanked**. pip installs a yanked release
+with a warning on stderr and continues, so the pin read as healthy for as long
+as pip was the only thing looking at it; uv refuses outright, which is the only
+reason anyone noticed. Bumped to 1.43.2, the replacement patch, and the
+conformance harness agrees with the DuckDB oracle at the same 1e-6 it always
+did — which is the check that makes a Polars version bump safe to assert
+rather than hope about.
+
+**The constraint that shapes the setup.** The conformance and Flight SQL suites
+shell out to a bare `python3` (`execFileSync('python3', …)`), so it is not
+enough for the environment to exist — it has to be the `python3` on PATH, or
+the suites skip themselves into a green tick that means nothing. `uv run`
+handles that locally; CI puts `.venv/bin` on `$GITHUB_PATH` once per job.
+
+**Dev tooling is a dependency group (PEP 735), not an extra.** `uv sync` and
+`uv run` include groups by default, so the agent's gate is `uv run pytest` with
+no flag to forget. Extras are for something a consumer might install; nothing
+consumes this service as a library.
+
+The venv guard is gone with it. `verify` used to begin by testing for
+`.venv/bin/python` and telling you which command to run; `uv run` builds the
+environment from the lock on demand, so there is no prerequisite left to
+forget and no error message needed for forgetting it.

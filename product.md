@@ -175,5 +175,5 @@ unit tests, 89 browser checks, 189 chartroom unit tests, 27 Python tests
 including the cross-backend parity harness, and 22 studio browser checks.
 
 Every architectural deviation from the pinned spec decisions is recorded in
-`docs/chartroom/ADRS.md` — 50 entries, including the ones that record a mistake and
+`docs/chartroom/ADRS.md` — 51 entries, including the ones that record a mistake and
 its correction.

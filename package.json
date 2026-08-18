@@ -21,7 +21,8 @@
     "chartroom:api": "turbo run start --filter=chartroom-api",
     "chartroom:studio": "turbo run dev --filter=chartroom-studio",
     "chartroom:mcp": "turbo run start --filter=chartroom-mcp",
-    "setup:agent": "npm run setup --workspace=chartroom-agent"
+    "setup:agent": "npm run setup --workspace=chartroom-agent",
+    "setup:python": "uv sync --frozen"
   },
   "devDependencies": {
     "turbo": "^2.5.8",
