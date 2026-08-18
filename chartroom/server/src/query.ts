@@ -18,10 +18,10 @@
 
 import { sha256Hex } from 'chartroom-spec';
 import type { FilterExpr } from 'chartroom-spec';
-import { Evaluator } from '../../../src/engine/evaluate';
-import { DATES, LAST, type Row } from '../../../src/engine/fixtures';
-import { buildRegistry } from '../../../src/engine/registry';
-import { compare as comparePred } from '../../../src/engine/predicate';
+import { Evaluator } from 'keel-engine/evaluate';
+import { DATES, LAST, type Row } from 'keel-engine/fixtures';
+import { buildRegistry } from 'keel-engine/registry';
+import { compare as comparePred } from 'keel-engine/predicate';
 import { resolveRef, type RegistryState } from './keel';
 
 export class QueryRefused extends Error {}

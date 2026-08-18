@@ -13,7 +13,13 @@
     "chartroom-critics": "*",
     "chartroom-patterns": "*",
     "chartroom-spec": "*",
+    "chartroom-widgets": "*",
+    "keel-engine": "*",
+    "keel-registry": "*",
     "pptxgenjs": "^4.0.1",
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
   }
 }

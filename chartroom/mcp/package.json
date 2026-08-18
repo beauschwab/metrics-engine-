@@ -13,5 +13,8 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "chartroom-spec": "*",
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
   }
 }

@@ -1,7 +1,10 @@
 # Chartroom Phases 7–11 — closing the PRD gaps
 
-Status: proposed · Owner: platform · Prereq reading: `chartroom-prd.md`,
-`ADRS.md` (1–35), `README.md`
+Status: phases 7–10 shipped; phase 11 outstanding · Owner: platform ·
+Prereq reading: `chartroom-prd.md`, `ADRS.md` (1–49), `README.md`
+
+The ADR numbers this plan predicts for phases 9 and 10 are not the ones that
+shipped — `ADRS.md` is authoritative where the two disagree.
 
 This plan closes every gap identified in the PRD review, in dependency order,
 under one new architectural directive: **the agent backend moves to Python —

@@ -12,9 +12,12 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
-    // Node resolution rather than the app's bundler mode, and no
-    // `allowImportingTsExtensions` — this code is run by tsx and by vitest, not
-    // bundled by Vite.
+    // `bundler` resolution, inherited settings and all: tsx and vitest both
+    // resolve extensionless specifiers and `exports` maps the same way a
+    // bundler does, which is what `keel-engine/parse` needs. An earlier comment
+    // here claimed this project used Node resolution and turned off
+    // `allowImportingTsExtensions`; it did neither, and nothing depended on the
+    // claim — but a config that lies is worse than one that says nothing.
     "moduleResolution": "bundler",
     "lib": ["ES2022"]
   },

@@ -17,8 +17,8 @@ import { migrate, openMssql, openSqlite, type Db } from './db';
 import { dialectFor, type DialectName } from './dialect';
 import { dremioFromEnv } from './query';
 import { Repository } from './repository';
-import { INITIAL_DOCS, VIEW_FILES } from '../src/engine/documents';
-import { parseDoc } from '../src/engine/parse';
+import { INITIAL_DOCS, VIEW_FILES } from 'keel-engine/documents';
+import { parseDoc } from 'keel-engine/parse';
 
 const PORT = Number(process.env.KEEL_PORT || 8787);
 

@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { RULE_IDS } from 'chartroom-spec';
-import { fmt } from '../../../src/engine/format';
+import { fmt } from 'keel-engine/format';
 import { CATALOG } from '../src/contracts';
 import { COMPONENTS } from '../src/index';
 import { formatDelta, formatValue } from '../src/format';

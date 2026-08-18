@@ -8,7 +8,7 @@
  */
 
 import { createServer } from 'node:http';
-import { migrate, openMssql, openSqlite, type Db } from '../../../server/db';
+import { migrate, openMssql, openSqlite, type Db } from 'keel-registry/db';
 import { handle, CatalogCache, ContractCache, type ApiRequest } from './api';
 import { WarehouseExecutor } from './executor';
 import { chatFrames } from './proxy';

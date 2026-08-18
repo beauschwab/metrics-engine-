@@ -10,7 +10,7 @@
  */
 
 import { beforeAll, afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { migrate, openSqlite, type Db } from '../../../server/db';
+import { migrate, openSqlite, type Db } from 'keel-registry/db';
 import { CatalogCache, ContractCache, handle, type ApiDeps, type ApiRequest } from '../src/api';
 import { chartroomDialect } from '../src/dialect';
 import { fetchRegistryState } from '../src/keel';

@@ -20,13 +20,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { INITIAL_DOCS } from '../src/engine/documents';
-import { AS_OF, TABLES, type Row } from '../src/engine/fixtures';
-import { inferSchema, seedStatements } from '../src/engine/conformance';
-import { parseDoc } from '../src/engine/parse';
-import { buildRegistry } from '../src/engine/registry';
-import { readReport } from '../src/engine/compile';
-import { runReport } from '../src/engine/report';
+import { INITIAL_DOCS } from 'keel-engine/documents';
+import { AS_OF, TABLES, type Row } from 'keel-engine/fixtures';
+import { inferSchema, seedStatements } from 'keel-engine/conformance';
+import { parseDoc } from 'keel-engine/parse';
+import { buildRegistry } from 'keel-engine/registry';
+import { readReport } from 'keel-engine/compile';
+import { runReport } from 'keel-engine/report';
 
 const SOURCE = 'alm.fct_2052a_positions';
 

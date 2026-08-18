@@ -17,7 +17,7 @@ import {
   canonicalize, parseBrief, parseSpec, sha256Hex, specHash,
   type Brief, type BriefStatus, type DashboardSpec, type LintReport,
 } from 'chartroom-spec';
-import { isUniqueViolation, type Db } from '../../../server/db';
+import { isUniqueViolation, type Db } from 'keel-registry/db';
 import { STATEMENTS as S } from './dialect';
 
 export class Conflict extends Error {}

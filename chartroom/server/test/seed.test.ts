@@ -6,7 +6,7 @@
  */
 
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { migrate, openSqlite, type Db } from '../../../server/db';
+import { migrate, openSqlite, type Db } from 'keel-registry/db';
 import { chartroomDialect } from '../src/dialect';
 import { fetchRegistryState, type RegistryState } from '../src/keel';
 import { QueryService } from '../src/query';

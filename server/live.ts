@@ -25,12 +25,12 @@
  * point of the compiler is that there is one.
  */
 
-import { compileReport, readReport, type ReportSpec } from '../src/engine/compile';
-import { parseDoc, sectionBlocks, type Graph } from '../src/engine/parse';
-import { buildRegistry } from '../src/engine/registry';
-import { derivationsOf } from '../src/engine/rows';
-import { compilePredicate } from '../src/engine/predicate';
-import { splitPlan } from '../src/engine/conformance';
+import { compileReport, readReport, type ReportSpec } from 'keel-engine/compile';
+import { parseDoc, sectionBlocks, type Graph } from 'keel-engine/parse';
+import { buildRegistry } from 'keel-engine/registry';
+import { derivationsOf } from 'keel-engine/rows';
+import { compilePredicate } from 'keel-engine/predicate';
+import { splitPlan } from 'keel-engine/conformance';
 import {
   query, samplingAllowed, stratifiedSample, type DremioConfig, type QueryResult,
 } from './query';

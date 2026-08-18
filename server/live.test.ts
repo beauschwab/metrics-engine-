@@ -27,13 +27,13 @@ import { SQLITE } from './dialect';
 import { Repository } from './repository';
 import { shippedDocuments } from './index';
 import type { DremioConfig } from './query';
-import { readReport } from '../src/engine/compile';
-import { INITIAL_DOCS } from '../src/engine/documents';
-import { AS_OF, TABLES } from '../src/engine/fixtures';
-import { inferSchema, seedStatements } from '../src/engine/conformance';
-import { parseDoc } from '../src/engine/parse';
-import { buildRegistry } from '../src/engine/registry';
-import { runReport } from '../src/engine/report';
+import { readReport } from 'keel-engine/compile';
+import { INITIAL_DOCS } from 'keel-engine/documents';
+import { AS_OF, TABLES } from 'keel-engine/fixtures';
+import { inferSchema, seedStatements } from 'keel-engine/conformance';
+import { parseDoc } from 'keel-engine/parse';
+import { buildRegistry } from 'keel-engine/registry';
+import { runReport } from 'keel-engine/report';
 
 const SOURCE = 'alm.fct_2052a_positions';
 

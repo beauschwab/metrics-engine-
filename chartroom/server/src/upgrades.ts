@@ -11,10 +11,10 @@
  */
 
 import { parseMetricRef, type DashboardSpec } from 'chartroom-spec';
-import { assessChange, type Finding } from '../../../src/engine/impact';
-import { Evaluator } from '../../../src/engine/evaluate';
-import { parseDoc, type Graph } from '../../../src/engine/parse';
-import { buildRegistry } from '../../../src/engine/registry';
+import { assessChange, type Finding } from 'keel-engine/impact';
+import { Evaluator } from 'keel-engine/evaluate';
+import { parseDoc, type Graph } from 'keel-engine/parse';
+import { buildRegistry } from 'keel-engine/registry';
 import { fetchRevision, type RegistryState } from './keel';
 
 export interface UpgradeNotice {

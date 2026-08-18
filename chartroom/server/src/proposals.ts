@@ -17,11 +17,11 @@
  * meaningful side effect.
  */
 
-import { diagnose } from '../../../src/engine/diagnostics';
-import { Evaluator } from '../../../src/engine/evaluate';
-import { emitSemantic } from '../../../src/engine/semantic';
-import { parseDoc, type Graph } from '../../../src/engine/parse';
-import { buildRegistry } from '../../../src/engine/registry';
+import { diagnose } from 'keel-engine/diagnostics';
+import { Evaluator } from 'keel-engine/evaluate';
+import { emitSemantic } from 'keel-engine/semantic';
+import { parseDoc, type Graph } from 'keel-engine/parse';
+import { buildRegistry } from 'keel-engine/registry';
 import type { RegistryState } from './keel';
 
 export interface DiagnosticNote {

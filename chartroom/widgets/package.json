@@ -20,5 +20,9 @@
   },
   "peerDependencies": {
     "react": "^19.1.0"
+  },
+  "devDependencies": {
+    "keel-engine": "*",
+    "vitest": "^4.1.10"
   }
 }

@@ -1,0 +1,20 @@
+{
+  "name": "keel-registry",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The registry API: portable persistence (SQLite/SQL Server), the read-only guard, the Dremio gateway.",
+  "//": "Only ./db and ./dialect are exported. Chartroom builds its own tables on the registry's portable idiom (ADR-4) and needs exactly those two; the API surface, the read-only guard and the Dremio gateway stay private, so the exports map is the boundary rather than a convention.",
+  "exports": {
+    "./db": "./db.ts",
+    "./dialect": "./dialect.ts"
+  },
+  "dependencies": {
+    "keel-engine": "*",
+    "mssql": "^12.7.0"
+  },
+  "devDependencies": {
+    "node-sql-parser": "^5.4.0",
+    "vitest": "^4.1.10"
+  }
+}

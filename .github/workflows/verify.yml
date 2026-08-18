@@ -1,5 +1,12 @@
 # Everything `npm run verify` runs, on every push and pull request.
 #
+# That claim was false until ADR-49. `verify` is
+# `typecheck && test && e2e && verify:chartroom`, and this file ran the first
+# three — so seven workspaces, 220 unit tests, seven studio browser specs and
+# the Python agent's whole ruff/mypy/pytest gate were checked by nothing on the
+# way in. The four jobs below cover the fourth part. If a leg is added to
+# `verify`, it gets a job here in the same commit, or the header lies again.
+#
 # The suites in this repo are only worth having if they run without being asked.
 # Three of them need something beyond Node — a Python interpreter with Polars and
 # PyIceberg, a Chromium — so the job installs those rather than letting the
@@ -86,4 +93,54 @@ jobs:
           path: |
             playwright-report/
             test-results/
+          retention-days: 7
+
+  # --- `verify:chartroom`, split the same way and for the same reason -------
+
+  chartroom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck:chartroom
+      - run: npm run test:chartroom
+
+  agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      # The venv was a manual prerequisite, which is why this gate had never run
+      # anywhere but on a machine somebody had set up by hand. `setup:agent` is
+      # the same three commands the README asks for, in a form CI can call.
+      - run: npm run setup:agent
+      - run: npm run verify:agent
+
+  chartroom-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # The studio's own config starts a chartroom-server against a scratch
+      # SQLite file and a blanked API key, so this exercises the degrade path.
+      - run: npm run e2e:chartroom
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: chartroom-playwright-report
+          path: |
+            chartroom/studio/playwright-report/
+            chartroom/studio/test-results/
           retention-days: 7

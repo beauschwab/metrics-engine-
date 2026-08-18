@@ -1,6 +1,6 @@
 # Metrics Definition Layer — implementation
 
-The authoring surface from the Claude Design handoff in `project/`, built as a
+The authoring surface from the Claude Design handoff in `docs/handoff/project/`, built as a
 React + TypeScript app with a real CodeMirror 6 editor.
 
 ```
@@ -119,7 +119,25 @@ e2e/
   persistence.spec.ts        edits survive a reload, against its own registry
   form.spec.ts               the round trip, the builders, inline validation
   (surface.spec also covers the document strip, the panel naming, and variance)
+chartroom/                   the second application — dashboards over the registry
+  spec/                      the dashboard spec DSL: schema, canonical form, linter
+  widgets/                   widget contracts + presentation-only components
+  patterns/                  the pattern catalog and its design-guide rationale
+  critics/                   the LLM critics, with a degrade path that never blocks
+  server/                    the chartroom API, on the registry's db layer (ADR-4)
+  mcp/                       chartroom over MCP — 28 tools, thin by contract
+  studio/                    the spec interpreter canvas, inspector, findings panel
+  agent/                     the Python agent service (FastAPI + LangGraph)
+  ADRS.md                    49 records; read these before changing a boundary
+docs/
+  brand/final-marks.svg      the Atlas · Prism · Ballast marks and their usage rules
+  handoff/                   the design handoffs this was built from — provenance
 ```
+
+Two of these directories are also npm packages, because they are consumed across
+a workspace boundary: `src/engine` is `keel-engine` and `server/` is
+`keel-registry`, each with an `exports` map that chartroom depends on by name
+(ADR-49). Inside `src/`, the engine is reached relatively — it is the same tree.
 
 The split that matters: **`engine/` knows nothing about the editor or React.**
 Everything in it is a pure function of (document text, fixture), which is why
@@ -294,7 +312,7 @@ naming a file after a schema.
 ## Form mode
 
 A second authoring surface over the same document, built from the design handoff
-in `design_handoff_form_mode_rule_builder/`. Form is the default: the mode that
+in `docs/handoff/design_handoff_form_mode_rule_builder/`. Form is the default: the mode that
 needs no YAML is the one a new author should meet first.
 
 The constraint that shapes everything else is that there is **no parallel
@@ -1384,7 +1402,8 @@ pipeline would do — but emitting a create-if-absent step is an open question.
 
 ## Chartroom
 
-A second application in the monorepo (`chartroom/`, four npm workspaces:
+A second application in the monorepo (`chartroom/`, seven npm workspaces plus
+a Python agent service:
 `spec`, `widgets`, `server`, `studio`) implementing Phase 1 of the
 agent-guided dashboard studio design handoff. The full tour is
 `chartroom/README.md`; every deviation from the handoff's pinned technology
@@ -1425,7 +1444,7 @@ handoff, and a critic outage degrades to a WARN finding that says so.
 **Phase 2 is the agent loop, and its governance is server-side.** Three more
 workspaces — `patterns` (archetypes + rule rationale as data), `critics` (the
 design critic with a Zod-validated finding schema, one retry, and a
-never-blocks degrade path), and `mcp` (18 tools over stdio, thin by contract).
+never-blocks degrade path), and `mcp` (28 tools over stdio, thin by contract).
 The grilling protocol is a schema: `BriefSchema`'s eight intake slots are
 required fields, so `create_brief` rejects an incomplete intake naming the
 missing slot whoever sent it. Composition by an `agent:*` identity requires an
@@ -1535,7 +1554,17 @@ having no type declarations at all. The lesson is not about TypeScript — it is
 that a check nobody has watched fail is not evidence of anything.
 
 `npm run verify` runs all three typecheck projects, the unit and conformance
-suites, and the end-to-end suite in one pass.
+suites, and the end-to-end suite in one pass — then `verify:chartroom`, which is
+the same four things for the seven chartroom workspaces plus the Python agent's
+ruff/mypy/pytest gate.
+
+That last leg is worth naming, for the same reason the server is named above.
+`verify` has always included it; the CI workflow ran the first three parts only,
+so seven workspaces, 220 unit tests, seven studio browser specs and the whole
+Python gate were checked by nothing on the way in — while the workflow's header
+comment claimed it ran everything `verify` runs. Every leg now has a job
+(ADR-49). The agent's venv, previously a manual prerequisite that kept its gate
+off every machine nobody had set up by hand, is `npm run setup:agent`.
 
 ## What a review pass caught that a green suite did not
 

@@ -12,7 +12,8 @@
     "noEmit": true,
     "types": ["node"]
   },
-  // The server consumes the engine and the registry's db/dialect layer as
-  // source, exactly as `server/` itself does — see ADR-4.
-  "include": ["src", "test", "../../src/engine", "../../server"]
+  // `keel-engine` and `keel-registry` are ordinary workspace dependencies now
+  // (ADR-49), so they resolve through node_modules like any other package and
+  // this project has no reason to reach outside its own directory.
+  "include": ["src", "test"]
 }

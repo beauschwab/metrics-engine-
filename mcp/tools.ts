@@ -32,20 +32,20 @@ import { Conflict } from '../server/repository';
 import {
   RuntimeNotFound, RuntimeRefused, cutRelease, promoteRelease, runtimeManifest,
 } from '../server/runtime';
-import { compileReport, readReport } from '../src/engine/compile';
-import { diagnose } from '../src/engine/diagnostics';
-import { Evaluator } from '../src/engine/evaluate';
-import { AS_OF, TABLES, type Row } from '../src/engine/fixtures';
-import { assessChange, type ImpactReport } from '../src/engine/impact';
-import { buildLineage, chainFor, type Stage } from '../src/engine/lineage';
-import { parseDoc, sectionBlocks, type Graph } from '../src/engine/parse';
+import { compileReport, readReport } from 'keel-engine/compile';
+import { diagnose } from 'keel-engine/diagnostics';
+import { Evaluator } from 'keel-engine/evaluate';
+import { AS_OF, TABLES, type Row } from 'keel-engine/fixtures';
+import { assessChange, type ImpactReport } from 'keel-engine/impact';
+import { buildLineage, chainFor, type Stage } from 'keel-engine/lineage';
+import { parseDoc, sectionBlocks, type Graph } from 'keel-engine/parse';
 import {
   buildRegistry, resolveClassification, resolveParameterSet,
-} from '../src/engine/registry';
-import { runReport } from '../src/engine/report';
-import { derivationsOf, runClassification } from '../src/engine/rows';
-import { emitSemantic, type SemanticTarget } from '../src/engine/semantic';
-import { DOMAINS, type FixtureName } from '../src/engine/vocab';
+} from 'keel-engine/registry';
+import { runReport } from 'keel-engine/report';
+import { derivationsOf, runClassification } from 'keel-engine/rows';
+import { emitSemantic, type SemanticTarget } from 'keel-engine/semantic';
+import { DOMAINS, type FixtureName } from 'keel-engine/vocab';
 
 export class ToolError extends Error {}
 

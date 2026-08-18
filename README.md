@@ -4,8 +4,8 @@ An authoring surface for governed metric definitions — the place a liquidity
 analyst writes an FR 2052a rule, watches the number it produces, and reads the
 plan that the nightly pipeline will run.
 
-Built from the Claude Design handoff in `project/` (the original brief is
-`project/HANDOFF.md`) as a React + TypeScript app with a real CodeMirror 6
+Built from the Claude Design handoff in `docs/handoff/project/` (the original brief is
+`docs/handoff/project/HANDOFF.md`) as a React + TypeScript app with a real CodeMirror 6
 editor.
 
 `product.md` states what this product is and what it refuses to do;

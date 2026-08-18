@@ -7,6 +7,12 @@
  *   NOTHING imports studio. spec imports NOTHING internal, and no Node, DOM
  *   or React API — it runs in the browser, the server and the MCP process.
  *
+ * And outward: nothing under chartroom/ may climb out of its own workspace with
+ * a relative path. The registry engine and its db/dialect layer are `keel-engine`
+ * and `keel-registry`, declared dependencies with an exports map (ADR-49). Before
+ * that they were twenty-odd `../../../src/engine/...` imports — a real edge npm
+ * could not install, tooling could not see, and this file did not check.
+ *
  * A lint plugin could do this; a forty-line test does it with zero new
  * dependencies and fails with the offending file and line.
  */
@@ -65,6 +71,14 @@ describe('package boundaries', () => {
   it('nothing imports studio', () => {
     for (const pkg of ['spec', 'widgets', 'server']) {
       expect(offenders(join(ROOT, pkg), (s) => s.includes('chartroom-studio'))).toEqual([]);
+    }
+  });
+
+  it('nothing climbs out of its workspace with a relative path', () => {
+    // `../..` from `<pkg>/src/x.ts` is still inside the package; `../../..` is
+    // not. Depend on the neighbour by name so the manifest records it.
+    for (const pkg of ['spec', 'widgets', 'server', 'patterns', 'critics', 'mcp']) {
+      expect(offenders(join(ROOT, pkg), (s) => /^\.\.\/\.\.\/\.\./.test(s))).toEqual([]);
     }
   });
 

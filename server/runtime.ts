@@ -24,19 +24,19 @@
  * applied at the moment it matters most: the moment production changes.
  */
 
-import { diagnose } from '../src/engine/diagnostics';
-import { Evaluator } from '../src/engine/evaluate';
-import { assessChange, type Finding } from '../src/engine/impact';
+import { diagnose } from 'keel-engine/diagnostics';
+import { Evaluator } from 'keel-engine/evaluate';
+import { assessChange, type Finding } from 'keel-engine/impact';
 import {
   adapterModel, adapterStatements, checkBinding, emitAdapterSql, readBinding,
   sourceUsage,
   type BindingIssue,
-} from '../src/engine/binding';
-import { buildLineage } from '../src/engine/lineage';
-import { compileReport, readReport, type Backend } from '../src/engine/compile';
-import { parseDoc, type Graph } from '../src/engine/parse';
-import { buildRegistry, resolveClassification } from '../src/engine/registry';
-import { AS_OF } from '../src/engine/fixtures';
+} from 'keel-engine/binding';
+import { buildLineage } from 'keel-engine/lineage';
+import { compileReport, readReport, type Backend } from 'keel-engine/compile';
+import { parseDoc, type Graph } from 'keel-engine/parse';
+import { buildRegistry, resolveClassification } from 'keel-engine/registry';
+import { AS_OF } from 'keel-engine/fixtures';
 import type { Repository, Revision } from './repository';
 
 export class RuntimeNotFound extends Error {}

@@ -10,6 +10,12 @@
 - Dependency direction: `spec ← widgets ← studio`, `spec ← server`. Nothing
   imports studio. Enforced by `chartroom/spec/test/boundaries.test.ts` — run it
   before committing.
+- Outward, the registry is a dependency, not a neighbour: import `keel-engine/*`
+  and `keel-registry/db|dialect`, never `../../../src/engine/...` (ADR-49). The
+  same boundaries test fails on any relative import that climbs out of a
+  workspace, and a new cross-package import means a line in that package's
+  `package.json` — chartroom-server imported chartroom-widgets for three phases
+  without declaring it.
 - Every lint rule: one file in `spec/src/lint/rules/`, a `describe` block in
   `spec/test/rules.test.ts` with the violation, the clean case, and — where a
   fix exists — the round-trip (apply it, re-lint, the rule stops firing).

@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Brief, DashboardSpec } from 'chartroom-spec';
-import { migrate, openSqlite, type Db } from '../../../server/db';
+import { migrate, openSqlite, type Db } from 'keel-registry/db';
 import { CatalogCache, ContractCache, handle, type ApiDeps } from '../src/api';
 import { chartroomDialect } from '../src/dialect';
 import { fetchRegistryState } from '../src/keel';

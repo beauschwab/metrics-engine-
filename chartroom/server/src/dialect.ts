@@ -10,7 +10,7 @@
  * audited.
  */
 
-import { toNamedParameters, type Dialect, type DialectName } from '../../../server/dialect';
+import { toNamedParameters, type Dialect, type DialectName } from 'keel-registry/dialect';
 
 const DASHBOARD = 'chartroom_dashboard';
 const VERSION = 'chartroom_version';

@@ -270,7 +270,7 @@ describe('seeding', () => {
     const stored = (await repo.latest('fr2052a_product_id'))!.body;
     // Storage must not touch the text — a normalised newline or a trimmed line
     // would move every diagnostic's line number.
-    const { INITIAL_DOCS } = await import('../src/engine/documents');
+    const { INITIAL_DOCS } = await import('keel-engine/documents');
     expect(stored).toBe(INITIAL_DOCS.fr2052a_product_id);
   });
 });

@@ -8,11 +8,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { INITIAL_DOCS } from '../../../src/engine/documents';
-import { Evaluator } from '../../../src/engine/evaluate';
-import { DATES, LAST } from '../../../src/engine/fixtures';
-import { parseDoc } from '../../../src/engine/parse';
-import { buildRegistry } from '../../../src/engine/registry';
+import { INITIAL_DOCS } from 'keel-engine/documents';
+import { Evaluator } from 'keel-engine/evaluate';
+import { DATES, LAST } from 'keel-engine/fixtures';
+import { parseDoc } from 'keel-engine/parse';
+import { buildRegistry } from 'keel-engine/registry';
 import { fetchRegistryState } from '../src/keel';
 import { QueryService, QueryUnresolved } from '../src/query';
 

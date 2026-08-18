@@ -20,5 +20,10 @@
     "chartroom-widgets": "*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "vite": "^7.0.0"
   }
 }

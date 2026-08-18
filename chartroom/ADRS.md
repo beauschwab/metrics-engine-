@@ -733,3 +733,51 @@ only 4.28:1 on a panel; fills, borders and marks keep the token unchanged.
 Both stay inside Aperture's own scale — a different step on the ramp, not a
 colour invented beside it — and the root app made the same call for the same
 reason.
+
+---
+
+## ADR-49 — the registry engine and db layer are packages, not paths
+
+**Pinned:** nothing — this records a boundary that was never decided, only
+accumulated.
+**Decision:** `src/engine` is the `keel-engine` package and `server` is
+`keel-registry`, both npm workspaces with an `exports` map. Chartroom depends on
+them by name.
+
+Chartroom-server evaluates registry documents with the same engine the authoring
+surface uses, and stores its tables through the same portable db layer (ADR-4).
+Both are right. What was wrong was how the edge was written: twenty-odd imports
+of the form `../../../src/engine/evaluate`, plus a `tsconfig.json` that reached
+two directories up to typecheck source it did not own.
+
+That has three costs, none of them theoretical:
+
+- **npm could not install it.** The workspace graph said chartroom-server
+  depended on spec, patterns and critics. It also depended on the engine, the db
+  layer and — undeclared — chartroom-widgets. Anything that resolved packages
+  strictly, a path-filtered CI or an extracted workspace, would have broken.
+- **The same source was typechecked twice, under conflicting configs.**
+  `src/engine` was checked by the app project (DOM lib, no Node types) and again
+  by chartroom-server's (Node types, no DOM). A change satisfying one could
+  break the other, and the one it broke was not run by CI.
+- **`boundaries.test.ts` could not see it.** That file enforces the internal
+  direction well, and bans `../../` escapes — from `spec/` only. The one edge
+  leaving chartroom entirely was the one nothing checked.
+
+The `exports` maps are the boundary now. `keel-registry` publishes `./db` and
+`./dialect` and nothing else, so ADR-4's "reuse the dialect layer" is enforced
+rather than described — the API surface, the read-only guard and the Dremio
+gateway are not reachable by name. `keel-engine` maps `./*` to `./*.ts`, because
+every module in it is a legitimate entry point and a hand-kept list would go
+stale. `boundaries.test.ts` gained the outward rule to match.
+
+**Not done: moving the directories.** `keel-engine` still lives at `src/engine`,
+inside the app that is its main consumer. Moving it to a top-level `packages/`
+would touch 91 files to change no dependency — the app's own imports of it are
+relative and correct, being intra-tree. The rule is: **inside `src/`, reach for
+the engine relatively; outside it, depend on `keel-engine` by name.**
+
+ADR-4 was previously cited in `chartroom/server/tsconfig.json` as authorising
+all of this. It does not — it is a database decision about reusing `server/db.ts`
+and says nothing about consuming the engine as source or about tsconfig includes
+escaping a workspace. This ADR is what that comment should have pointed at.

@@ -17,11 +17,11 @@
 
 import type { DimContract, MetricContract, MetricRef } from 'chartroom-spec';
 import { parseMetricRef } from 'chartroom-spec';
-import { INITIAL_DOCS } from '../../../src/engine/documents';
-import { Evaluator } from '../../../src/engine/evaluate';
-import { AS_OF, TABLES } from '../../../src/engine/fixtures';
-import { parseDoc, type Graph, type Measure } from '../../../src/engine/parse';
-import { buildRegistry, type Registry } from '../../../src/engine/registry';
+import { INITIAL_DOCS } from 'keel-engine/documents';
+import { Evaluator } from 'keel-engine/evaluate';
+import { AS_OF, TABLES } from 'keel-engine/fixtures';
+import { parseDoc, type Graph, type Measure } from 'keel-engine/parse';
+import { buildRegistry, type Registry } from 'keel-engine/registry';
 
 export interface RegistryDoc {
   name: string;

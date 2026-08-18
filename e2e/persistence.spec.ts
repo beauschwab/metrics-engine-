@@ -20,7 +20,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { VIEW_FILES } from '../src/engine/documents';
+import { VIEW_FILES } from 'keel-engine/documents';
 
 const EDITOR = '.cm-content';
 const SAVED = '[data-testid="mdl-save-state"]';

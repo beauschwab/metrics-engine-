@@ -15,11 +15,11 @@
  */
 
 import { createHash } from 'node:crypto';
-import { rowStageSql } from '../../../src/engine/compile';
-import { TABLES, DATES } from '../../../src/engine/fixtures';
-import { parseDoc, type Graph } from '../../../src/engine/parse';
-import { buildRegistry } from '../../../src/engine/registry';
-import { aggregate, expressionToSql, stage } from '../../../src/engine/semantic';
+import { rowStageSql } from 'keel-engine/compile';
+import { TABLES, DATES } from 'keel-engine/fixtures';
+import { parseDoc, type Graph } from 'keel-engine/parse';
+import { buildRegistry } from 'keel-engine/registry';
+import { aggregate, expressionToSql, stage } from 'keel-engine/semantic';
 import type { RegistryState } from './keel';
 
 export interface ManifestMeasure {
