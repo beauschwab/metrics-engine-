@@ -43,7 +43,17 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: 'npm run build && npx vite preview --port 4174 --strictPort',
+      // `--host 127.0.0.1` rather than Vite's default. Vite previews on
+      // `localhost`, and Node binds whatever that resolves to first: on a
+      // GitHub runner /etc/hosts carries `::1 localhost`, so the server comes
+      // up on IPv6 while the `url` below is probed over IPv4 and never
+      // answers. The job then dies on a 120s webServer timeout with nothing in
+      // the log to say why — vite's progress goes to stdout, which Playwright
+      // does not surface, so only the chunk-size warnings on stderr appear.
+      // This is why `browser` was red on every run of main while passing
+      // locally: a dev container with no IPv6 cannot reproduce it.
+      command:
+        'npm run build && npx vite preview --port 4174 --strictPort --host 127.0.0.1',
       url: 'http://127.0.0.1:4174',
       reuseExistingServer: false,
       timeout: 120_000,
