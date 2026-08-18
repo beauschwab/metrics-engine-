@@ -1,0 +1,10 @@
+{
+  "name": "chartroom-agent",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Chartroom's agent runtime (Python: FastAPI + LangGraph). Wrapped as a workspace so Turborepo can schedule its gate alongside the TypeScript ones.",
+  "scripts": {
+    "setup": "python3 -m venv .venv && .venv/bin/pip install -q -e '.[dev]'",
+    "verify": "test -x .venv/bin/python || { echo '.venv missing — run: npm run setup:agent'; exit 1; }; .venv/bin/ruff check src tests && .venv/bin/mypy src && .venv/bin/pytest -q"
+  }
+}

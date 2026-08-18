@@ -1,6 +1,9 @@
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Turborepo's local task cache and run logs.
+.turbo/
 .DS_Store
 test-results/
 playwright-report/
@@ -15,3 +18,6 @@ chartroom.db-wal
 # Python bytecode from running the client examples.
 __pycache__/
 *.pyc
+
+# The agent's virtualenv — `npm run setup:agent` builds it.
+.venv/

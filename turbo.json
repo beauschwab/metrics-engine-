@@ -1,0 +1,43 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalDependencies": ["requirements.txt"],
+  "globalEnv": ["CI"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "inputs": ["$TURBO_DEFAULT$", "tsconfig.json"]
+    },
+    "test": {
+      "dependsOn": ["^typecheck"],
+      "env": ["ANTHROPIC_API_KEY", "DREMIO_*", "MSSQL_*"],
+      "outputs": []
+    },
+    "e2e": {
+      "dependsOn": ["^typecheck"],
+      "env": ["CHROMIUM_PATH", "KEEL_API", "CHARTROOM_API", "ANTHROPIC_API_KEY"],
+      "cache": false,
+      "outputs": []
+    },
+    "verify": {
+      "cache": false,
+      "outputs": []
+    },
+    "setup": {
+      "cache": false,
+      "outputs": []
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "start": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

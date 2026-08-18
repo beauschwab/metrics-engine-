@@ -1,21 +1,20 @@
 # Everything `npm run verify` runs, on every push and pull request.
 #
-# That claim was false until ADR-49. `verify` is
-# `typecheck && test && e2e && verify:chartroom`, and this file ran the first
-# three — so seven workspaces, 220 unit tests, seven studio browser specs and
-# the Python agent's whole ruff/mypy/pytest gate were checked by nothing on the
-# way in. The four jobs below cover the fourth part. If a leg is added to
-# `verify`, it gets a job here in the same commit, or the header lies again.
+# `verify` is `turbo run typecheck test e2e verify`, and every one of those legs
+# has a job below. That claim used to be false: the workflow ran three hand-written
+# scripts while `verify` ran four, so seven workspaces, 220 unit tests, seven studio
+# browser specs and the Python agent's whole gate were checked by nothing on the way
+# in (ADR-49).
 #
-# The suites in this repo are only worth having if they run without being asked.
-# Three of them need something beyond Node — a Python interpreter with Polars and
-# PyIceberg, a Chromium — so the job installs those rather than letting the
-# affected tests skip themselves into a green tick that means nothing.
+# Turborepo is what keeps it true now (ADR-50). A job says `turbo run <task>` and
+# gets every workspace that defines that task — including ones added later. The
+# fan-out is derived from the package graph rather than from a list here that
+# somebody has to remember to extend.
 #
-# Split into jobs rather than one long script so a failure names itself in the
+# Still split into jobs rather than one script, so a failure names itself in the
 # checks list: "typecheck" and "browser" failing are different problems with
-# different owners, and reading which one broke out of a 400-line log is work
-# nobody should have to do twice.
+# different owners. Within a job, turbo prefixes every line with the package it
+# came from, so the specific workspace is named too.
 
 name: verify
 
@@ -32,6 +31,7 @@ concurrency:
 env:
   # The suites are noisy about a TTY they do not have.
   CI: 'true'
+  TURBO_TELEMETRY_DISABLED: '1'
 
 jobs:
   typecheck:
@@ -43,10 +43,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # All three projects: `src`, the harness, and `server` + `mcp`. The last
-      # of those was not checked by anything for most of this repo's life, which
-      # is exactly why it is named here rather than left implicit.
-      - run: npm run typecheck
+      - uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-typecheck-${{ github.sha }}
+          restore-keys: turbo-typecheck-
+      - run: npx turbo run typecheck
 
   test:
     runs-on: ubuntu-latest
@@ -65,10 +67,15 @@ jobs:
       # once silently broke PyIceberg's catalogue here — a failure that
       # presented as an Iceberg conformance bug with nothing to do with Iceberg.
       - run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-test-${{ github.sha }}
+          restore-keys: turbo-test-
       # The conformance legs skip themselves when their interpreter is missing.
       # That is right locally and wrong here, so the install above is a hard
       # dependency of this job and a green run genuinely means they executed.
-      - run: npm run test
+      - run: npx turbo run test
 
   browser:
     runs-on: ubuntu-latest
@@ -81,23 +88,19 @@ jobs:
       - run: npm ci
       # Playwright's own browser, matching the pinned @playwright/test. The
       # `CHROMIUM_PATH` escape hatch in the config exists for images that ship a
-      # different build; a hosted runner has no such constraint, so this uses
-      # the ordinary path and keeps the escape hatch untested-by-default rather
-      # than load-bearing.
+      # different build; a hosted runner has no such constraint.
       - run: npx playwright install --with-deps chromium
-      - run: npm run e2e
+      - run: npx turbo run e2e --filter=registry-web
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: playwright-report
           path: |
-            playwright-report/
-            test-results/
+            apps/registry-web/playwright-report/
+            apps/registry-web/test-results/
           retention-days: 7
 
-  # --- `verify:chartroom`, split the same way and for the same reason -------
-
-  chartroom:
+  chartroom-browser:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -106,8 +109,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run typecheck:chartroom
-      - run: npm run test:chartroom
+      - run: npx playwright install --with-deps chromium
+      # The studio's own config starts a chartroom-api against a scratch SQLite
+      # file and a blanked API key, so this exercises the degrade path.
+      - run: npx turbo run e2e --filter=chartroom-studio
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: chartroom-playwright-report
+          path: |
+            apps/chartroom-studio/playwright-report/
+            apps/chartroom-studio/test-results/
+          retention-days: 7
 
   agent:
     runs-on: ubuntu-latest
@@ -123,35 +136,11 @@ jobs:
           cache: pip
       # Node, not just Python. `test_governed_live` drives the real
       # `chartroom-mcp` server over stdio and `test_warehouse_parity` boots a
-      # real `chartroom-server` — both are TypeScript run through tsx, so
-      # without `node_modules` they die on `@modelcontextprotocol/sdk` and the
-      # parity suite reports a port that never opened. The first CI run of this
-      # job proved it: 3 failed, 9 errored, all of them that.
+      # real `chartroom-api` — both are TypeScript run through tsx, so without
+      # `node_modules` they die on `@modelcontextprotocol/sdk` and the parity
+      # suite reports a port that never opened.
       - run: npm ci
       # The venv was a manual prerequisite, which is why this gate had never run
-      # anywhere but on a machine somebody had set up by hand. `setup:agent` is
-      # the same three commands the README asks for, in a form CI can call.
+      # anywhere but on a machine somebody had set up by hand.
       - run: npm run setup:agent
-      - run: npm run verify:agent
-
-  chartroom-browser:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      # The studio's own config starts a chartroom-server against a scratch
-      # SQLite file and a blanked API key, so this exercises the degrade path.
-      - run: npm run e2e:chartroom
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: chartroom-playwright-report
-          path: |
-            chartroom/studio/playwright-report/
-            chartroom/studio/test-results/
-          retention-days: 7
+      - run: npx turbo run verify

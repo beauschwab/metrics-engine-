@@ -1,0 +1,12 @@
+{
+  "name": "@repo/typescript-config",
+  "private": true,
+  "version": "0.1.0",
+  "//": "Seven near-identical tsconfigs used to sit one per workspace, drifting independently. They extend these now. The exports map is not decoration: Playwright resolves a tsconfig `extends` through node resolution and fails on a bare `files` list.",
+  "exports": {
+    "./base.json": "./base.json",
+    "./node.json": "./node.json",
+    "./react.json": "./react.json"
+  },
+  "files": ["base.json", "node.json", "react.json"]
+}

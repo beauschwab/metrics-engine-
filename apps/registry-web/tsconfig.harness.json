@@ -1,0 +1,12 @@
+{
+  // See tsconfig.json on why this is a path and not a package specifier.
+  //
+  // The e2e harness runs outside the browser: it spawns a registry, writes a
+  // scratch database and reads results back, so it needs Node globals the app
+  // project deliberately does not have.
+  "extends": "../../packages/typescript-config/react.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["e2e", "playwright.config.ts", "vite.config.ts"]
+}

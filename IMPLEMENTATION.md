@@ -12,7 +12,7 @@ npm run mcp        # the MCP server on stdio (read-only by default)
 npm run test       # 603 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
 npm run e2e        # 89 browser checks against the built bundle
-npm run verify     # all of the above, plus all three typecheck projects
+npm run verify     # all of the above, every workspace, via Turborepo
 npm run build      # typecheck + production bundle
 ```
 
@@ -26,8 +26,40 @@ decision in the design chat.
 ## Layout
 
 ```
-src/
-  App.tsx                    state, the evaluation loop, the three columns
+apps/                        what deploys or ships
+  registry-web/              the authoring surface — the three columns and the editor
+    src/App.tsx              state, the evaluation loop, the three columns
+    src/editor/              CodeMirror 6 extensions
+      context.ts               app state in editor state; live re-parse of the doc
+      pills.ts                 replace-widgets, atomic ranges, edit-reveal
+      chrome.ts                key/value colouring, active rail, gutters, hints
+      lint.ts                  diagnostics → inline squiggles + fix actions
+      completion.ts            completion source, auto-open on fixed-choice lines
+      ghost.ts                 dimmed inline suggestion, accepted with Tab
+      peek.ts                  ⌥-click block widget
+      banner.ts                signed-off measure banner (§11)
+      quickActions.ts          ⌘. menu — fixes, navigate, rename, extract, inline
+      keymap.ts                Tab priority, pill traversal, ⌘N, ⌘↑/↓, drag-insert
+      apply.ts                 document mutations, narrowed to the smallest edit
+      theme.ts                 the editor's visual layer
+    src/components/          the React chrome around the editor
+      LineageStrip.tsx         where the open document sits in the chain
+      ChangeImpact.tsx         what this edit does, while it is still an edit
+      form/FormMode.tsx        one measure as a card — the structured authoring mode
+      form/controls.tsx        field, note, picker, drop zone, chip
+    src/styles/app.css       surface tokens + layout
+    e2e/surface.spec.ts      the three columns, the loop, fixes, plans, layout
+    e2e/editor.spec.ts       pills, keyboard, completion, gutters
+    e2e/persistence.spec.ts  edits survive a reload, against its own registry
+    e2e/form.spec.ts         the round trip, the builders, inline validation
+  registry-mcp/              the registry as tools an external agent can call
+    tools.ts                 plain functions over a Repository — all the decisions
+    server.ts                the MCP binding: schemas in, JSON out, no decisions
+  chartroom-api/             the chartroom API, on the registry's db layer (ADR-4)
+  chartroom-studio/          the spec interpreter canvas, inspector, findings panel
+  chartroom-mcp/             chartroom over MCP — 28 tools, thin by contract
+  chartroom-agent/           the Python agent service (FastAPI + LangGraph)
+packages/                    what other workspaces import, by name
   engine/                    everything that computes — no DOM, no React
     vocab.ts                 pill taxonomy, closed-choice fields, source columns
     fixtures.ts              seeded 60-day test data, calibrated to the spec's numbers
@@ -71,73 +103,38 @@ src/
     form.test.ts             round trips, and the three losses they guard
     impact.test.ts           silencing measured, not inferred from a diff
     conformance-semantic.test.ts  the published view, executed and reconciled
-  editor/                    CodeMirror 6 extensions
-    context.ts               app state in editor state; live re-parse of the doc
-    pills.ts                 replace-widgets, atomic ranges, edit-reveal
-    chrome.ts                key/value colouring, active rail, gutters, hints
-    lint.ts                  diagnostics → inline squiggles + fix actions
-    completion.ts            completion source, auto-open on fixed-choice lines
-    ghost.ts                 dimmed inline suggestion, accepted with Tab
-    peek.ts                  ⌥-click block widget
-    banner.ts                signed-off measure banner (§11)
-    quickActions.ts          ⌘. menu — fixes, navigate, rename, extract, inline
-    keymap.ts                Tab priority, pill traversal, ⌘N, ⌘↑/↓, drag-insert
-    apply.ts                 document mutations, narrowed to the smallest edit
-    theme.ts                 the editor's visual layer
-  components/                the React chrome around the editor
-    LineageStrip.tsx         where the open document sits in the chain
-    ChangeImpact.tsx         what this edit does, while it is still an edit
-    form/FormMode.tsx        one measure as a card — the structured authoring mode
-    form/controls.tsx        field, note, picker, drop zone, chip
-  styles/
-    app.css                  surface tokens + layout
-    aperture/                Aperture Risk token files, copied from the bundle
-public/
-  fonts/                     Inter, self-hosted — the surface makes no network call
-server/                      the registry API — no React, no browser
-  dialect.ts                 every SQLite/SQL Server difference, in one file
-  db.ts                      the two drivers behind one interface
-  repository.ts              append-only revisions, optimistic concurrency
-  api.ts                     request in, response out — no socket to test
-  index.ts                   config from env, wire, listen
-  readonly.ts                the guard: what may be sent to a warehouse at all
-  query.ts                   the Dremio gateway — cap, timeout, sampling policy
-  live.ts                    the three live reads, built on the same compiler
-  runtime.ts                 releases, channels, and what a deployed client reads
-  query/dremio.py            ADBC Flight SQL client, stdin JSON → stdout JSON
-  query/flight_sql_stub.py   a real Flight SQL server over DuckDB, for the tests
-clients/                     how a runtime client consumes the registry
-  README.md                  the contract: four GETs, no SDK
-  python/keel_runtime.py     a zero-dependency client
-  python/run_2052a_duckdb.py a worked example — executed by the test suite
-mcp/                         the registry as tools an external agent can call
-  tools.ts                   plain functions over a Repository — all the decisions
-  server.ts                  the MCP binding: schemas in, JSON out, no decisions
-e2e/
-  surface.spec.ts            the three columns, the loop, fixes, plans, layout
-  editor.spec.ts             pills, keyboard, completion, gutters
-  persistence.spec.ts        edits survive a reload, against its own registry
-  form.spec.ts               the round trip, the builders, inline validation
-  (surface.spec also covers the document strip, the panel naming, and variance)
-chartroom/                   the second application — dashboards over the registry
-  spec/                      the dashboard spec DSL: schema, canonical form, linter
-  widgets/                   widget contracts + presentation-only components
-  patterns/                  the pattern catalog and its design-guide rationale
-  critics/                   the LLM critics, with a degrade path that never blocks
-  server/                    the chartroom API, on the registry's db layer (ADR-4)
-  mcp/                       chartroom over MCP — 28 tools, thin by contract
-  studio/                    the spec interpreter canvas, inspector, findings panel
-  agent/                     the Python agent service (FastAPI + LangGraph)
-  ADRS.md                    49 records; read these before changing a boundary
+  registry/                  the registry: persistence, the guard, the gateway
+    dialect.ts                 every SQLite/SQL Server difference, in one file
+    db.ts                      the two drivers behind one interface
+    repository.ts              append-only revisions, optimistic concurrency
+    api.ts                     request in, response out — no socket to test
+    index.ts                   config from env, wire, listen
+    readonly.ts                the guard: what may be sent to a warehouse at all
+    query.ts                   the Dremio gateway — cap, timeout, sampling policy
+    live.ts                    the three live reads, built on the same compiler
+    runtime.ts                 releases, channels, and what a deployed client reads
+    query/dremio.py            ADBC Flight SQL client, stdin JSON → stdout JSON
+    query/flight_sql_stub.py   a real Flight SQL server over DuckDB, for the tests
+    clients/README.md        the contract a runtime client reads: four GETs, no SDK
+    clients/python/          a zero-dependency client + a worked example, both tested
+  design-system/             Aperture Risk tokens, and Inter self-hosted beside them
+  chartroom-spec/            the dashboard spec DSL: schema, canonical form, linter
+  chartroom-widgets/         widget contracts + presentation-only components
+  chartroom-patterns/        the pattern catalog and its design-guide rationale
+  chartroom-critics/         the LLM critics, with a degrade path that never blocks
+  typescript-config/         the tsconfig bases every workspace extends
 docs/
   brand/final-marks.svg      the Atlas · Prism · Ballast marks and their usage rules
+  chartroom/ADRS.md          50 records; read these before changing a boundary
   handoff/                   the design handoffs this was built from — provenance
+turbo.json                   the task graph: what depends on what, and what caches
 ```
 
-Two of these directories are also npm packages, because they are consumed across
-a workspace boundary: `src/engine` is `keel-engine` and `server/` is
-`keel-registry`, each with an `exports` map that chartroom depends on by name
-(ADR-49). Inside `src/`, the engine is reached relatively — it is the same tree.
+Everything under `apps/` and `packages/` is an npm workspace, and Turborepo
+derives the task graph from them (ADR-50). The split is the whole convention:
+`packages/` is imported by name and `apps/` is not imported at all. There is no
+longer any relative import that leaves a workspace — `boundaries.test.ts` fails
+on one, in TypeScript and in CSS alike.
 
 The split that matters: **`engine/` knows nothing about the editor or React.**
 Everything in it is a pure function of (document text, fixture), which is why
@@ -1465,8 +1462,8 @@ saved version. Data loss wearing a refresh's clothes; fixed with an
 opening-intent ref, alongside sequence-guarding the debounced lint so a stale
 report can never overwrite a fresh one.
 
-**Verification**: `npm run verify:chartroom` — typecheck across the seven
-workspaces, 132 unit tests (55 spec, 10 widgets, 6 patterns, 9 critics + 8
+**Verification**: `npx turbo run typecheck test e2e --filter='chartroom-*'` —
+typecheck across the chartroom workspaces, 132 unit tests (55 spec, 10 widgets, 6 patterns, 9 critics + 8
 live-model evals that skip without a key, 40 server, 12 MCP), and 11
 Playwright checks: the Phase-1 acceptance loop (form edit → lint → fix → save
 → reload), a conflicting save refused with a 409, the widget-states harness —
@@ -1553,18 +1550,23 @@ unused import, a `Diagnostic.msg` that has been `message` all along, and `mssql`
 having no type declarations at all. The lesson is not about TypeScript — it is
 that a check nobody has watched fail is not evidence of anything.
 
-`npm run verify` runs all three typecheck projects, the unit and conformance
-suites, and the end-to-end suite in one pass — then `verify:chartroom`, which is
-the same four things for the seven chartroom workspaces plus the Python agent's
-ruff/mypy/pytest gate.
+`npm run verify` is `turbo run typecheck test e2e verify`: every workspace that
+defines one of those tasks runs it, across all fourteen — the authoring surface,
+the registry, both MCP servers, the four chartroom packages, the studio, and the
+Python agent's ruff/mypy/pytest gate.
 
-That last leg is worth naming, for the same reason the server is named above.
-`verify` has always included it; the CI workflow ran the first three parts only,
-so seven workspaces, 220 unit tests, seven studio browser specs and the whole
-Python gate were checked by nothing on the way in — while the workflow's header
-comment claimed it ran everything `verify` runs. Every leg now has a job
-(ADR-49). The agent's venv, previously a manual prerequisite that kept its gate
-off every machine nobody had set up by hand, is `npm run setup:agent`.
+That it is one command over a derived graph is the point, not a convenience.
+The previous arrangement was a hand-written fan-out — `verify:chartroom` naming
+six workspaces one by one — and the CI workflow ran three of its four legs while
+its own header claimed it ran everything. Seven workspaces, 220 unit tests,
+seven studio browser specs and the whole Python gate were checked by nothing on
+the way in (ADR-49). A `turbo run test` job cannot drift that way: it covers a
+workspace added tomorrow without anyone editing a list (ADR-50). Turborepo also
+caches by input hash, so a second run with nothing changed is milliseconds, and
+`--filter` scopes any leg to one package.
+
+The agent's venv, previously a manual prerequisite that kept its gate off every
+machine nobody had set up by hand, is `npm run setup:agent`.
 
 ## What a review pass caught that a green suite did not
 

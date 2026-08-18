@@ -1,0 +1,25 @@
+{
+  "name": "registry-mcp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The registry as tools an external agent can call: schemas in, JSON out, no decisions.",
+  "scripts": {
+    "start": "tsx server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "keel-engine": "*",
+    "keel-registry": "*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@types/node": "^26.1.2",
+    "tsx": "^4.23.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
+  }
+}
