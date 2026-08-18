@@ -113,10 +113,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
+      # Node, not just Python. `test_governed_live` drives the real
+      # `chartroom-mcp` server over stdio and `test_warehouse_parity` boots a
+      # real `chartroom-server` — both are TypeScript run through tsx, so
+      # without `node_modules` they die on `@modelcontextprotocol/sdk` and the
+      # parity suite reports a port that never opened. The first CI run of this
+      # job proved it: 3 failed, 9 errored, all of them that.
+      - run: npm ci
       # The venv was a manual prerequisite, which is why this gate had never run
       # anywhere but on a machine somebody had set up by hand. `setup:agent` is
       # the same three commands the README asks for, in a form CI can call.
