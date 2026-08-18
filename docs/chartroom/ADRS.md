@@ -876,6 +876,13 @@ enough for the environment to exist — it has to be the `python3` on PATH, or
 the suites skip themselves into a green tick that means nothing. `uv run`
 handles that locally; CI puts `.venv/bin` on `$GITHUB_PATH` once per job.
 
+**The interpreter is pinned too, in `.python-version`.** A lockfile pins
+packages, not the Python they are resolved for. Dropping the old workflow's
+`setup-python: '3.11'` in favour of uv quietly handed that choice to whatever
+the runner had: the first CI run built the environment on 3.12 while every
+local run used 3.11, with the agent's ruff and mypy still configured for
+py311. Both projects carry a `.python-version` now, which uv reads.
+
 **Dev tooling is a dependency group (PEP 735), not an extra.** `uv sync` and
 `uv run` include groups by default, so the agent's gate is `uv run pytest` with
 no flag to forget. Extras are for something a consumer might install; nothing

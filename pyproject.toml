@@ -7,6 +7,12 @@
 #
 #   uv sync                    # or: npm run setup:python
 #
+# `.python-version` beside this file pins the interpreter to 3.11. A lockfile
+# pins packages, not the Python they are installed for, and uv picks whatever
+# it finds otherwise: the first CI run after this migration resolved 3.12 while
+# local runs used 3.11, which is the drift the lock exists to prevent — and the
+# agent's ruff and mypy are configured for py311.
+#
 # The suites reach these through a bare `python3` — `execFileSync('python3', …)`
 # in the conformance and Flight SQL tests — so `.venv/bin` has to be on PATH for
 # them to run rather than skip. `uv run` does that for you; CI puts it on PATH
