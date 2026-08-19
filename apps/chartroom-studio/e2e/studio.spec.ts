@@ -8,7 +8,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/#/author');
   // Open the seeded monitor explicitly — the studio auto-opens the first
   // dashboard alphabetically, and other specs create boards that sort earlier.
   await page.getByTestId('dash-lcr-monitor').click();

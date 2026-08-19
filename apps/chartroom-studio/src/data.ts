@@ -55,6 +55,15 @@ export const loadContracts = () =>
 export const loadContract = (ref: string) =>
   api<{ contract: MetricContract }>(`/api/contracts/${encodeURIComponent(ref)}`);
 
+/** The as-of dates the engine can actually evaluate, and the bases. */
+export interface Calendar {
+  dates: string[];
+  latest: string;
+  bases: Array<'prior_day' | 'prior_week' | 'month_end'>;
+}
+
+export const loadCalendar = () => api<Calendar>('/api/calendar');
+
 export const loadWidgets = () =>
   api<{ widgets: WidgetContract[]; unrenderable?: string[] }>('/api/widgets');
 

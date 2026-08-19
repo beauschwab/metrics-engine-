@@ -61,7 +61,7 @@ test('draft → refused composition → human approves in the card → unlocked'
   expect(refused.status()).toBe(403);
 
   // The human half: read the card, approve.
-  await page.goto('/');
+  await page.goto('/#/author');
   await page.getByTestId('dash-briefed-board').click();
   await page.getByTestId('tab-brief').click();
 
@@ -84,7 +84,7 @@ test('draft → refused composition → human approves in the card → unlocked'
 });
 
 test('a dashboard without a brief says where briefs come from', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/#/author');
   await page.getByTestId('dash-lcr-monitor').click();
   await page.getByTestId('tab-brief').click();
   await expect(page.getByTestId('brief-missing')).toContainText('create_brief');

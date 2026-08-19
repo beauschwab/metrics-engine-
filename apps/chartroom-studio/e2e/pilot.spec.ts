@@ -9,7 +9,7 @@ import { expect, test } from '@playwright/test';
 const API = 'http://127.0.0.1:8788';
 
 test('the data critic runs from the findings tab and the dogfood numbers hold', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/#/author');
   await page.getByTestId('dash-lcr-monitor').click();
   await page.getByTestId('tab-findings').click();
 

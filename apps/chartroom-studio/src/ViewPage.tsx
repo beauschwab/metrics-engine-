@@ -12,10 +12,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardSpec } from 'chartroom-spec';
 import { loadContracts, loadDashboard, type ContractSummary } from './data';
+import { DEFAULT_ENV } from './bindings';
 import { Canvas } from './Canvas';
+import type { CrossFilter } from './analyst/ContextBar';
+import { ExplainDrawer } from './analyst/ExplainDrawer';
 
 export function ViewPage({ id }: { id: string }) {
   const [spec, setSpec] = useState<DashboardSpec | null>(null);
+  // Cross-filtering is a declared view interaction, so it lives here rather
+  // than in the studio's analyst state — a reader gets the same behaviour
+  // without the authoring surface around it.
+  const [cross, setCross] = useState<CrossFilter | null>(null);
+  const [explain, setExplain] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [contracts, setContracts] = useState<ContractSummary[]>([]);
   const [missing, setMissing] = useState(false);
@@ -65,8 +73,29 @@ export function ViewPage({ id }: { id: string }) {
         <a className="cr-header-link cr-noprint" href="#/" data-testid="view-to-studio">studio</a>
       </header>
       <div className="cr-view-body">
-        <Canvas spec={spec} contracts={byRef} selected={null} onSelect={() => {}} />
+        <Canvas
+          spec={spec}
+          contracts={byRef}
+          selected={null}
+          onSelect={() => {}}
+          env={DEFAULT_ENV}
+          cross={cross}
+          onCross={setCross}
+          onExplain={setExplain}
+        />
       </div>
+      {/* "Where does this number come from" is a reader's question first. */}
+      {explain && spec.widgets.some((w) => w.id === explain) && (
+        <ExplainDrawer
+          widget={spec.widgets.find((w) => w.id === explain) as NonNullable<typeof spec>['widgets'][number]}
+          spec={spec}
+          contract={byRef.get(spec.widgets.find((w) => w.id === explain)!.bind.metric)}
+          asOf={null}
+          basis="prior_day"
+          params={{}}
+          onClose={() => setExplain(null)}
+        />
+      )}
     </div>
   );
 }

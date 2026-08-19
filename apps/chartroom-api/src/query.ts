@@ -24,6 +24,40 @@ import { buildRegistry } from 'keel-engine/registry';
 import { compare as comparePred } from 'keel-engine/predicate';
 import { resolveRef, type RegistryState } from './keel';
 
+/** The index of the requested as-of date, or the latest close. */
+function atIndex(asOf: string | undefined): number {
+  if (!asOf) return LAST;
+  const i = DATES.indexOf(asOf);
+  return i === -1 ? LAST : i;
+}
+
+/**
+ * The index `prior` reads from. Clamped at 0 rather than wrapping: at the
+ * start of the fixture window there is no prior month to compare against, and
+ * a delta of zero is the honest answer there — a negative index would silently
+ * read `undefined` and render NaN.
+ */
+function priorIndex(at: number, basis: Basis | undefined): number {
+  if (at === 0) return 0;
+  if (basis === 'prior_week') return Math.max(0, at - 7);
+  if (basis === 'month_end') {
+    const month = DATES[at].slice(0, 7);
+    for (let i = at - 1; i >= 0; i--) if (DATES[i].slice(0, 7) !== month) return i;
+    return 0;
+  }
+  return at - 1;
+}
+
+/**
+ * The dates the fixture range actually carries, plus the bases a delta can be
+ * read against — the as-of picker's options. Served rather than hardcoded in
+ * the studio, because a picker offering a date the engine cannot evaluate is
+ * a control that fails on click.
+ */
+export function calendar(): { dates: string[]; latest: string; bases: readonly Basis[] } {
+  return { dates: DATES, latest: DATES[LAST], bases: BASES };
+}
+
 export class QueryRefused extends Error {}
 export class QueryUnresolved extends Error {}
 
@@ -35,8 +69,25 @@ export interface QueryRequest {
   window?: { trailing: string };
   /** Context params already resolved to values by the caller. */
   params?: Record<string, string>;
+  /**
+   * The date the reader is standing on. Absent means the latest close, which
+   * is what every caller meant before the analyst surface could ask for
+   * anything else. An unknown date resolves to the latest close rather than
+   * erroring: a stale bookmark should show today's number, not a stack trace.
+   */
+  asOf?: string;
+  /** What `prior` compares against — the delta every tile draws. */
+  basis?: Basis;
   max_cells?: number;
 }
+
+/**
+ * The comparison bases the analyst bar offers. `prior_day` is the historical
+ * behaviour and stays the default, so an absent basis is not a behaviour
+ * change for any caller that predates this.
+ */
+export const BASES = ['prior_day', 'prior_week', 'month_end'] as const;
+export type Basis = (typeof BASES)[number];
 
 export interface SeriesPoint { date: string; value: number }
 export interface SeriesResult {
@@ -159,8 +210,11 @@ async function evaluate(req: QueryRequest, deps: EvalDeps): Promise<QueryResult>
 
   // Group membership comes from the *derived* rows at the as-of date, so a
   // classification's emitted column groups exactly like a source column.
+  const at = atIndex(req.asOf);
+  const priorAt = priorIndex(at, req.basis);
+
   const probe = new Evaluator(graph, 'nominal', registry, base);
-  const derivedRows = probe.rowsFor(DATES[LAST]).rows;
+  const derivedRows = probe.rowsFor(DATES[at]).rows;
   const scanned = derivedRows.length;
 
   const groups = new Map<string, Record<string, string>>();
@@ -188,15 +242,18 @@ async function evaluate(req: QueryRequest, deps: EvalDeps): Promise<QueryResult>
         (row) => catDims.every((d) => String(row[d]) === key[d]), rowSource)
       : probe;
 
-  const asOf = DATES[LAST];
+  const asOf = DATES[at];
   const cost: Cost = { rowsScanned: scanned, groups: groups.size || 1, cache: 'miss' };
 
   // Series request: the widget plots time.
   if (timeDims.length) {
     const days = windowDays(req.window);
-    const from = days === null ? 0 : Math.max(0, DATES.length - days);
+    // The window ends at the as-of date, not at the end of the fixture range:
+    // standing on an earlier date must not draw a line into its future.
+    const end = at + 1;
+    const from = days === null ? 0 : Math.max(0, end - days);
     const sliced = (s: number[]): SeriesPoint[] =>
-      DATES.slice(from).map((date, i) => ({ date, value: s[from + i] }));
+      DATES.slice(from, end).map((date, i) => ({ date, value: s[from + i] }));
 
     const series = catDims.length
       ? [...groups.values()].map((key) => ({
@@ -210,14 +267,14 @@ async function evaluate(req: QueryRequest, deps: EvalDeps): Promise<QueryResult>
   if (catDims.length) {
     const rows: GroupRow[] = [...groups.values()].map((key) => {
       const s = evaluatorFor(key).series(measure).s;
-      return { key, value: s[LAST], prior: s[LAST - 1] };
+      return { key, value: s[at], prior: s[priorAt] };
     });
     return { kind: 'groups', unit, format, rows, asOf, cost };
   }
 
   // No dims: the headline number.
   const s = evaluatorFor(null).series(measure).s;
-  return { kind: 'scalar', unit, format, value: s[LAST], prior: s[LAST - 1], asOf, cost };
+  return { kind: 'scalar', unit, format, value: s[at], prior: s[priorAt], asOf, cost };
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +313,11 @@ export class QueryService {
       filters: req.filters ?? [],
       window: req.window ?? null,
       params: req.params ?? {},
+      // Part of the key, not decoration: two reads of one metric that differ
+      // only by as-of are different numbers, and an allow-list that omitted
+      // them would serve the first answer for every date the analyst picked.
+      asOf: req.asOf ?? null,
+      basis: req.basis ?? null,
       max_cells: req.max_cells ?? null,
     }));
 

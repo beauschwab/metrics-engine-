@@ -9,7 +9,7 @@
 import { expect, test } from '@playwright/test';
 
 test('the chat pane opens, offers suggestions, and degrades honestly without a model', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/#/author');
   await page.getByTestId('dash-lcr-monitor').click();
 
   await page.getByTestId('open-chat').click();

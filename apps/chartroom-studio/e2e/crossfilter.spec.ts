@@ -44,7 +44,7 @@ test('click narrows the target, the chip says so, clear restores', async ({ page
   });
   expect([200, 201]).toContain(saved.status());
 
-  await page.goto('/');
+  await page.goto('/#/author');
   await page.getByTestId('dash-wired-board').click();
 
   const tile = page.getByTestId('widget-hqla-tile');

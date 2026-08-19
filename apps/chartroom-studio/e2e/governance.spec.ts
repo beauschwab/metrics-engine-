@@ -165,7 +165,7 @@ test('the promotion gate: GOV rules armed at the target status, sign-offs record
   });
   expect(saved.status()).toBe(201);
 
-  await page.goto('/');
+  await page.goto('/#/author');
   await page.getByTestId('dash-governed-board').click();
   await page.getByTestId('tab-govern').click();
 

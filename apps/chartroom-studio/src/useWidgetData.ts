@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardSpec, FilterExpr, WidgetInstance } from 'chartroom-spec';
 import type { WidgetData, WidgetStatus } from 'chartroom-widgets';
-import { assemble, requestsFor, type QueryResult } from './bindings';
+import { assemble, requestsFor, DEFAULT_ENV, type AnalystEnv, type QueryResult } from './bindings';
 import { runQuery, type ContractSummary } from './data';
 
 export interface WidgetQueryState {
@@ -23,13 +23,18 @@ export function useWidgetData(
   contracts: Map<string, ContractSummary>,
   /** Cross-filter narrowing when this widget is an interaction target. */
   extraFilters: FilterExpr[] = [],
+  /** As-of, basis and context selections from the analyst bar. */
+  env: AnalystEnv = DEFAULT_ENV,
 ): WidgetQueryState {
   const [state, setState] = useState<WidgetQueryState>({ data: null, status: 'loading' });
 
   // The dependency is the *meaning* of the binding — its resolved requests —
   // not object identity, which changes on every keystroke elsewhere.
-  const requests = useMemo(() => requestsFor(w, spec, extraFilters), [
+  const requests = useMemo(() => requestsFor(w, spec, extraFilters, env), [
     JSON.stringify(w.bind), JSON.stringify(spec.context), JSON.stringify(extraFilters), w.type,
+    // By meaning, not identity — the bar hands down a fresh object every
+    // render and identity alone would refetch the whole board on every keystroke.
+    JSON.stringify(env),
   ]);
 
   useEffect(() => {
@@ -47,7 +52,9 @@ export function useWidgetData(
         ref: b.metric,
         result: bands[i] as QueryResult,
       }));
-      const data = assemble(w, main as QueryResult, compare, bandPairs, contracts.get(w.bind.metric));
+      const data = assemble(
+        w, main as QueryResult, compare, bandPairs, contracts.get(w.bind.metric), env.basis,
+      );
       const empty = (data.rows && !data.rows.length)
         || (data.series && !data.series.length)
         || (!data.rows && !data.series && !data.scalar);

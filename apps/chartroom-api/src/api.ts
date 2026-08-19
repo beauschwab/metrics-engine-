@@ -24,7 +24,7 @@ import {
   catalogBlockers, isCatalogArtifact, validatePatternProposal, validateWidgetProposal,
   type CatalogEvidence,
 } from './catalog';
-import { QueryRefused, QueryUnresolved, QueryService, type QueryRequest } from './query';
+import { calendar, QueryRefused, QueryUnresolved, QueryService, type QueryRequest } from './query';
 import { upgradeNotices } from './upgrades';
 import { buildManifest } from './warehouse';
 import {
@@ -387,6 +387,12 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
     if (method === 'GET' && path === '/api/warehouse/manifest') {
       const set = await deps.contracts.current();
       return json(200, buildManifest(set.state));
+    }
+
+    // The as-of dates and comparison bases the analyst bar offers. The engine
+    // owns the calendar; the studio asks rather than assuming a range.
+    if (method === 'GET' && path === '/api/calendar') {
+      return json(200, calendar());
     }
 
     // ---- queries ---------------------------------------------------------

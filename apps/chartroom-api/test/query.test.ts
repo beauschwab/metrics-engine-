@@ -130,6 +130,60 @@ describe('series queries', () => {
   });
 });
 
+describe('as-of and basis', () => {
+  it('an earlier as-of reads that date, not the latest close', async () => {
+    const { s } = service();
+    const at = LAST - 14;
+    const r = await s.run({ metric: ref('hqla_total'), asOf: DATES[at] });
+    expect(r.kind).toBe('scalar');
+    if (r.kind !== 'scalar') return;
+    expect(r.asOf).toBe(DATES[at]);
+    expect(r.value).toBeCloseTo(direct().series('hqla_total').s[at], 6);
+    expect(r.prior).toBeCloseTo(direct().series('hqla_total').s[at - 1], 6);
+  });
+
+  it('an unknown date falls back to the latest close rather than throwing', async () => {
+    const { s } = service();
+    const r = await s.run({ metric: ref('hqla_total'), asOf: '1999-01-01' });
+    expect(r.kind).toBe('scalar');
+    if (r.kind !== 'scalar') return;
+    // A stale bookmark shows today's number, not a stack trace.
+    expect(r.asOf).toBe(DATES[LAST]);
+  });
+
+  it('the basis moves `prior` and leaves the value alone', async () => {
+    const { s } = service();
+    const day = await s.run({ metric: ref('hqla_total') });
+    const week = await s.run({ metric: ref('hqla_total'), basis: 'prior_week' });
+    expect(day.kind === 'scalar' && week.kind === 'scalar').toBe(true);
+    if (day.kind !== 'scalar' || week.kind !== 'scalar') return;
+    expect(week.value).toBeCloseTo(day.value, 6);
+    expect(week.prior).toBeCloseTo(direct().series('hqla_total').s[LAST - 7], 6);
+  });
+
+  it('month_end compares against the last date of the preceding month', async () => {
+    const { s } = service();
+    const r = await s.run({ metric: ref('hqla_total'), basis: 'month_end' });
+    if (r.kind !== 'scalar') return;
+    const month = DATES[LAST].slice(0, 7);
+    let expected = 0;
+    for (let i = LAST - 1; i >= 0; i--) {
+      if (DATES[i].slice(0, 7) !== month) { expected = i; break; }
+    }
+    expect(r.prior).toBeCloseTo(direct().series('hqla_total').s[expected], 6);
+  });
+
+  it('a series stops at the as-of date instead of running into its future', async () => {
+    const { s } = service();
+    const at = LAST - 10;
+    const r = await s.run({ metric: ref('lcr_pct'), dims: ['as_of_date'], asOf: DATES[at] });
+    expect(r.kind).toBe('series');
+    if (r.kind !== 'series') return;
+    const points = r.series[0].points;
+    expect(points[points.length - 1].date).toBe(DATES[at]);
+  });
+});
+
 describe('the cache', () => {
   it('is single-flight: two widgets sharing a slice cost one evaluation', async () => {
     const { s, evals } = service();
@@ -152,6 +206,17 @@ describe('the cache', () => {
     await s.run({ metric: ref('hqla_total') });
     await s.run({ metric: ref('hqla_total'), dims: ['entity_id'] });
     expect(evals()).toBe(2);
+  });
+
+  it('as-of and basis are part of the key', async () => {
+    // The key is an explicit allow-list of fields. Omitting these would serve
+    // the first date's answer for every date the analyst picked — a control
+    // that looks live and is not.
+    const { s, evals } = service();
+    await s.run({ metric: ref('hqla_total') });
+    await s.run({ metric: ref('hqla_total'), asOf: DATES[LAST - 3] });
+    await s.run({ metric: ref('hqla_total'), basis: 'prior_week' });
+    expect(evals()).toBe(3);
   });
 });
 

@@ -892,3 +892,69 @@ The venv guard is gone with it. `verify` used to begin by testing for
 `.venv/bin/python` and telling you which command to run; `uv run` builds the
 environment from the lock on demand, so there is no prerequisite left to
 forget and no error message needed for forgetting it.
+
+## ADR-52 — The studio opens read-first; author is a route, not a flag
+
+The v2 design inverts what this surface is by default. The board, the scope it
+is read under, and the exceptions standing against it are what you land on; the
+dashboard list and the inspector are authoring tools you switch into. Most
+people who open a chartroom board are reading it, and the previous default made
+every one of them dismiss two panes of authoring furniture first.
+
+**The mode is `#/author`, not component state.** The app already had a hash
+router — `#/view/:id`, `#/proposals`, `#/widgets` — and a second, invisible
+notion of "where am I" is how two navigation systems start disagreeing. As a
+route it survives a reload, it can be linked, and the e2e specs that exercise
+authoring say so in their `goto` rather than clicking a toggle first.
+
+**The cross-filter chip moved into the context bar.** A filter is scope, the
+same category as as-of or a context param, and reading all of it in one strip
+beats finding one piece floating over the tiles. `Canvas` no longer owns that
+state; it takes `cross` and `onCross` from above.
+
+**`spec.context` finally has a control.** `paramsOf` has resolved declared
+context params to their defaults since Phase 1, with the comment "no context
+bar yet". This is that bar. The chips' options are asked of the engine as a
+grouped query on the param's dimension, so a value the picker offers is a value
+a widget can actually be narrowed to — a hardcoded list would eventually offer
+a filter that returns an empty board.
+
+**As-of and basis resolve in the engine, not in the browser.** The prototype
+scales fixture numbers by a per-entity multiplier to simulate the controls. Here
+`QueryRequest` grew `asOf` and `basis`, the evaluator reads the index for that
+date instead of always `LAST`, and a series stops at the as-of date rather than
+drawing into its future. Both fields are part of the cache key: the key is an
+explicit allow-list, and omitting them would serve the first date's answer for
+every date the analyst picked — a control that looks live and is not. `prior`
+follows the basis, and so does the label the tile prints beside the delta.
+
+**Exceptions are derived, never authored.** The strip joins the server's lint
+report with the pin-upgrade notices. It invents no severity of its own: BLOCK
+becomes a breach, WARN a warning, a `GOV-*` rule says governance in governance's
+words, and a stale pin is a pin. SUGGEST findings are excluded — the strip is
+what you must answer for before trusting the board, and mixing suggestions in is
+how a breach ends up eighth in a list nobody reads. Acknowledging hides a row
+for the session; it writes no audit record and clears no gate.
+
+**Two deliberate departures from the prototype.**
+
+*The drill-down ends in the aggregate breakdown, not the underlying rows.* Row
+level data has no representation in the query response types at all — that is
+the structural half of the aggregates-only boundary, stated in `query.ts`: "Row
+level data has no representation in the response types, so it cannot leak by
+accident." Adding a rows endpoint to feed a drawer would dismantle the guarantee
+in order to decorate it. The breakdown answers the question a reader is actually
+asking — which slices make up this number — and the CSV exports that. Everything
+else in the drawer is the real thing: the lineage is the contract's registry
+metadata and the compiled query is the SQL the warehouse manifest publishes.
+
+*The DRAFT watermark stays visible in read mode.* The prototype shows it only to
+authors. Hiding "uncertified metrics present" from the audience that is reading
+the numbers, and showing it only to the person who already knows, inverts who
+the warning is for.
+
+**Still open.** The prototype's dated, bylined annotation notes are not built.
+`annotation@1` carries a single `note` string, so dated entries with an author
+are a change to a governed widget contract — which this repo has a proposals
+flow for, and which is not a UI change. The `▲` markers on the trend line hang
+off the same data and wait with it.

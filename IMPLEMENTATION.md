@@ -56,7 +56,9 @@ apps/                        what deploys or ships
     tools.ts                 plain functions over a Repository — all the decisions
     server.ts                the MCP binding: schemas in, JSON out, no decisions
   chartroom-api/             the chartroom API, on the registry's db layer (ADR-4)
-  chartroom-studio/          the spec interpreter canvas, inspector, findings panel
+  chartroom-studio/          read-first: the canvas under a stated scope (ADR-52)
+    src/analyst/             as-of, context, exceptions, explain, palette, changes
+    src/Inspector.tsx        the authoring pane, behind #/author
   chartroom-mcp/             chartroom over MCP — 28 tools, thin by contract
   chartroom-agent/           the Python agent service (FastAPI + LangGraph)
 packages/                    what other workspaces import, by name

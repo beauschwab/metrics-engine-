@@ -23,8 +23,39 @@ export interface QueryRequest {
   filters?: Binding['filters'];
   window?: { trailing: string };
   params?: Record<string, string>;
+  asOf?: string;
+  basis?: Basis;
   max_cells?: number;
 }
+
+/** Mirrors the server's `Basis` — the delta's reference point. */
+export type Basis = 'prior_day' | 'prior_week' | 'month_end';
+
+/**
+ * What the analyst bar is currently asking for. Every widget on the board
+ * reads the same one, which is the point: a dashboard whose tiles sat on
+ * different as-of dates would be a governance problem, not a feature.
+ */
+export interface AnalystEnv {
+  asOf: string | null;
+  basis: Basis;
+  /** Context-param overrides from the context bar, by param name. */
+  params: Record<string, string>;
+}
+
+export const DEFAULT_ENV: AnalystEnv = { asOf: null, basis: 'prior_day', params: {} };
+
+/**
+ * What `prior_period` means once the basis is selectable. The tile prints this
+ * beside the delta, so it has to follow the control: a tile reading "vs prior
+ * day" while the bar says month-end is a mislabelled number, which is worse
+ * than no label at all.
+ */
+export const BASIS_LABEL: Record<Basis, string> = {
+  prior_day: 'prior day',
+  prior_week: 'prior week',
+  month_end: 'month-end',
+};
 export interface SeriesResult {
   kind: 'series';
   unit: string;
@@ -55,10 +86,18 @@ export interface ResolvedRequests {
   bands: QueryRequest[];
 }
 
-/** Context params resolved to their defaults (Phase 1 — no context bar yet). */
-export function paramsOf(spec: DashboardSpec): Record<string, string> {
+/**
+ * Context params resolved to values: the spec's declared defaults, with the
+ * context bar's selections layered over them. Only params the spec actually
+ * declares survive — the bar cannot invent a param the board never named, so
+ * a stale selection from a previous board is dropped rather than sent.
+ */
+export function paramsOf(
+  spec: DashboardSpec,
+  overrides: Record<string, string> = {},
+): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(spec.context).map(([name, p]) => [name, p.default]),
+    Object.entries(spec.context).map(([name, p]) => [name, overrides[name] ?? p.default]),
   );
 }
 
@@ -69,9 +108,17 @@ export function requestsFor(
   // compare thresholds and bands stay global on purpose (a floor is a floor,
   // whatever slice is highlighted).
   extraFilters: FilterExpr[] = [],
+  env: AnalystEnv = DEFAULT_ENV,
 ): ResolvedRequests {
-  const params = paramsOf(spec);
+  const params = paramsOf(spec, env.params);
   const bind = w.bind;
+  // The as-of date and the basis ride every leg — main, compare and bands
+  // alike. A band drawn at today's date under a tile read at last month's
+  // would be a reference line for a number that is not on screen.
+  const at = {
+    ...(env.asOf ? { asOf: env.asOf } : {}),
+    ...(env.basis !== 'prior_day' ? { basis: env.basis } : {}),
+  };
   const filters = [...(bind.filters ?? []), ...extraFilters];
   const main: QueryRequest = {
     metric: bind.metric,
@@ -79,11 +126,12 @@ export function requestsFor(
     ...(filters.length ? { filters } : {}),
     ...(bind.window ? { window: bind.window } : {}),
     ...(Object.keys(params).length ? { params } : {}),
+    ...at,
     ...(bind.max_cells !== undefined ? { max_cells: bind.max_cells } : {}),
   };
 
   const compare = bind.compare && bind.compare.vs !== 'prior_period'
-    ? { metric: bind.compare.vs, ...(Object.keys(params).length ? { params } : {}) }
+    ? { metric: bind.compare.vs, ...(Object.keys(params).length ? { params } : {}), ...at }
     : null;
 
   // Bands ride the widget's own window so the reference covers the same days.
@@ -92,6 +140,7 @@ export function requestsFor(
     dims: ['as_of_date'],
     ...(bind.window ? { window: bind.window } : {}),
     ...(Object.keys(params).length ? { params } : {}),
+    ...at,
   }));
 
   return { main, compare, bands };
@@ -105,6 +154,7 @@ export function assemble(
   compare: QueryResult | null,
   bands: Array<{ ref: string; result: QueryResult }>,
   contract: ContractSummary | undefined,
+  basis: Basis = 'prior_day',
 ): WidgetData {
   const data: WidgetData = { unit: main.unit, format: main.format, asOf: main.asOf };
 
@@ -119,7 +169,11 @@ export function assemble(
   if (w.bind.compare) {
     if (w.bind.compare.vs === 'prior_period') {
       if (main.kind === 'scalar') {
-        data.compare = { label: 'prior day', value: main.prior, style: w.bind.compare.style };
+        data.compare = {
+          label: BASIS_LABEL[basis],
+          value: main.prior,
+          style: w.bind.compare.style,
+        };
       }
     } else if (compare && compare.kind === 'scalar') {
       data.compare = {
