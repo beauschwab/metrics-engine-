@@ -958,3 +958,80 @@ the warning is for.
 are a change to a governed widget contract — which this repo has a proposals
 flow for, and which is not a UI change. The `▲` markers on the trend line hang
 off the same data and wait with it.
+
+## ADR-53 — no SQL model layer; the row stage stays a closed vocabulary
+
+**Considered:** the transformation layer every warehouse-native BI tool has —
+Rill's `models`, dbt's, SQLMesh's. A SQL file per transformation, DAG'd by
+reference, materialized as a view or a table, sitting between the raw source
+and the metrics view.
+**Decision:** no. The row stage keeps its five declarative operators, and the
+transformation layer stays upstream, where it already is.
+
+**Arbitrary SQL is opaque to everything this engine sells.** `DERIVATION_OPS`
+(`vocab.ts`) is five operators — `classify`, `date_bucket`, `days_between`,
+`param_lookup`, `expr` — and the closure is the point. Because `product_id` is
+`op: classify, using: fr2052a_product_id` rather than a `CASE` expression,
+`impact.ts` can find every view whose numbers move when that rule set changes,
+and the coverage panel can say which rule fired on how many records moving how
+much notional. Written as SQL in a model file the same derivation is a string:
+lineage stops at the file boundary, impact analysis returns nothing, and
+coverage has nothing to count. `conformance.ts` requires DuckDB, Polars and the
+fixtures to agree to 1e-6, which is only checkable because every operator has a
+known emission per backend — and where an emission does not exist, `semantic.ts`
+refuses by name: *"ema() is a preview approximation, not a definition — there is
+no portable SQL for it."* Hand-written SQL has no such refusal available. Every
+construct is emittable because the author already emitted it, which is P7 losing
+its grip on the one layer that touches rows.
+
+**The boundary is already written down.** `product.md` §7: *"No raw SQL in a
+dashboard spec. The moment one exists, the registry stops being the only data
+API and every guarantee above becomes advisory."* A model layer is that
+sentence one hop upstream. The hop does not change the consequence.
+
+**And the layer exists, pointing outward.** `semantic.ts` emits `CREATE OR
+REPLACE VIEW` and dbt semantic models, on the argument that the last hop of a
+governed number should not be a human retyping it. Adding our own SQL
+transformation layer would rebuild dbt inside the product whose stated job is to
+be the definition dbt consumes. The source names say the same thing:
+`alm.fct_liquidity_position` and `alm.fct_2052a_positions` are fact tables that
+arrive joined, and `planLines` compiles to `SELECT * FROM <source>` accordingly.
+The joins happen in the pipeline. The README calls it "the plan that the nightly
+pipeline will run" — the pipeline runs it.
+
+**What we do not have, stated plainly.** `derivations` are scoped to one
+document, and exactly one document has them (`fr2052a_outflows`). A second view
+over `alm.fct_2052a_positions` — NSFR, or a submission at another grain — would
+re-declare the `classify` → `param_lookup` → `expr` chain that turns a balance
+into a weighted amount. Two copies of an applied regulatory classification is
+precisely the failure `semantic.ts` opens by naming: **drift you cannot detect
+is worse than a wrong number you can.** Copy-paste drift is detectable in
+principle and nothing here detects it.
+
+**The shape it takes when it arrives is not a model.** It is a
+`prepared_source` document: the same five operators, given a name and a
+governance header, referenced by a `metrics_view` the way `murex_eu_binding`
+already names `binds: alm.fct_2052a_positions`. Almost none of that is new
+machinery. `rowStageSql` (`compile.ts`) already emits the stage as flat SQL
+steps in dependency order, and `ManifestDoc.row_stage` already ships them for
+the warehouse to chain "one CTE per step under the source before aggregating".
+What is missing is an identity and a reference, not an execution model.
+
+**It is not built, because one instance is not an abstraction.** ADR-1 rejected
+Turborepo with "at four packages it is a config file that can go stale" and
+ADR-50 revisited it at fourteen, so the honest form of a deferral here is to
+name the count that changes the answer: build `prepared_source` when a second
+document declares a derivation chain overlapping an existing one. The shape of
+that second consumer decides whether it wants sharing or just repetition, and
+guessing now would fix the wrong one in a document kind.
+
+**One adjacent idea is worth taking, later.** Materialization. The row stage is
+recomputed inline for every measure on every query; a `materialize` hint on the
+stage is the standard answer and would be a compile-target concern — a decision
+`rowStageSql`'s consumers make about persistence — not a new thing for an author
+to write. Deferred, not rejected.
+
+**Two are explicitly not taken.** Incremental and partitioned models, because
+refresh state and scheduling belong to the pipeline and owning them pulls this
+product into orchestration it deliberately sits beside. And models as inputs to
+a dashboard spec, which is the §7 boundary above, restated.
