@@ -37,7 +37,9 @@ import { diagnose } from 'keel-engine/diagnostics';
 import { Evaluator } from 'keel-engine/evaluate';
 import { AS_OF, TABLES, type Row } from 'keel-engine/fixtures';
 import { assessChange, type ImpactReport } from 'keel-engine/impact';
-import { buildLineage, chainFor, type Stage } from 'keel-engine/lineage';
+import {
+  buildLineage, chainFor, type LineageGraph, type Node, type Stage,
+} from 'keel-engine/lineage';
 import { parseDoc, sectionBlocks, type Graph } from 'keel-engine/parse';
 import {
   buildRegistry, resolveClassification, resolveParameterSet,
@@ -241,7 +243,11 @@ function coverageFor(
         return null;
       }
     })
-    .find((g): g is Graph => !!g && g.kind === 'metrics_view'
+    // The document that declares the classify: a metrics view, or — once the
+    // stage is shared — the prepared source. Both name a `source:` and carry
+    // the derivation, which is all the coverage run needs.
+    .find((g): g is Graph => !!g
+      && (g.kind === 'metrics_view' || g.kind === 'prepared_source')
       && derivationsOf(g).some((x) => x.op === 'classify' && x.using === classificationName));
   if (!view) return null;
 
@@ -312,12 +318,40 @@ export async function getLineage(repo: Repository, name: string) {
     writes: node.writes,
     uses: node.uses,
     // Who breaks if this changes — the question behind most edits.
-    usedBy: lineage.nodes.filter((n) => n.uses.includes(node.name)).map((n) => n.name),
+    usedBy: usedBy(lineage, node),
     chain: chain.steps.map((s) => ({
       kind: s.kind, label: s.label, docs: s.docs, stage: s.stage ?? null, uses: s.uses,
     })),
     position: chain.at,
   };
+}
+
+/**
+ * The documents that break when `node` changes.
+ *
+ * Direct users, plus the views that reach it through a prepared source. A
+ * shared row stage is a pass-through for blast radius: editing a rule set the
+ * stage folds in moves the numbers in every view that prepares from it, and
+ * stopping at the stage would answer "what breaks" with the one document whose
+ * own output nobody reads.
+ *
+ * Only prepared sources are expanded through. The rest of the graph keeps the
+ * one-hop answer it has always given — a report's users are its monitors, not
+ * everything downstream of them.
+ */
+function usedBy(lineage: LineageGraph, node: Node): string[] {
+  const direct = lineage.nodes.filter((n) => n.uses.includes(node.name));
+  const out = direct.map((n) => n.name);
+  direct
+    .filter((n) => n.kind === 'prepared_source')
+    .forEach((stage) => {
+      lineage.nodes
+        .filter((n) => n.uses.includes(stage.name))
+        .forEach((n) => {
+          if (!out.includes(n.name)) out.push(n.name);
+        });
+    });
+  return out;
 }
 
 // ---------------------------------------------------------------------------

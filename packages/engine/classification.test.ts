@@ -17,13 +17,15 @@ import {
   buildRegistry, effectiveProblems, inForce, resolveClassification, resolveParameterSet,
 } from './registry';
 import {
-  bucketFor, classificationMigration, daysBetween, derivationsOf, deriveRows, runClassification,
+  bucketFor, classificationMigration, daysBetween, derivationsFor, derivationsOf, deriveRows,
+  runClassification,
 } from './rows';
 import { DOMAINS, type FixtureName } from './vocab';
 
 const RULES = INITIAL_DOCS.fr2052a_product_id;
 const RATES = INITIAL_DOCS.lcr_outflow_rates;
 const VIEW = INITIAL_DOCS.fr2052a_outflows;
+const PREPARED = INITIAL_DOCS.fr2052a_prepared;
 
 function workspace(over: Partial<Record<string, string>> = {}) {
   return { ...INITIAL_DOCS, ...over } as Record<string, string>;
@@ -55,12 +57,23 @@ describe('document kinds', () => {
 
   it('keeps blocks in their own sections', () => {
     const g = parseDoc(VIEW);
-    expect(derivationsOf(g).map((d) => d.name)).toEqual([
-      'days_to_maturity', 'maturity_bucket', 'product_id', 'outflow_rate', 'weighted_amount',
+    // `derivationsOf` is the single-document read: the view's own stage only.
+    expect(derivationsOf(g).map((d) => d.name)).toEqual(['weighted_amount']);
+    expect(derivationsOf(parseDoc(PREPARED)).map((d) => d.name)).toEqual([
+      'days_to_maturity', 'maturity_bucket', 'product_id', 'outflow_rate',
     ]);
     // `measures` must not have swallowed the derivations.
     expect(g.measures.map((m) => m.name)).toContain('net_outflows_30d');
     expect(g.measures.map((m) => m.name)).not.toContain('product_id');
+  });
+
+  it('composes the shared stage ahead of the view\u2019s own, in that order', () => {
+    // The order is the contract: a view derivation may build on a prepared one
+    // (`weighted_amount` reads `outflow_rate`), never the other way round.
+    const registry = buildRegistry(workspace());
+    expect(derivationsFor(parseDoc(VIEW), registry, AS_OF).map((d) => d.name)).toEqual([
+      'days_to_maturity', 'maturity_bucket', 'product_id', 'outflow_rate', 'weighted_amount',
+    ]);
   });
 
   it('qualifies nested header keys so citations do not collide', () => {
@@ -409,7 +422,7 @@ describe('the 2052a view', () => {
   it('KEEL070 an operator the engine does not have', () => {
     const { diags } = analyse(
       'fr2052a_outflows',
-      workspace({ fr2052a_outflows: VIEW.replace('op: date_bucket', 'op: date_buckets') }),
+      workspace({ fr2052a_prepared: PREPARED.replace('op: date_bucket', 'op: date_buckets') }),
     );
     expect(withCode(diags, 'KEEL070')[0].message).toContain('date_buckets');
   });
@@ -417,7 +430,7 @@ describe('the 2052a view', () => {
   it('KEEL071 a derivation naming an artifact that does not exist', () => {
     const { diags } = analyse(
       'fr2052a_outflows',
-      workspace({ fr2052a_outflows: VIEW.replace('using: fr2052a_product_id', 'using: nope') }),
+      workspace({ fr2052a_prepared: PREPARED.replace('using: fr2052a_product_id', 'using: nope') }),
     );
     expect(withCode(diags, 'KEEL071')[0].message).toContain('nope');
   });

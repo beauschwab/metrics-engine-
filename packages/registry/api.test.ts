@@ -16,6 +16,7 @@ import { migrate, openSqlite, type Db } from './db';
 import { SQLITE } from './dialect';
 import { Repository } from './repository';
 import { BodyTooLarge, readBody, shippedDocuments } from './index';
+import { VIEW_FILES } from 'keel-engine/documents';
 
 const dir = mkdtempSync(join(tmpdir(), 'keel-api-'));
 let n = 0;
@@ -47,7 +48,7 @@ describe('reading', () => {
     const res = await get('/api/artifacts');
     expect(res.status).toBe(200);
     const { artifacts } = res.body as { artifacts: Array<{ name: string; revision: number }> };
-    expect(artifacts).toHaveLength(8);
+    expect(artifacts).toHaveLength(VIEW_FILES.length);
     expect(artifacts.map((a) => a.name)).toContain('fr2052a_product_id');
   });
 

@@ -317,10 +317,17 @@ describe('the report', () => {
   it('accepts derived and source columns in the grouping, and nothing else', () => {
     const cols = COLUMNS['alm.fct_2052a_positions'];
     const view = parseDoc(VIEW);
-    // product_id and maturity_bucket exist only because derivations make them.
-    expect(missingGrouping(readReport(parseDoc(REPORT)), view, cols)).toEqual([]);
+    const registry = buildRegistry(workspace());
+    // product_id and maturity_bucket exist only because derivations make them —
+    // and they are made by the prepared source, which is why the registry has
+    // to be in hand to answer the question at all.
+    expect(missingGrouping(readReport(parseDoc(REPORT)), view, cols, registry)).toEqual([]);
     const bad = readReport(parseDoc(REPORT.replace('currency,', 'nonesuch,')));
-    expect(missingGrouping(bad, view, cols)).toEqual(['nonesuch']);
+    expect(missingGrouping(bad, view, cols, registry)).toEqual(['nonesuch']);
+    // Without the registry the shared columns are invisible: the check is only
+    // as good as the workspace it is given, and this is what that costs.
+    expect(missingGrouping(readReport(parseDoc(REPORT)), view, cols))
+      .toEqual(['product_id', 'maturity_bucket']);
   });
 
   it('flags a measure whose cap stops meaning the same thing per group', () => {

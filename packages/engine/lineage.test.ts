@@ -168,10 +168,12 @@ describe('grouping for the tree', () => {
 
   it('keeps workspace order inside a group, so the tree does not reshuffle', () => {
     const prepare = groupByStage(L, VIEW_FILES).find((g) => g.stage === 'prepare')!;
-    // Rules, then the rates they key, then the view that folds both in, then
-    // the binding that says where the records come from.
+    // Rules, then the rates they key, then the shared stage that folds both in,
+    // then the view that prepares from it, then the binding that says where the
+    // records come from.
     expect(prepare.files).toEqual([
-      'fr2052a_product_id', 'lcr_outflow_rates', 'fr2052a_outflows', 'murex_eu_binding',
+      'fr2052a_product_id', 'lcr_outflow_rates', 'fr2052a_prepared', 'fr2052a_outflows',
+      'murex_eu_binding',
     ]);
   });
 

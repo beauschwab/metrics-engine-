@@ -21,7 +21,7 @@
 
 import type { PredNode, Scalar } from './predicate';
 import { compilePredicate } from './predicate';
-import { derivationsOf, type DerivationSpec } from './rows';
+import { derivationsFor, derivationsOf, type DerivationSpec } from './rows';
 import { reqs, sectionBlocks, type Graph, type Measure } from './parse';
 import {
   resolveClassification, resolveParameterSet, type Classification,
@@ -275,7 +275,7 @@ function emitDerivations(
   backend: Backend,
   indent: string,
 ): DerivedColumn[] {
-  return derivationsOf(g).flatMap<DerivedColumn>((spec) => {
+  return derivationsFor(g, registry, AS_OF).flatMap<DerivedColumn>((spec) => {
     switch (spec.op) {
       case 'days_between':
         return [{ name: spec.name, expr: emitDaysBetween(spec, backend) }];
@@ -673,9 +673,10 @@ export function missingGrouping(
   report: ReportSpec,
   view: Graph | null,
   sourceColumns: string[],
+  registry?: Registry,
 ): string[] {
   if (!view) return report.grouping;
-  return unproducible(report.grouping, view, sourceColumns);
+  return unproducible(report.grouping, view, sourceColumns, registry);
 }
 
 /**
@@ -691,14 +692,27 @@ export function missingPartition(
   report: ReportSpec,
   view: Graph | null,
   sourceColumns: string[],
+  registry?: Registry,
 ): string[] {
   if (!report.table) return [];
   if (!view) return report.partitionBy;
-  return unproducible(report.partitionBy, view, sourceColumns);
+  return unproducible(report.partitionBy, view, sourceColumns, registry);
 }
 
-function unproducible(cols: string[], view: Graph, sourceColumns: string[]): string[] {
-  const derived = derivationsOf(view).map((d) => d.name);
+/**
+ * `registry` is optional only so the pure-shape callers stay pure. Pass it and
+ * a column a prepared source makes counts as produced — without it a report
+ * grouping on `product_id` would be flagged as unproducible the moment the
+ * derivation that makes it moved into a shared stage.
+ */
+function unproducible(
+  cols: string[],
+  view: Graph,
+  sourceColumns: string[],
+  registry?: Registry,
+): string[] {
+  const derived = (registry ? derivationsFor(view, registry, AS_OF) : derivationsOf(view))
+    .map((d) => d.name);
   return cols.filter((c) => sourceColumns.indexOf(c) < 0 && derived.indexOf(c) < 0);
 }
 

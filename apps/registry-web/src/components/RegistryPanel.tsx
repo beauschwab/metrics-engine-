@@ -70,6 +70,7 @@ const LABEL: Record<string, string> = {
   report: 'measures',
   variance_monitor: 'thresholds',
   source_binding: 'mappings',
+  prepared_source: 'derivations',
 };
 
 /**
@@ -87,6 +88,7 @@ const PANEL_TITLE: Record<string, string> = {
   report: 'Filed',
   variance_monitor: 'Thresholds',
   source_binding: 'Mappings',
+  prepared_source: 'Derivations',
 };
 
 /**
@@ -122,6 +124,10 @@ const PANEL_HINT: Record<string, [string, string]> = {
     'These map a client system’s columns to the canonical source',
     'The canonical plan runs unchanged on the generated adapter',
   ],
+  prepared_source: [
+    'These columns exist for every view that prepares from this stage',
+    'Editing one moves the numbers in all of them — the chain says which',
+  ],
 };
 
 /** Blocks of any kind — measures, rules, or parameter entries. */
@@ -135,6 +141,7 @@ function primarySection(g: Graph): string {
   if (g.kind === 'parameter_set') return 'entries';
   if (g.kind === 'variance_monitor') return 'thresholds';
   if (g.kind === 'source_binding') return 'columns';
+  if (g.kind === 'prepared_source') return 'derivations';
   return 'measures';
 }
 
@@ -159,6 +166,7 @@ const FILE_GLYPH: Record<string, string> = {
   report: '▤',
   variance_monitor: '∿',
   source_binding: '⇄',
+  prepared_source: '⋮⋮',
 };
 
 export function RegistryPanel({
@@ -193,6 +201,8 @@ export function RegistryPanel({
       return basis === 'static_pct' ? `${(m.f.limit || '').trim()}%` : (m.f.limit || '').trim();
     }
     if (graph.kind === 'source_binding') return (m.f.column || '').trim();
+    // What the derivation does, which is the one thing a name does not say.
+    if (graph.kind === 'prepared_source') return (m.f.op || '').trim();
     if (graph.kind === 'classification') return (m.f.emit || '').trim();
     if (graph.kind === 'parameter_set') {
       const v = parseFloat((m.f[(graph.view.value || '').trim()] || '').trim());

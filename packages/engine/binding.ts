@@ -34,7 +34,7 @@
 import { compilePredicate, type PredNode, type Scalar } from './predicate';
 import { sectionBlocks, type Graph } from './parse';
 import { resolveClassification, type Registry } from './registry';
-import { derivationsOf } from './rows';
+import { derivationsFor } from './rows';
 
 export interface ColumnBinding {
   /** The name the rules use. */
@@ -154,7 +154,7 @@ export function sourceUsage(
   const needed = new Set<string>();
   const literalSets: Record<string, Set<string>> = {};
 
-  const derivations = derivationsOf(view);
+  const derivations = derivationsFor(view, registry, asOf);
   derivations.forEach((d) => derived.add(d.name));
 
   const take = (col: string) => {

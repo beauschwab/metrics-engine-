@@ -348,9 +348,11 @@ function migrationFor(
 ): Migration[] {
   try {
     const name = parseDoc(after).docName;
-    // The view that classifies with this rule set decides which rows it sees and
-    // which column it writes — judging a rule set against anything else would
-    // give a number that is not about this workspace.
+    // The document that classifies with this rule set decides which rows it sees
+    // and which column it writes — judging a rule set against anything else
+    // would give a number that is not about this workspace. That document is a
+    // metrics view or, once the stage is shared, the prepared source; both name
+    // a `source:` and declare the derivation, which is all this needs.
     const view = Object.values(docs)
       .map((d) => {
         try {
@@ -359,7 +361,8 @@ function migrationFor(
           return null;
         }
       })
-      .find((g): g is Graph => !!g && g.kind === 'metrics_view'
+      .find((g): g is Graph => !!g
+        && (g.kind === 'metrics_view' || g.kind === 'prepared_source')
         && derivationsOf(g).some((x) => x.op === 'classify' && x.using === name));
     if (!view) return [];
 

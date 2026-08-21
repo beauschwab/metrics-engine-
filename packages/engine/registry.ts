@@ -64,10 +64,27 @@ export interface ParameterSet {
   graph: Graph;
 }
 
+/**
+ * A named row stage over one canonical source.
+ *
+ * The derivations themselves are read with `derivationsOf` like any other
+ * document's — what this adds is an identity and an effective range, so more
+ * than one view can name the same chain instead of each carrying its own copy.
+ */
+export interface PreparedSource {
+  name: string;
+  /** The canonical table this stage prepares. A view that names it must read the same one. */
+  source: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  graph: Graph;
+}
+
 export interface Registry {
   /** Every effective version of each classification, in document order. */
   classifications: Record<string, Classification[]>;
   parameterSets: Record<string, ParameterSet[]>;
+  preparedSources: Record<string, PreparedSource[]>;
   graphs: Record<string, Graph>;
 }
 
@@ -124,8 +141,20 @@ function readParameterSet(g: Graph): ParameterSet {
   };
 }
 
+function readPreparedSource(g: Graph): PreparedSource {
+  return {
+    name: g.docName,
+    source: (g.view.source || '').trim(),
+    effectiveFrom: (g.view['effective.from'] || '').trim(),
+    effectiveTo: (g.view['effective.to'] || '').trim(),
+    graph: g,
+  };
+}
+
 export function buildRegistry(docs: Record<string, string>): Registry {
-  const registry: Registry = { classifications: {}, parameterSets: {}, graphs: {} };
+  const registry: Registry = {
+    classifications: {}, parameterSets: {}, preparedSources: {}, graphs: {},
+  };
 
   Object.keys(docs).forEach((file) => {
     const g = parseDoc(docs[file]);
@@ -136,6 +165,9 @@ export function buildRegistry(docs: Record<string, string>): Registry {
     }
     if (g.kind === 'parameter_set' && g.docName) {
       (registry.parameterSets[g.docName] ||= []).push(readParameterSet(g));
+    }
+    if (g.kind === 'prepared_source' && g.docName) {
+      (registry.preparedSources[g.docName] ||= []).push(readPreparedSource(g));
     }
   });
 
@@ -164,6 +196,15 @@ export function resolveParameterSet(
   asOf: string,
 ): ParameterSet | null {
   const versions = registry.parameterSets[name] || [];
+  return versions.find((v) => inForce(v.effectiveFrom, v.effectiveTo, asOf)) || null;
+}
+
+export function resolvePreparedSource(
+  registry: Registry,
+  name: string,
+  asOf: string,
+): PreparedSource | null {
+  const versions = registry.preparedSources[name] || [];
   return versions.find((v) => inForce(v.effectiveFrom, v.effectiveTo, asOf)) || null;
 }
 

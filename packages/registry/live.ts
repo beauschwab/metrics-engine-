@@ -28,8 +28,9 @@
 import { compileReport, readReport, type ReportSpec } from 'keel-engine/compile';
 import { parseDoc, sectionBlocks, type Graph } from 'keel-engine/parse';
 import { buildRegistry } from 'keel-engine/registry';
-import { derivationsOf } from 'keel-engine/rows';
+import { derivationsFor } from 'keel-engine/rows';
 import { compilePredicate } from 'keel-engine/predicate';
+import { AS_OF } from 'keel-engine/fixtures';
 import { splitPlan } from 'keel-engine/conformance';
 import {
   query, samplingAllowed, stratifiedSample, type DremioConfig, type QueryResult,
@@ -112,7 +113,11 @@ export async function liveCoverage(
 ): Promise<QueryResult & { column: string; countColumn: string }> {
   const view = findView(workspace.docs, viewName);
 
-  const classify = derivationsOf(view).find((d) => d.op === 'classify');
+  // The composed stage: the classify may be declared by the prepared source
+  // this view reads rather than by the view itself, and coverage is coverage
+  // either way.
+  const classify = derivationsFor(view, buildRegistry(workspace.docs), AS_OF)
+    .find((d) => d.op === 'classify');
   if (!classify) throw new NotFound(`${viewName} has no classification to measure coverage for`);
 
   // A simple measure to total by. Any one will do — the interesting number is
@@ -163,7 +168,8 @@ export async function liveSample(
   // Stratify by whatever the classification reads, so every combination a rule
   // can distinguish is represented — that is what makes the sample useful for
   // judging rules rather than for estimating totals.
-  const classify = derivationsOf(view).find((d) => d.op === 'classify');
+  const classify = derivationsFor(view, buildRegistry(workspace.docs), AS_OF)
+    .find((d) => d.op === 'classify');
   const strata = classify
     ? stratifyingColumns(workspace.docs, classify.using)
     : [];

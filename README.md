@@ -49,12 +49,24 @@ each kind of document the workspace holds:
 | `report` | a grain and a destination | the rows that would actually be filed |
 | `variance_monitor` | thresholds on a rollup | what each threshold did across the window — fired, passed, or had no threshold at all |
 | `source_binding` | a client system's column names and codes | whether the adapter it generates can faithfully stand in for the canonical source |
+| `prepared_source` | a named row stage over one source | the columns it makes, and every view that would move if you changed one |
 
-Eight documents ship in the workspace: two metrics views (`liquidity_pit`,
+Nine documents ship in the workspace: two metrics views (`liquidity_pit`,
 `irrbb_eve`), the FR 2052a product-ID rule set and its LCR rate table, the
-outflow view that applies them, the daily submission report, a day-over-day
-variance monitor over what that report files, and a source binding mapping one
-client system's columns onto the canonical source.
+prepared source that applies both to the position table, the outflow view that
+weights what it produces, the daily submission report, a day-over-day variance
+monitor over what that report files, and a source binding mapping one client
+system's columns onto the canonical source.
+
+**A prepared source is the row stage, named.** Derivations used to be written
+inside the one view that needed them, which is fine until a second view needs
+the same chain — and two copies of an applied regulatory classification is the
+drift this platform exists to prevent. `kind: prepared_source` gives the chain
+an identity and an effective range; a view names it with `prepared:` and its
+columns arrive before the view's own. It writes no table: the compiler inlines
+the whole stage exactly as it did when the lines were in the view, which is
+what makes moving them a refactor rather than a change to a governed number
+(ADR-54).
 
 **Variance monitoring** answers the question a report cannot: did a number move
 more overnight than it should have? Thresholds are either static — an absolute

@@ -15,6 +15,7 @@ import { migrate, openSqlite, type Db } from './db';
 import { SQLITE } from './dialect';
 import { Conflict, Repository, contentHash } from './repository';
 import { shippedDocuments } from './index';
+import { VIEW_FILES } from 'keel-engine/documents';
 
 const dir = mkdtempSync(join(tmpdir(), 'keel-db-'));
 let n = 0;
@@ -232,11 +233,11 @@ describe('transaction time', () => {
 describe('seeding', () => {
   it('puts every shipped document in as revision 1', async () => {
     const docs = shippedDocuments();
-    expect(docs).toHaveLength(8);
-    expect(await repo.seed(docs)).toBe(8);
+    expect(docs).toHaveLength(VIEW_FILES.length);
+    expect(await repo.seed(docs)).toBe(VIEW_FILES.length);
 
     const ws = await repo.workspace();
-    expect(ws).toHaveLength(8);
+    expect(ws).toHaveLength(VIEW_FILES.length);
     expect(ws.every((r) => r.revision === 1)).toBe(true);
     // The kind comes off the parsed document rather than being guessed.
     expect(ws.find((r) => r.name === 'fr2052a_product_id')?.kind).toBe('classification');

@@ -113,8 +113,9 @@ A model outage degrades to a banner, never a block.
 
 Nine phases are built, verified, and merged. The engine and both surfaces run.
 
-**Authoring** — six document kinds (`metrics_view`, `classification`,
-`parameter_set`, `report`, `variance_monitor`, `source_binding`), each with
+**Authoring** — seven document kinds (`metrics_view`, `classification`,
+`parameter_set`, `report`, `variance_monitor`, `source_binding`,
+`prepared_source`), each with
 its own answer to "is this right?"; a real CodeMirror editor; compilation to
 SQL/Polars/PySpark plus semantic views and dbt models; a conformance suite that
 runs the compiled plans in real interpreters and requires them to agree.

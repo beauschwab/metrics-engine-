@@ -1035,3 +1035,70 @@ to write. Deferred, not rejected.
 refresh state and scheduling belong to the pipeline and owning them pulls this
 product into orchestration it deliberately sits beside. And models as inputs to
 a dashboard spec, which is the §7 boundary above, restated.
+
+## ADR-54 — `prepared_source`: the row stage becomes a document
+
+ADR-53 named this shape and declined to build it, on the reasoning that one
+instance is not an abstraction and the trigger should be a second consumer. That
+is not what happened. It was built on request, ahead of the trigger, and the
+honest record is that the deferral was overtaken rather than satisfied — so what
+follows is the argument for the thing as built, not a claim that ADR-53's
+condition was met.
+
+**The shape is the one ADR-53 specified.** `kind: prepared_source` carries a
+`source:`, a governance header and an `effective` range, and holds nothing but
+`derivations:` — the same five operators, unchanged. A `metrics_view` names one
+with `prepared:`, and `derivationsFor` composes the two: the shared stage first,
+the view's own after. Order is the contract, and it runs one way. A view
+derivation may build on a prepared column — `weighted_amount` reads
+`outflow_rate` — and a prepared source may not name another, which keeps the
+shared stage independent of whoever consumes it and the stage exactly one level
+deep.
+
+**It resolves like a rule set, because it is one kind of thing with them.**
+`resolvePreparedSource` reads the version in force at the as-of date, so
+re-running a prior submission uses the stage that applied then. Valid time was
+never optional for the documents a filed number depends on, and a row stage is
+now one of those.
+
+**The shipped workspace uses it, and the proof is that nothing moved.**
+`fr2052a_outflows` had five derivations; four are now `fr2052a_prepared` and the
+view keeps only the weighting step that is its own. That extraction is asserted
+to be invisible: the composed stage matches the inline one operator for
+operator, `rowStageSql` emits identical steps, `compileReport` emits an
+identical plan on all three backends, and the Polars conformance harness runs
+the compiled plan in a real interpreter and still agrees with the evaluator on
+the filed table. The assertions were checked against a deliberately broken
+composition — six of them fail without it.
+
+**Four ways a shared stage is silently wrong, and all four block.** A stage that
+does not exist (`KEEL090`), one not in force at the as-of date (`KEEL091`), one
+that prepares a *different* table from the one the view reads (`KEEL092`), and a
+column the view defines that the stage already defines (`KEEL093`). None of
+these throws on its own — each produces columns computed from the wrong rows, or
+a column whose winning definition is decided by concatenation order — which is
+why they are errors rather than warnings.
+
+**A view still owns what it prepares from.** The derivation checks run over the
+*composed* stage, not just the lines the document wrote: if the rate table the
+shared stage looks up against is out of force, the view says so, because the
+view's numbers are the ones that are wrong. It cannot point at a line it does
+not have, so a borrowed finding points at the `prepared:` reference — the line
+the author would actually edit.
+
+**What it cost elsewhere, found by tests rather than by reading.** Making the
+row stage shareable broke five things that had reasonably assumed a view
+declares its own derivations, and each was a real defect rather than a stale
+assertion: the source-binding analysis stopped seeing derived columns and
+demanded the adapter map them; `assessChange` could no longer find the document
+that classifies with a rule set, so a rule edit reported no impact at all;
+`liveCoverage` and `liveSample` 404'd for the same reason; the MCP coverage tool
+went quiet; and the lineage panel gave a rate table no chain, because its
+consumer was now the stage rather than the view. `usedBy` is expanded through
+prepared sources for the same reason — "what breaks if I change this" must not
+stop at the one document whose output nobody reads. Nothing else is expanded:
+the rest of the graph keeps the one-hop answer it always gave.
+
+**Materialization is still not built.** The stage is inlined per query, exactly
+as before; ADR-53's note about a `materialize` hint stands unchanged, and having
+an identity to hang one on is the part that had been missing.

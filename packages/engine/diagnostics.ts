@@ -23,7 +23,8 @@ import {
 } from './classification-diagnostics';
 import { diagnoseMonitor } from './variance-diagnostics';
 import { buildRegistry, type Registry } from './registry';
-import { derivationsOf } from './rows';
+import { derivationsFor } from './rows';
+import { AS_OF } from './fixtures';
 
 export type Fix =
   | { kind: 'rename'; from: string; to: string; line: number }
@@ -179,6 +180,10 @@ export function diagnose(
   if (g.kind === 'parameter_set') return diagnoseParameterSet(g, registry, baseline);
   if (g.kind === 'report') return diagnoseReport(g, registry);
   if (g.kind === 'variance_monitor') return diagnoseMonitor(g, registry, ev.fixture, docs);
+  // A prepared source is a row stage and nothing else: it gets the derivation
+  // checks and none of the measure ones, because it declares no measures to be
+  // wrong about.
+  if (g.kind === 'prepared_source') return diagnoseDerivations(g, ev, registry);
   return diagnoseMetricsView(g, ev, baseline, registry);
 }
 
@@ -191,7 +196,8 @@ function diagnoseMetricsView(
   const out: Diagnostic[] = diagnoseDerivations(g, ev, registry);
   // A derivation writes a column, so `field:` and `where:` may legitimately
   // name it even though the source model does not.
-  const cols = (COLUMNS[g.view.source] || []).concat(derivationsOf(g).map((d) => d.name));
+  const cols = (COLUMNS[g.view.source] || [])
+    .concat(derivationsFor(g, registry, AS_OF).map((d) => d.name));
   const scope = Object.keys(g.byName).concat(Object.keys(EXTERNAL));
   const grainType = (g.view.type || '').trim();
   const span = (g.view.max_query_span || '').trim();

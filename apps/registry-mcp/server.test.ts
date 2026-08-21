@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { VIEW_FILES } from 'keel-engine/documents';
 
 const dir = mkdtempSync(join(tmpdir(), 'keel-mcp-server-'));
 
@@ -98,7 +99,7 @@ describe('the connection', () => {
 describe('reading over the wire', () => {
   it('lists the workspace', async () => {
     const out = json(await client.callTool({ name: 'list_artifacts', arguments: {} }));
-    expect(out).toHaveLength(8);
+    expect(out).toHaveLength(VIEW_FILES.length);
     expect(out.map((a: { name: string }) => a.name)).toContain('fr2052a_product_id');
   });
 
@@ -123,7 +124,7 @@ describe('reading over the wire', () => {
 
   it('returns the whole graph when given no name', async () => {
     const out = json(await client.callTool({ name: 'get_lineage', arguments: {} }));
-    expect(out.nodes).toHaveLength(8);
+    expect(out.nodes).toHaveLength(VIEW_FILES.length);
   });
 
   it('compiles to a semantic target', async () => {
@@ -145,7 +146,8 @@ describe('refusing over the wire', () => {
     expect(out.text).toMatch(/no artifact called nope/);
 
     // And the connection still works, which is the actual assertion.
-    expect(json(await client.callTool({ name: 'list_artifacts', arguments: {} }))).toHaveLength(8);
+    expect(json(await client.callTool({ name: 'list_artifacts', arguments: {} })))
+      .toHaveLength(VIEW_FILES.length);
   });
 
   it('refuses a save on a read-only connection', async () => {
@@ -239,7 +241,7 @@ describe('releasing and deploying over the wire', () => {
       name: 'create_release', arguments: { message: 'first deployable' },
     }));
     expect(release.version).toBeGreaterThan(0);
-    expect(release.artifacts).toBe(8);
+    expect(release.artifacts).toBe(VIEW_FILES.length);
 
     const promoted = json(await writable.callTool({
       name: 'promote',
@@ -251,7 +253,7 @@ describe('releasing and deploying over the wire', () => {
       name: 'get_manifest', arguments: { channel: 'production' },
     }));
     expect(manifest.release.version).toBe(release.version);
-    expect(manifest.artifacts).toHaveLength(8);
+    expect(manifest.artifacts).toHaveLength(VIEW_FILES.length);
     // The stage is on every entry, so a client can tell a pipeline stage from a
     // dashboard ratio without re-deriving it.
     expect(manifest.artifacts.every((a: { stage: string }) => !!a.stage)).toBe(true);

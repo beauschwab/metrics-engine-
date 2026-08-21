@@ -5,6 +5,7 @@ export const VIEW_FILES = [
   'irrbb_eve',
   'fr2052a_product_id',
   'lcr_outflow_rates',
+  'fr2052a_prepared',
   'fr2052a_outflows',
   'fr2052a_submission',
   'fr2052a_variance',
@@ -440,15 +441,19 @@ entries:
  * the maturity, assign the product ID, look up the rate, apply it. Measures
  * then aggregate the derived columns exactly as they aggregate source columns.
  */
-const FR2052A_OUTFLOWS = `version: 1
-kind: metrics_view
-view: fr2052a_outflows
+const FR2052A_PREPARED = `version: 1
+kind: prepared_source
+name: fr2052a_prepared
 source: alm.fct_2052a_positions
-targets: [duckdb, snowflake, databricks, bigquery, dremio]
-grain:
-  type: stock
-  as_of_field: as_of_date
-  max_query_span: P1D
+
+governance:
+  owner: Liquidity Data Integration
+  sr_11_7_tier: 1
+  validation_status: validated
+  change_ticket: ALM-4602
+
+effective:
+  from: 2024-01-01
 
 derivations:
   - name: days_to_maturity
@@ -469,8 +474,21 @@ derivations:
   - name: outflow_rate
     op: param_lookup
     using: lcr_outflow_rates
-    keys: [product_id]
+    keys: [product_id]`;
 
+
+const FR2052A_OUTFLOWS = `version: 1
+kind: metrics_view
+view: fr2052a_outflows
+source: alm.fct_2052a_positions
+prepared: fr2052a_prepared
+targets: [duckdb, snowflake, databricks, bigquery, dremio]
+grain:
+  type: stock
+  as_of_field: as_of_date
+  max_query_span: P1D
+
+derivations:
   - name: weighted_amount
     op: expr
     expression: balance_usd * outflow_rate
@@ -698,6 +716,7 @@ export const INITIAL_DOCS: Record<ViewFile, string> = {
   irrbb_eve: IRRBB_EVE,
   fr2052a_product_id: FR2052A_PRODUCT_ID,
   lcr_outflow_rates: LCR_OUTFLOW_RATES,
+  fr2052a_prepared: FR2052A_PREPARED,
   fr2052a_outflows: FR2052A_OUTFLOWS,
   fr2052a_submission: FR2052A_SUBMISSION,
   fr2052a_variance: FR2052A_VARIANCE,
@@ -710,6 +729,7 @@ export const DEFAULT_MEASURE: Record<ViewFile, string> = {
   irrbb_eve: 'eve_delta_up200',
   fr2052a_product_id: 'OD-1',
   lcr_outflow_rates: 'O.D.1',
+  fr2052a_prepared: 'product_id',
   fr2052a_outflows: 'net_outflows_30d',
   fr2052a_submission: 'fr2052a_submission',
   fr2052a_variance: 'HARD-USD',

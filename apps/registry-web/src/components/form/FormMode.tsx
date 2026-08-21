@@ -82,6 +82,7 @@ const NO_FORM_YET: Record<string, string> = {
   report: 'a grain and a destination — what gets filed, and where',
   variance_monitor: 'thresholds that judge each day-over-day move',
   source_binding: 'a client system\u2019s column names and codes, mapped to the canonical source',
+  prepared_source: 'a row stage over one source, shared by every view that prepares from it',
 };
 
 export function FormMode({

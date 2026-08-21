@@ -104,6 +104,8 @@ function stageOf(g: Graph, filedViews: Set<string>): Stage {
   if (g.kind === 'variance_monitor') return 'watch';
   // A binding is about where records come from, which is Prepare's question.
   if (g.kind === 'source_binding') return 'prepare';
+  // A prepared source answers Prepare's question directly — it is the row stage.
+  if (g.kind === 'prepared_source') return 'prepare';
   // A rule set or a rate table is never the number anyone reads; it is always
   // an input to something that is.
   if (g.kind === 'classification' || g.kind === 'parameter_set') return 'prepare';
@@ -155,6 +157,12 @@ function runtimeOf(g: Graph, stage: Stage): { runtime: string; runtimeDetail: st
         runtime: 'Client adapter · writes nothing',
         runtimeDetail: 'Generates the adapter view a client system runs the canonical plan on',
       };
+    case 'prepared_source':
+      return {
+        runtime: 'Compiled in · writes nothing',
+        runtimeDetail:
+          'Compiled into every view that prepares from it — writes no table of its own',
+      };
     case 'variance_monitor': {
       const report = head(g, 'report');
       return {
@@ -182,7 +190,12 @@ function usesOf(g: Graph): string[] {
     if (n && !out.includes(n)) out.push(n);
   };
 
-  if (g.kind === 'metrics_view') derivationsOf(g).forEach((d) => add(d.using));
+  // The prepared source comes first: a reader meets the shared stage before the
+  // rule sets it happens to fold in, because that is the order the columns arrive.
+  if (g.kind === 'metrics_view') add(head(g, 'prepared'));
+  if (g.kind === 'metrics_view' || g.kind === 'prepared_source') {
+    derivationsOf(g).forEach((d) => add(d.using));
+  }
   if (g.kind === 'report') add(head(g, 'view'));
   if (g.kind === 'variance_monitor') add(head(g, 'report'));
   return out;
@@ -269,6 +282,26 @@ const EMPTY: Chain = { steps: [], at: -1, via: 'none' };
  * shapes it, the report that files it, the table that lands, the monitors that
  * watch it — and everything else hangs off a step as an input.
  */
+/**
+ * Every workspace document folded into one view's step, prepared sources
+ * expanded. The prepared source stays in the list beside what it brings —
+ * a reader deciding whether an edit is safe needs both the shared stage and
+ * the rule sets inside it.
+ */
+function foldedInto(lineage: LineageGraph, view: Node): string[] {
+  const out: string[] = [];
+  view.uses.forEach((u) => {
+    const node = lineage.byName[u];
+    if (!node) return;
+    if (!out.includes(u)) out.push(u);
+    if (node.kind !== 'prepared_source') return;
+    node.uses.forEach((inner) => {
+      if (lineage.byName[inner] && !out.includes(inner)) out.push(inner);
+    });
+  });
+  return out;
+}
+
 export function chainFor(lineage: LineageGraph, docName: string): Chain {
   const node = lineage.byName[docName];
   if (!node) return EMPTY;
@@ -288,8 +321,11 @@ export function chainFor(lineage: LineageGraph, docName: string): Chain {
     docs: [spineView.name],
     stage: spineView.stage,
     // Only the inputs that are documents in this workspace; a `using:` naming
-    // something absent is a diagnostic, not a step.
-    uses: spineView.uses.filter((u) => !!lineage.byName[u]),
+    // something absent is a diagnostic, not a step. Inputs reached through a
+    // prepared source count: the compiler inlines the whole stage into one
+    // plan, so a rule set folded in that way is as much a part of this step as
+    // one the view named itself.
+    uses: foldedInto(lineage, spineView),
   });
 
   const report = lineage.nodes.find(
@@ -333,12 +369,24 @@ function findSpineView(lineage: LineageGraph, node: Node): Node | null {
     return report ? lineage.byName[report.uses[0]] || null : null;
   }
 
-  // A rule set or rate table: the first view that folds it in. It can feed more
-  // than one, and showing every chain at once would be a diagram rather than an
-  // orientation — the panel already lists the others.
-  return lineage.nodes.find(
+  // A rule set, a rate table or a prepared source: the first view that folds it
+  // in. It can feed more than one, and showing every chain at once would be a
+  // diagram rather than an orientation — the panel already lists the others.
+  //
+  // The second pass is what a shared row stage costs. A rate table used to be
+  // named by the view directly; now it may be named by the prepared source the
+  // view names, and stopping at the first pass would leave the rate table with
+  // no chain at all — the exact document whose blast radius a reader most needs
+  // to see before editing it.
+  const direct = lineage.nodes.find(
     (n) => n.kind === 'metrics_view' && n.uses.includes(node.name),
-  ) || null;
+  );
+  if (direct) return direct;
+
+  return lineage.nodes.find((n) => n.kind === 'metrics_view' && n.uses.some((u) => {
+    const via = lineage.byName[u];
+    return !!via && via.kind === 'prepared_source' && via.uses.includes(node.name);
+  })) || null;
 }
 
 /**

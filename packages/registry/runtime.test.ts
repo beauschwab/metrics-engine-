@@ -19,6 +19,7 @@ import { migrate, openSqlite, type Db } from './db';
 import { SQLITE } from './dialect';
 import { Repository } from './repository';
 import { shippedDocuments } from './index';
+import { VIEW_FILES } from 'keel-engine/documents';
 
 const dir = mkdtempSync(join(tmpdir(), 'keel-runtime-'));
 let n = 0;
@@ -117,7 +118,7 @@ describe('cutting a release', () => {
     const version = await cut('first');
     const res = await call('GET', `/api/releases/${version}`);
     const release = res.body as { pins: Array<{ name: string; revision: number }>; author: string };
-    expect(release.pins).toHaveLength(8);
+    expect(release.pins).toHaveLength(VIEW_FILES.length);
     expect(release.pins.every((p) => p.revision === 1)).toBe(true);
     expect(release.author).toBe('release-manager');
   });

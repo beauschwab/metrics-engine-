@@ -43,7 +43,9 @@ export type DocKind =
   /** Day-over-day variance on a rollup, and the thresholds that judge it. */
   | 'variance_monitor'
   /** A client system's columns, mapped to a canonical source. */
-  | 'source_binding';
+  | 'source_binding'
+  /** A named row stage over a canonical source, shared by the views that read it. */
+  | 'prepared_source';
 
 export interface ViewHeader {
   source: string;

@@ -22,7 +22,8 @@ import { sectionBlocks, type Graph, type Measure } from './parse';
 import type { Row } from './fixtures';
 import { MATURITY_LADDERS, OPEN_BUCKET } from './vocab';
 import {
-  resolveClassification, resolveParameterSet, type Classification, type Registry,
+  resolveClassification, resolveParameterSet, resolvePreparedSource,
+  type Classification, type Registry,
 } from './registry';
 
 export interface DerivationSpec {
@@ -103,6 +104,12 @@ function listItems(raw: string): string[] {
  */
 const KEY_SEP = '\u001f';
 
+/**
+ * The derivations written *in this document*.
+ *
+ * For a view that names a `prepared:` source this is only half the row stage;
+ * `derivationsFor` is what a compiler or an evaluator wants.
+ */
 export function derivationsOf(g: Graph): DerivationSpec[] {
   return sectionBlocks(g, 'derivations').map((b) => ({
     name: b.name,
@@ -115,6 +122,33 @@ export function derivationsOf(g: Graph): DerivationSpec[] {
     expression: (b.f.expression || '').trim(),
     block: b,
   }));
+}
+
+/**
+ * The whole row stage a document computes: its prepared source's derivations
+ * first, then its own.
+ *
+ * Order is the contract. A prepared source exists to be depended on, so its
+ * columns must be in scope before the first line a consumer writes — the same
+ * order the author reads the two files in. A view's own derivation may then
+ * build on a prepared one (`weighted_amount` on `outflow_rate`); the reverse
+ * cannot happen, which is what keeps the shared stage independent of whoever
+ * consumes it.
+ *
+ * A `prepared:` that names nothing in force contributes nothing rather than
+ * throwing. The diagnostics layer says so precisely, with a line number; an
+ * exception here would take the editor down on a half-typed name.
+ */
+export function derivationsFor(
+  g: Graph,
+  registry: Registry,
+  asOf: string,
+): DerivationSpec[] {
+  const name = (g.view.prepared || '').trim();
+  if (!name) return derivationsOf(g);
+  const prepared = resolvePreparedSource(registry, name, asOf);
+  if (!prepared) return derivationsOf(g);
+  return derivationsOf(prepared.graph).concat(derivationsOf(g));
 }
 
 const DAY_MS = 86400000;
@@ -263,7 +297,7 @@ export function deriveRows(
   asOf: string,
   domains: Record<string, string[]>,
 ): RowResult {
-  const specs = derivationsOf(g);
+  const specs = derivationsFor(g, registry, asOf);
   const rows: Row[] = sourceRows.map((r) => ({ ...r }));
   const coverage: Record<string, Coverage> = {};
   const paramMissCounts: Record<string, number> = {};

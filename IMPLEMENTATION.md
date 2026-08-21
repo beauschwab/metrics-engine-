@@ -1621,3 +1621,54 @@ mind, and none of these authors had a ceiling limit, a negative band, or a
 non-UTF-8 byte in mind. Review reads the code for what it *says* rather than
 for what it was meant to do — which is why `npm run verify` being green is a
 precondition for review, not a substitute for it.
+
+## The row stage becomes a document, and what that broke
+
+`prepared_source` (ADR-54) gives a chain of row derivations a name, so more than
+one view can read it instead of each keeping a copy. The shipped workspace uses
+it: four of `fr2052a_outflows`'s five derivations moved into `fr2052a_prepared`
+and the view kept only the weighting step that is its own.
+
+The interesting part is not the feature. It is that **five separate places had
+quietly assumed a view declares its own derivations**, and every one of them was
+a real defect rather than a stale assertion — none visible to a typechecker,
+all found by tests that already existed.
+
+- **The source-binding analysis started demanding mapped columns for derived
+  ones.** `sourceUsage` subtracts derived names from the columns an adapter has
+  to supply. Reading only the view's own stage, `product_id` and `outflow_rate`
+  looked like source columns, so a complete binding was reported incomplete.
+- **A rule change reported no impact at all.** `assessChange` finds the document
+  that classifies with a rule set by scanning for `kind: metrics_view` with a
+  matching `classify`. The classify now lives in the prepared source, so the
+  scan found nothing and returned an empty finding list — the failure shape that
+  looks exactly like "this edit is safe".
+- **`liveCoverage` and `liveSample` 404'd** on the same lookup, against the real
+  warehouse rather than fixtures.
+- **The MCP coverage tool went silent**, for the third instance of that lookup.
+- **The lineage panel gave a rate table no chain.** `findSpineView` walks from a
+  rule set to the first view that folds it in. That view is now the prepared
+  source, so opening `lcr_outflow_rates` — the document whose blast radius a
+  reader most needs before editing it — showed nothing.
+
+What they have in common is that each encoded the same fact in a different
+place: *the document holding the derivations is the document holding the
+measures*. That was true for four phases and nowhere written down, so nothing
+could tell you where it was assumed. `derivationsFor(graph, registry, asOf)` is
+now the one read that composes the stage, and the raw single-document
+`derivationsOf` is documented as the narrower thing it always was.
+
+Two decisions came out of fixing them. Diagnostics run over the *composed*
+stage, so a view still reports an out-of-force rate table its shared stage
+depends on — going quiet there would be the silent-wrong-number failure the
+codes exist to prevent — and a finding it did not write points at its own
+`prepared:` line rather than at a line number in another file. And `usedBy` in
+the MCP lineage tool expands through prepared sources, because "what breaks if I
+change this" must not answer with the one document whose output nobody reads.
+
+The extraction itself is asserted to have changed nothing: identical composed
+operators, identical row-stage SQL, an identical `compileReport` plan on all
+three backends, and the Polars conformance harness still agreeing with the
+evaluator on the filed table. Those assertions were checked against a
+deliberately broken composition — six of them fail without it, which is the only
+reason to believe the other passing ones mean anything.

@@ -19,10 +19,10 @@ import type { Evaluator } from './evaluate';
 import type { Diagnostic } from './diagnostics';
 import { fmt } from './format';
 import { sectionBlocks, type Graph } from './parse';
-import { derivationsOf, type Coverage } from './rows';
+import { derivationsFor, derivationsOf, type Coverage, type DerivationSpec } from './rows';
 import {
   buildRegistry, effectiveProblems, resolveClassification, resolveParameterSet,
-  type Registry,
+  resolvePreparedSource, type Registry,
 } from './registry';
 import { AS_OF } from './fixtures';
 import { missingGrouping, missingMeasures, missingPartition, readReport } from './compile';
@@ -34,6 +34,7 @@ export const CLASSIFICATION_BLOCKING: Record<string, true> = {
   KEEL060: true, KEEL064: true, KEEL065: true, KEEL066: true,
   KEEL068: true, KEEL069: true, KEEL070: true, KEEL071: true, KEEL076: true,
   KEEL080: true, KEEL081: true, KEEL082: true, KEEL083: true,
+  KEEL090: true, KEEL091: true, KEEL092: true, KEEL093: true,
 };
 
 const EMPTY_REGISTRY = buildRegistry({});
@@ -308,6 +309,82 @@ export function diagnoseParameterSet(
 }
 
 /**
+ * The `prepared:` reference itself — is the shared stage real, in force, over
+ * the same table, and does it collide with what this document writes?
+ *
+ * These are the four ways a shared row stage produces a wrong number rather
+ * than an error. A stage over a different source contributes columns computed
+ * from fields these rows do not have; a name written twice means the reader
+ * cannot tell which definition won. Both are silent, so both block.
+ */
+export function diagnosePrepared(g: Graph, registry: Registry): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  const name = (g.view.prepared || '').trim();
+  const line = Math.max(0, g.info.findIndex((i) => i.key === 'prepared'));
+  if (!name) return out;
+
+  if (g.kind === 'prepared_source') {
+    out.push({
+      code: 'KEEL093',
+      sev: 'error',
+      message: 'A prepared source cannot name another one — the row stage is one level deep',
+      line,
+      token: name,
+    });
+    return out;
+  }
+
+  if (!registry.preparedSources[name]) {
+    out.push({
+      code: 'KEEL090',
+      sev: 'error',
+      message: `There is no prepared source called ${name}`,
+      line,
+      token: name,
+    });
+    return out;
+  }
+
+  const prepared = resolvePreparedSource(registry, name, AS_OF);
+  if (!prepared) {
+    out.push({
+      code: 'KEEL091',
+      sev: 'error',
+      message: `${name} exists but no version of it is in force on ${AS_OF}`,
+      line,
+    });
+    return out;
+  }
+
+  const mine = (g.view.source || '').trim();
+  if (prepared.source && mine && prepared.source !== mine) {
+    out.push({
+      code: 'KEEL092',
+      sev: 'error',
+      message:
+        `${name} prepares ${prepared.source}, but this reads ${mine} — its columns ` +
+        'are computed from fields these rows do not have',
+      line,
+      token: name,
+    });
+  }
+
+  const shared = new Set(derivationsOf(prepared.graph).map((d) => d.name));
+  derivationsOf(g).forEach((d) => {
+    if (!shared.has(d.name)) return;
+    out.push({
+      code: 'KEEL093',
+      sev: 'error',
+      message: `${d.name} is already derived by ${name} — one column, two definitions`,
+      line: d.block.line,
+      token: d.name,
+    });
+  });
+
+  return out;
+}
+
+/**
  * Derivations inside a metrics view: do they name real operators, real
  * artifacts, and artifacts that are actually in force?
  */
@@ -316,9 +393,28 @@ export function diagnoseDerivations(
   ev: Evaluator,
   registry: Registry = EMPTY_REGISTRY,
 ): Diagnostic[] {
-  const out: Diagnostic[] = [];
-  const specs = derivationsOf(g);
+  const out: Diagnostic[] = diagnosePrepared(g, registry);
+  // The composed stage, so a view is diagnosed against the columns it will
+  // actually have — including the ones its prepared source makes.
+  const specs = derivationsFor(g, registry, AS_OF);
   const sourceCols = COLUMNS[g.view.source] || [];
+
+  /**
+   * Where a finding about `spec` belongs *in this file*.
+   *
+   * A view that prepares from a shared stage still owns the consequences of
+   * that stage: if the rate table it looks up against is out of force, the
+   * view's numbers are wrong and going quiet about it is the exact failure
+   * these codes exist to prevent. But a line number in another document would
+   * put the squiggle on an unrelated line here, so a borrowed finding points
+   * at the `prepared:` reference — the line the author would actually edit.
+   */
+  const ownNames = new Set(derivationsOf(g).map((d) => d.name));
+  const preparedLine = Math.max(0, g.info.findIndex((i) => i.key === 'prepared'));
+  const at = (spec: DerivationSpec, key?: string): number => {
+    if (!ownNames.has(spec.name)) return preparedLine;
+    return (key ? spec.block.lineOf[key] : undefined) ?? spec.block.line;
+  };
 
   specs.forEach((spec) => {
     if (!DERIVATION_OPS[spec.op]) {
@@ -328,7 +424,7 @@ export function diagnoseDerivations(
         message:
           `${spec.op || '(nothing)'} is not a row-level operator. Choose one of: ` +
           `${Object.keys(DERIVATION_OPS).join(', ')}.`,
-        line: spec.block.lineOf.op ?? spec.block.line,
+        line: at(spec, 'op'),
         token: spec.op,
       });
       return;
@@ -339,7 +435,7 @@ export function diagnoseDerivations(
         code: 'KEEL077',
         sev: 'warn',
         message: `${spec.name} is already a column on ${g.view.source} — this derivation hides it`,
-        line: spec.block.line,
+        line: at(spec),
         token: spec.name,
       });
     }
@@ -349,7 +445,7 @@ export function diagnoseDerivations(
         code: 'KEEL071',
         sev: 'error',
         message: `There is no ladder called ${spec.ladder || '(none)'}`,
-        line: spec.block.lineOf.ladder ?? spec.block.line,
+        line: at(spec, 'ladder'),
         token: spec.ladder,
       });
     }
@@ -360,7 +456,7 @@ export function diagnoseDerivations(
           code: 'KEEL071',
           sev: 'error',
           message: `There is no classification called ${spec.using || '(none)'}`,
-          line: spec.block.lineOf.using ?? spec.block.line,
+          line: at(spec, 'using'),
           token: spec.using,
         });
       } else if (!resolveClassification(registry, spec.using, AS_OF)) {
@@ -368,7 +464,7 @@ export function diagnoseDerivations(
           code: 'KEEL066',
           sev: 'error',
           message: `${spec.using} exists but no version of it is in force on ${AS_OF}`,
-          line: spec.block.lineOf.using ?? spec.block.line,
+          line: at(spec, 'using'),
         });
       }
     }
@@ -379,7 +475,7 @@ export function diagnoseDerivations(
           code: 'KEEL071',
           sev: 'error',
           message: `There is no parameter set called ${spec.using || '(none)'}`,
-          line: spec.block.lineOf.using ?? spec.block.line,
+          line: at(spec, 'using'),
           token: spec.using,
         });
       } else if (!resolveParameterSet(registry, spec.using, AS_OF)) {
@@ -387,13 +483,20 @@ export function diagnoseDerivations(
           code: 'KEEL066',
           sev: 'error',
           message: `${spec.using} exists but no version of it is in force on ${AS_OF}`,
-          line: spec.block.lineOf.using ?? spec.block.line,
+          line: at(spec, 'using'),
         });
       }
     }
   });
 
   // --- coverage and lookups, measured on the test data --------------------
+  //
+  // A finding about a derivation this document did not write still belongs to
+  // this document — the rows are its rows — but it cannot point at a line the
+  // document does not have. It points at the `prepared:` reference instead,
+  // which is the line the author would edit to change what they are reading.
+  const lineFor = (spec: DerivationSpec | undefined): number => (spec ? at(spec) : 0);
+
   const coverage = ev.coverage();
   Object.keys(coverage).forEach((column) => {
     const c = coverage[column];
@@ -405,7 +508,7 @@ export function diagnoseDerivations(
       message:
         `${c.unmatched.toLocaleString('en-US')} records are not classified by ${c.classification} ` +
         `(${fmt(c.unmatchedNotional, 'currency_usd')}), so they carry no ${column}`,
-      line: spec ? spec.block.line : 0,
+      line: lineFor(spec),
     });
   });
 
@@ -418,7 +521,7 @@ export function diagnoseDerivations(
       message:
         `${miss.parameterSet} has no value for ${miss.key || '(blank)'}, which ` +
         `${miss.records.toLocaleString('en-US')} records need. A missing rate is not a zero.`,
-      line: spec ? spec.block.line : 0,
+      line: lineFor(spec),
       token: miss.key,
     });
   });
@@ -461,7 +564,7 @@ export function diagnoseReport(g: Graph, registry: Registry): Diagnostic[] {
   }
 
   const sourceCols = COLUMNS[viewGraph.view.source] || [];
-  missingGrouping(report, viewGraph, sourceCols).forEach((c) => {
+  missingGrouping(report, viewGraph, sourceCols, registry).forEach((c) => {
     out.push({
       code: 'KEEL082',
       sev: 'error',
@@ -471,7 +574,7 @@ export function diagnoseReport(g: Graph, registry: Registry): Diagnostic[] {
     });
   });
 
-  missingPartition(report, viewGraph, sourceCols).forEach((c) => {
+  missingPartition(report, viewGraph, sourceCols, registry).forEach((c) => {
     out.push({
       code: 'KEEL087',
       sev: 'error',
