@@ -1,0 +1,10 @@
+{
+  // Relative, not a package specifier: Playwright resolves `extends` itself and
+  // cannot follow one. Same reason as apps/registry-web/tsconfig.json.
+  "extends": "../../packages/typescript-config/react.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "allowImportingTsExtensions": false
+  },
+  "include": ["src", "e2e", "vite.config.ts", "playwright.config.ts"]
+}

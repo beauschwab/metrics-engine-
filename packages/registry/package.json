@@ -1,0 +1,33 @@
+{
+  "name": "keel-registry",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The registry API: portable persistence (SQLite/SQL Server), the read-only guard, the Dremio gateway.",
+  "//": "Exports the persistence and runtime layer its consumers actually use: registry-mcp drives the repository and runtime, chartroom-api builds its own tables on ./db and ./dialect (ADR-4). The read-only guard, the Dremio gateway and the request handler stay private.",
+  "exports": {
+    "./db": "./db.ts",
+    "./dialect": "./dialect.ts",
+    "./repository": "./repository.ts",
+    "./runtime": "./runtime.ts",
+    "./index": "./index.ts"
+  },
+  "dependencies": {
+    "keel-engine": "*",
+    "mssql": "^12.7.0"
+  },
+  "devDependencies": {
+    "node-sql-parser": "^5.4.0",
+    "vitest": "^4.1.10",
+    "@repo/typescript-config": "*",
+    "@types/mssql": "^12.3.0",
+    "@types/node": "^26.1.2",
+    "tsx": "^4.23.1",
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "start": "tsx index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

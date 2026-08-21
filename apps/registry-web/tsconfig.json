@@ -1,0 +1,9 @@
+{
+  // Relative rather than `@repo/typescript-config/react.json`, which is what
+  // every other workspace uses. Playwright reads this file to typecheck specs
+  // and resolves `extends` itself, without node resolution — a package
+  // specifier fails there even with an exports map. The two Playwright apps
+  // reach for the shared config by path; nothing else needs to.
+  "extends": "../../packages/typescript-config/react.json",
+  "include": ["src"]
+}

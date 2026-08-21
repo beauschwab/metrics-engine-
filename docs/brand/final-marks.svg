@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="1190" viewBox="0 0 920 1190" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <style>
+      .ink { fill:#141B33; }
+      .gold { fill:#FFCD41; }
+      .red { fill:#D71E28; }
+      .wht { fill:#FFFFFF; }
+      .name { font-size:18px; font-weight:bold; fill:#141B33; text-anchor:middle; letter-spacing:2px; }
+      .role { font-size:12.5px; fill:#5A6072; text-anchor:middle; }
+      .spec { font-size:14px; fill:#3A4052; }
+      .lock { font-size:26px; font-weight:bold; fill:#141B33; letter-spacing:3px; }
+    </style>
+
+    <!-- ATLAS final: gold peak, red sun behind, navy body -->
+    <g id="atlas">
+      <circle class="red" cx="0" cy="-38" r="13"/>
+      <path class="gold" d="M 0,-45 L 16,-17 L -16,-17 Z"/>
+      <path class="ink" d="M -19,-12 L 19,-12 L 50,40 L -50,40 Z"/>
+    </g>
+
+    <!-- PRISM final: navy triangle, double-width stripe — gold inside the glass, red on exit -->
+    <g id="prism">
+      <path class="ink" d="M 0,-45 L 50,40 L -50,40 Z"/>
+      <path class="gold" d="M -30,5 L 19,-12 L 29,4 L -44,31 Z"/>
+      <path class="red" d="M 19,-12 L 80,-34 L 74,-12 L 29,4 Z"/>
+    </g>
+
+    <!-- BALLAST final: navy peak, full-width red wave band, gold submerged body -->
+    <g id="ballast">
+      <path class="ink" d="M 0,-45 L 28,2 Q 14,10 0,2 Q -14,-6 -28,2 Z"/>
+      <path class="red" d="M -28,2 Q -14,-6 0,2 Q 14,10 28,2 L 35,18 Q 17,26 0,18 Q -17,10 -35,18 Z"/>
+      <path class="gold" d="M -35,18 Q -17,10 0,18 Q 17,26 35,18 L 50,40 L -50,40 Z"/>
+    </g>
+  </defs>
+
+  <rect width="920" height="1190" fill="#FAFAF8"/>
+
+  <text x="60" y="66" font-size="30" font-weight="bold" fill="#141B33">Final Marks</text>
+  <text x="60" y="94" font-size="15" fill="#5A6072">Atlas · Prism · Ballast — one triangle family, one red gesture each. DataCanvas remains wordmark-only.</text>
+  <line x1="60" y1="116" x2="860" y2="116" stroke="#D8D8D2" stroke-width="1"/>
+
+  <!-- ============ HERO ROW: white ============ -->
+  <g transform="translate(190,320)">
+    <rect x="-125" y="-175" width="250" height="370" rx="12" fill="#FFFFFF" stroke="#E3E3DD"/>
+    <use href="#atlas" transform="translate(0,-30) scale(1.5)"/>
+    <text class="name" y="118">ATLAS</text>
+    <text class="role" y="142">Red sun behind a gold summit.</text>
+    <text class="role" y="158">The agent illuminating the estate.</text>
+  </g>
+
+  <g transform="translate(460,320)">
+    <rect x="-125" y="-175" width="250" height="370" rx="12" fill="#FFFFFF" stroke="#E3E3DD"/>
+    <use href="#prism" transform="translate(-14,-30) scale(1.5)"/>
+    <text class="name" y="118">PRISM</text>
+    <text class="role" y="142">Gold inside the glass; red the</text>
+    <text class="role" y="158">moment it exits the far side.</text>
+  </g>
+
+  <g transform="translate(730,320)">
+    <rect x="-125" y="-175" width="250" height="370" rx="12" fill="#FFFFFF" stroke="#E3E3DD"/>
+    <use href="#ballast" transform="translate(0,-30) scale(1.5)"/>
+    <text class="name" y="118">BALLAST</text>
+    <text class="role" y="142">Red waterline; the gold that</text>
+    <text class="role" y="158">steadies the ship sits below it.</text>
+  </g>
+
+  <!-- ============ NAVY ROW ============ -->
+  <g transform="translate(60,545)">
+    <rect width="800" height="230" rx="12" fill="#141B33"/>
+    <text x="400" y="34" font-size="13" fill="#B9BEC9" text-anchor="middle">On ink navy — navy regions invert to white; gold and red never change</text>
+
+    <g transform="translate(150,125)">
+      <circle class="red" cx="0" cy="-38" r="13"/>
+      <path class="gold" d="M 0,-45 L 16,-17 L -16,-17 Z"/>
+      <path class="wht" d="M -19,-12 L 19,-12 L 50,40 L -50,40 Z"/>
+      <text y="72" font-size="12" fill="#B9BEC9" text-anchor="middle" letter-spacing="2">ATLAS</text>
+    </g>
+
+    <g transform="translate(400,125)">
+      <path class="wht" d="M 0,-45 L 50,40 L -50,40 Z"/>
+      <path class="gold" d="M -30,5 L 19,-12 L 29,4 L -44,31 Z"/>
+      <path class="red" d="M 19,-12 L 80,-34 L 74,-12 L 29,4 Z"/>
+      <text y="72" font-size="12" fill="#B9BEC9" text-anchor="middle" letter-spacing="2">PRISM</text>
+    </g>
+
+    <g transform="translate(650,125)">
+      <path class="wht" d="M 0,-45 L 28,2 Q 14,10 0,2 Q -14,-6 -28,2 Z"/>
+      <path class="red" d="M -28,2 Q -14,-6 0,2 Q 14,10 28,2 L 35,18 Q 17,26 0,18 Q -17,10 -35,18 Z"/>
+      <path class="gold" d="M -35,18 Q -17,10 0,18 Q 17,26 35,18 L 50,40 L -50,40 Z"/>
+      <text y="72" font-size="12" fill="#B9BEC9" text-anchor="middle" letter-spacing="2">BALLAST</text>
+    </g>
+  </g>
+
+  <!-- ============ LOCKUPS ============ -->
+  <text x="60" y="832" font-size="20" font-weight="bold" fill="#141B33">Horizontal lockups</text>
+  <g transform="translate(120,905)">
+    <use href="#atlas" transform="scale(0.62)"/>
+    <text class="lock" x="55" y="10">ATLAS</text>
+  </g>
+  <g transform="translate(400,905)">
+    <use href="#prism" transform="translate(-8,0) scale(0.62)"/>
+    <text class="lock" x="60" y="10">PRISM</text>
+  </g>
+  <g transform="translate(670,905)">
+    <use href="#ballast" transform="scale(0.62)"/>
+    <text class="lock" x="55" y="10">BALLAST</text>
+  </g>
+
+  <!-- ============ SPECS ============ -->
+  <text x="60" y="1000" font-size="20" font-weight="bold" fill="#141B33">Usage rules</text>
+  <text class="spec" x="60" y="1032">1 · Clear space: half the triangle's width on all sides. Prism's stripe overshoot lives inside its clear space — nothing may touch it.</text>
+  <text class="spec" x="60" y="1060">2 · Minimum size: 24 px mark-only; below that, use the lockup. The red gestures are the differentiators and must stay legible.</text>
+  <text class="spec" x="60" y="1088">3 · Single-color contexts: all-navy silhouette with the red gesture retained (red is permitted in one-color internal templates).</text>
+  <text class="spec" x="60" y="1116">4 · The Ask-Atlas UI affordance across all apps is the red sun-dot alone — the agent's touchpoint, borrowed from the Atlas mark.</text>
+  <text class="spec" x="60" y="1144">5 · DataCanvas: wordmark only. If a glyph is ever unavoidable, use the bare navy triangle over a red baseline — never a fourth gesture.</text>
+</svg>

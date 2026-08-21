@@ -4,8 +4,8 @@ An authoring surface for governed metric definitions — the place a liquidity
 analyst writes an FR 2052a rule, watches the number it produces, and reads the
 plan that the nightly pipeline will run.
 
-Built from the Claude Design handoff in `project/` (the original brief is
-`project/HANDOFF.md`) as a React + TypeScript app with a real CodeMirror 6
+Built from the Claude Design handoff in `docs/handoff/project/` (the original brief is
+`docs/handoff/project/HANDOFF.md`) as a React + TypeScript app with a real CodeMirror 6
 editor.
 
 `product.md` states what this product is and what it refuses to do;
@@ -15,19 +15,25 @@ studio for dashboards bound to these definitions.
 
 ```
 npm install
-pip install -r requirements.txt   # only for the executed backends and Dremio
+uv sync            # the Python side: only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
-npm run server     # the registry API on :8787 (SQLite by default)
-npm run mcp        # the MCP server on stdio (read-only by default)
+npm run registry   # the registry API on :8787 (SQLite by default)
+npm run registry:mcp   # the MCP server on stdio (read-only by default)
 npm run verify     # typecheck, 603 unit tests, 89 browser checks
 npm run build      # typecheck + production bundle
 ```
 
-The surface itself needs no Python — rules are evaluated in the browser.
-`requirements.txt` is for `npm run conformance`, which runs the compiled Polars
-and Iceberg plans in a real interpreter, and for the warehouse connection below.
-The pins are exact on purpose: `flightsql-dbapi` pins `sqlalchemy<2` and
-installing it once silently broke PyIceberg's catalogue in this repo.
+The surface itself needs no Python — rules are evaluated in the browser. The
+Python side is uv-managed (ADR-51): `pyproject.toml` + `uv.lock` at the root
+describe the environment `npm run conformance` needs to run the compiled Polars
+and Iceberg plans in a real interpreter, and the warehouse connection below.
+`uv sync` builds it from the lock; `.venv/bin` on your PATH is what makes the
+suites run rather than skip, since they shell out to a bare `python3`.
+
+The lock is the point, not the seven names in `pyproject.toml`: `flightsql-dbapi`
+pins `sqlalchemy<2` and installing it once silently broke PyIceberg's catalogue
+here, and the pinned `polars==1.43.1` turned out to resolve to a *yanked*
+runtime wheel that pip had been installing with a warning nobody read.
 
 ## What it does
 
@@ -43,12 +49,24 @@ each kind of document the workspace holds:
 | `report` | a grain and a destination | the rows that would actually be filed |
 | `variance_monitor` | thresholds on a rollup | what each threshold did across the window — fired, passed, or had no threshold at all |
 | `source_binding` | a client system's column names and codes | whether the adapter it generates can faithfully stand in for the canonical source |
+| `prepared_source` | a named row stage over one source | the columns it makes, and every view that would move if you changed one |
 
-Eight documents ship in the workspace: two metrics views (`liquidity_pit`,
+Nine documents ship in the workspace: two metrics views (`liquidity_pit`,
 `irrbb_eve`), the FR 2052a product-ID rule set and its LCR rate table, the
-outflow view that applies them, the daily submission report, a day-over-day
-variance monitor over what that report files, and a source binding mapping one
-client system's columns onto the canonical source.
+prepared source that applies both to the position table, the outflow view that
+weights what it produces, the daily submission report, a day-over-day variance
+monitor over what that report files, and a source binding mapping one client
+system's columns onto the canonical source.
+
+**A prepared source is the row stage, named.** Derivations used to be written
+inside the one view that needed them, which is fine until a second view needs
+the same chain — and two copies of an applied regulatory classification is the
+drift this platform exists to prevent. `kind: prepared_source` gives the chain
+an identity and an effective range; a view names it with `prepared:` and its
+columns arrive before the view's own. It writes no table: the compiler inlines
+the whole stage exactly as it did when the lines were in the view, which is
+what makes moving them a refactor rather than a change to a governed number
+(ADR-54).
 
 **Variance monitoring** answers the question a report cannot: did a number move
 more overnight than it should have? Thresholds are either static — an absolute
@@ -184,7 +202,7 @@ stale; the list is.
 
 ## Persistence
 
-`server/` is the registry: a small HTTP API over **SQLite in development and SQL
+`packages/registry/` is the registry: a small HTTP API over **SQLite in development and SQL
 Server in production**, selected by `KEEL_DB` and defaulting to SQLite so a fresh
 clone works with no connection string. Without it the surface still runs — it
 loads the shipped documents, says `local only`, and behaves as the static
@@ -228,11 +246,11 @@ Three things about this are deliberate.
 **It is the same plan.** `liveReport` calls `compileReport`, the compiler the
 conformance harness executes against DuckDB, Polars and Iceberg. A second SQL
 generator for "live preview" would be a second thing to keep conformant. The
-end-to-end test in `server/live.test.ts` seeds a real Flight SQL server with the
+end-to-end test in `packages/registry/live.test.ts` seeds a real Flight SQL server with the
 fixture the browser evaluates and asserts the two filed tables are equal to the
 cent, over gRPC — the product claim in one assertion.
 
-**It cannot write.** Every statement passes `server/readonly.ts` first, which
+**It cannot write.** Every statement passes `packages/registry/readonly.ts` first, which
 strips comments and string literals before scanning, so `SELECT 1 /* x */ ; DROP
 TABLE t` is refused rather than parsed as harmless. The materialize half of a
 compiled plan is stripped, never sent: filing the submission is the pipeline's
@@ -253,7 +271,7 @@ Every result carries the exact statement that produced it, capped at
 `KEEL_DREMIO_ROW_CAP` rows (default 5000) and flagged `truncated` when the cap
 bit — a truncated answer presented as a complete one is worse than no answer.
 
-The stub in `server/query/flight_sql_stub.py` is a real Flight SQL server, not a
+The stub in `packages/registry/query/flight_sql_stub.py` is a real Flight SQL server, not a
 mock, but it is not Dremio: the transport, the token, the guard and the
 reconciliation are tested, while Dremio's catalogue naming, dialect quirks and
 access controls are not.
@@ -379,7 +397,7 @@ reviewed. Telling the truth about the current state is the whole job.
 
 The runtime contract is four GETs and needs no SDK — manifest, plan, rules — and
 is documented with a zero-dependency client and a worked example in
-[`clients/README.md`](clients/README.md). Both are executed by the test suite,
+[`packages/registry/clients/README.md`](packages/registry/clients/README.md). Both are executed by the test suite,
 so the documentation is checked rather than described.
 
 ## When the client's columns are not your columns
@@ -447,16 +465,16 @@ query shape against both engines over identical rows and requires agreement to
 a second implementation of it.
 
 ```
-npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance
+npm run chartroom:api      # :8788 — contracts, queries, dashboards, governance
 npm run chartroom:studio   # :5174 — the studio (brief approval lives here)
 npm run chartroom:mcp      # stdio — the agent's tool surface
-# the Python agent service (:8789) — see chartroom/agent/README.md
+# the Python agent service (:8789) — see apps/chartroom-agent/README.md
 ```
 
 Three dogfood dashboards (an LCR monitor, a limit board, and a variance walk)
 seed on first boot, bound to the real shipped measures.
-[`chartroom/README.md`](chartroom/README.md) is the tour;
-[`chartroom/ADRS.md`](chartroom/ADRS.md) records every deviation from the design
+[`docs/chartroom/README.md`](docs/chartroom/README.md) is the tour;
+[`docs/chartroom/ADRS.md`](docs/chartroom/ADRS.md) records every deviation from the design
 handoff's pinned decisions, including the ones that record a mistake and its
 correction.
 
@@ -474,10 +492,15 @@ against a real implementation of the protocol rather than against Dremio itself.
 ## Testing
 
 ```
-npm run test         # 603 unit, conformance, server and MCP tests
+npm run verify       # everything below, across all 14 workspaces
+npm run test         # 823 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e          # 89 browser checks against the built bundle
-npm run verify:chartroom  # Chartroom: 189 unit tests + 27 pytest + 22 browser checks
+npm run e2e          # 111 browser checks against the built bundles
+npm run setup:agent  # build the Python agent's venv, once
+
+Turborepo runs these over the package graph and caches by input hash, so a
+second `npm run typecheck` with nothing changed is milliseconds. Scope any of
+them with a filter: `npx turbo run test --filter=keel-engine`.
 ```
 
 The server tests include a live Flight SQL round trip. They skip themselves,

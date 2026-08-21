@@ -1,0 +1,29 @@
+{
+  "name": "chartroom-api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Chartroom API: KEEL adapters, grouped query evaluation, versioned dashboard persistence, audit trail.",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "chartroom-critics": "*",
+    "chartroom-patterns": "*",
+    "chartroom-spec": "*",
+    "chartroom-widgets": "*",
+    "keel-engine": "*",
+    "keel-registry": "*",
+    "pptxgenjs": "^4.0.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@types/node": "^26.1.2",
+    "tsx": "^4.23.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
+  }
+}

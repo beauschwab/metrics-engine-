@@ -113,8 +113,9 @@ A model outage degrades to a banner, never a block.
 
 Nine phases are built, verified, and merged. The engine and both surfaces run.
 
-**Authoring** — six document kinds (`metrics_view`, `classification`,
-`parameter_set`, `report`, `variance_monitor`, `source_binding`), each with
+**Authoring** — seven document kinds (`metrics_view`, `classification`,
+`parameter_set`, `report`, `variance_monitor`, `source_binding`,
+`prepared_source`), each with
 its own answer to "is this right?"; a real CodeMirror editor; compilation to
 SQL/Polars/PySpark plus semantic views and dbt models; a conformance suite that
 runs the compiled plans in real interpreters and requires them to agree.
@@ -175,5 +176,5 @@ unit tests, 89 browser checks, 189 chartroom unit tests, 27 Python tests
 including the cross-backend parity harness, and 22 studio browser checks.
 
 Every architectural deviation from the pinned spec decisions is recorded in
-`chartroom/ADRS.md` — 48 entries, including the ones that record a mistake and
+`docs/chartroom/ADRS.md` — 51 entries, including the ones that record a mistake and
 its correction.

@@ -1,0 +1,10 @@
+{
+  "name": "chartroom-agent",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Chartroom's agent runtime (Python: FastAPI + LangGraph), uv-managed. Wrapped as a workspace so Turborepo can schedule its gate alongside the TypeScript ones.",
+  "scripts": {
+    "setup": "uv sync --frozen",
+    "verify": "uv run --frozen ruff check src tests && uv run --frozen mypy src && uv run --frozen pytest -q"
+  }
+}
