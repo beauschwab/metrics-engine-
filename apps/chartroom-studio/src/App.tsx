@@ -21,9 +21,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardSpec, LintReport, WidgetContract } from 'chartroom-spec';
 import {
-  createDashboard, loadCalendar, loadContracts, loadDashboard, loadDashboards, loadWidgets,
-  dropQueryCache, saveVersion,
-  type Calendar, type ContractSummary, type DashboardSummary,
+  createDashboard, loadCalendar, loadContracts, loadDashboard, loadDashboards, loadPatterns,
+  loadExceptions, loadWidgets, dropQueryCache, saveVersion,
+  type Calendar, type ContractSummary, type DashboardSummary, type MonitorException,
+  type PatternSummary,
 } from './data';
 import type { AnalystEnv, Basis } from './bindings';
 import { Canvas } from './Canvas';
@@ -31,7 +32,7 @@ import { Inspector, type Tab } from './Inspector';
 import { Harness } from './Harness';
 import { ProposalsPage } from './ProposalsPage';
 import { ViewPage } from './ViewPage';
-import { ChatPane } from './chat/ChatPane';
+import { AgentRail, type Pointer } from './chat/AgentRail';
 import { AnalystBar } from './analyst/AnalystBar';
 import { ContextBar, useContextOptions, type CrossFilter } from './analyst/ContextBar';
 import { ExceptionsPanel } from './analyst/ExceptionsPanel';
@@ -83,7 +84,11 @@ function Studio({ mode }: { mode: 'read' | 'author' }) {
   const [tab, setTab] = useState<Tab>('widget');
   const [newId, setNewId] = useState('');
   const [newTitle, setNewTitle] = useState('');
-  const [chatOpen, setChatOpen] = useState(false);
+  // Open by default (ADR-55): the rail is part of the surface a reader lands
+  // on, not a mode they discover. `a` still puts it away.
+  const [chatOpen, setChatOpen] = useState(true);
+  const [patterns, setPatterns] = useState<PatternSummary[]>([]);
+  const [pointers, setPointers] = useState<Pointer[]>([]);
 
   // ---- the analyst surface --------------------------------------------------
   const [asOf, setAsOf] = useState<string | null>(null);
@@ -112,6 +117,7 @@ function Studio({ mode }: { mode: 'read' | 'author' }) {
       setContracts(r.contracts);
       setSource(r.source);
     });
+    void loadPatterns().then((r) => setPatterns(r.patterns)).catch(() => {});
     void loadWidgets().then((r) => {
       setWidgets(r.widgets);
       // Approved contracts with no renderer yet — the canvas says so rather
@@ -239,9 +245,20 @@ function Studio({ mode }: { mode: 'read' | 'author' }) {
   const explainWidget = spec?.widgets.find((w) => w.id === explain) ?? null;
   const contextOptions = useContextOptions(spec);
 
+  // Value-level breaches from the registry's variance monitors, re-read when
+  // the as-of moves — the morning's list is about the morning being looked at.
+  const [breaches, setBreaches] = useState<MonitorException[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void loadExceptions(asOf)
+      .then((r) => { if (alive) setBreaches(r.exceptions); })
+      .catch(() => { if (alive) setBreaches([]); });
+    return () => { alive = false; };
+  }, [asOf]);
+
   const exceptions = useMemo(
-    () => exceptionsOf(report, upgrades, acked),
-    [report, upgrades, acked],
+    () => exceptionsOf(report, upgrades, acked, breaches),
+    [report, upgrades, acked, breaches],
   );
 
   const scopeDirty = asOf !== null || basis !== 'prior_day'
@@ -253,6 +270,21 @@ function Studio({ mode }: { mode: 'read' | 'author' }) {
     setCtxValues({});
     setCross(null);
   }, []);
+
+  /**
+   * `\u2733 ask` (ADR-55): attach a widget to the conversation as a resolved
+   * reference. Clicking again detaches — a pointer should die where it was
+   * born, the same rule the cross-filter follows.
+   */
+  const askWidget = useCallback((id: string) => {
+    setPointers((ps) => {
+      if (ps.some((x) => x.id === id)) return ps.filter((x) => x.id !== id);
+      const w = spec?.widgets.find((x) => x.id === id);
+      if (!w) return ps;
+      return [...ps, { id, detail: `${w.type} \u00b7 ${w.bind.metric}` }];
+    });
+    setChatOpen(true);
+  }, [spec]);
 
   // ---- keyboard -------------------------------------------------------------
   const commands: Command[] = useMemo(() => [
@@ -464,6 +496,23 @@ function Studio({ mode }: { mode: 'read' | 'author' }) {
       )}
 
       <div className="cr-body">
+        {chatOpen && (
+          <AgentRail
+            dashboardId={openId}
+            spec={spec}
+            contracts={contracts}
+            boards={dashboards}
+            patterns={patterns}
+            env={env}
+            scopeLabel={Object.keys(ctxValues).length
+              ? Object.entries(ctxValues).map(([k, v]) => `${k}=${v}`).join(' \u00b7 ')
+              : 'all'}
+            pointers={pointers}
+            onRemovePointer={(id) => setPointers((ps) => ps.filter((x) => x.id !== id))}
+            onClearPointers={() => setPointers([])}
+            onClose={() => setChatOpen(false)}
+          />
+        )}
         {author && (
           <aside className="cr-sidebar" data-testid="sidebar">
             <h2 className="cr-side-head">Dashboards</h2>
@@ -529,6 +578,8 @@ function Studio({ mode }: { mode: 'read' | 'author' }) {
                 cross={cross}
                 onCross={setCross}
                 onExplain={setExplain}
+                attached={new Set(pointers.map((x) => x.id))}
+                onAsk={askWidget}
               />
             )
             : (
@@ -563,7 +614,6 @@ function Studio({ mode }: { mode: 'read' | 'author' }) {
             }}
           />
         )}
-        {chatOpen && <ChatPane dashboardId={openId} onClose={() => setChatOpen(false)} />}
       </div>
 
       {explainWidget && spec && (

@@ -69,6 +69,16 @@ def thread(thread_id: str) -> Event:
     return {"type": "thread", "thread_id": thread_id}
 
 
+def thinking(delta: str) -> Event:
+    """Additive (ADR-55): a reasoning delta, when the model streams one.
+
+    Emitted only when the underlying model actually produces thinking blocks —
+    a model without extended thinking simply never sends this, and clients that
+    predate it ignore the unknown type, exactly as the contract promises.
+    """
+    return {"type": "thinking", "delta": delta}
+
+
 def sse(event: Event) -> str:
     import json
 

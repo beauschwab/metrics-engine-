@@ -64,6 +64,32 @@ export interface Calendar {
 
 export const loadCalendar = () => api<Calendar>('/api/calendar');
 
+/** The catalog patterns, as the composer's `#` references. */
+export interface PatternSummary {
+  pattern: string;
+  version: number;
+  title: string;
+  serves: string;
+}
+
+export const loadPatterns = () =>
+  api<{ patterns: PatternSummary[] }>('/api/patterns');
+
+/** Variance-monitor breaches at one as-of — the strip's value-level rows. */
+export interface MonitorException {
+  monitor: string;
+  threshold: string;
+  severity: 'error' | 'warn' | 'info';
+  key: string;
+  date: string;
+  message: string;
+}
+
+export const loadExceptions = (asOf: string | null) =>
+  api<{ exceptions: MonitorException[] }>(
+    `/api/exceptions${asOf ? `?as_of=${encodeURIComponent(asOf)}` : ''}`,
+  );
+
 export const loadWidgets = () =>
   api<{ widgets: WidgetContract[]; unrenderable?: string[] }>('/api/widgets');
 

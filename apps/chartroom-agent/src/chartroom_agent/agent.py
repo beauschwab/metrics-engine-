@@ -92,6 +92,18 @@ def _texty(chunk: Any) -> str:
     return "".join(out)
 
 
+def _thinky(chunk: Any) -> str:
+    """Reasoning text out of a streamed chunk, when the model produced any."""
+    content = getattr(chunk, "content", "")
+    if isinstance(content, str):
+        return ""
+    out: list[str] = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "thinking":
+            out.append(str(block.get("thinking", "")))
+    return "".join(out)
+
+
 def _clip(value: Any, limit: int = 20_000) -> Any:
     text = value if isinstance(value, str) else str(value)
     return text if len(text) <= limit else text[:limit] + " …[truncated]"
@@ -120,7 +132,11 @@ async def stream_turn(
         ):
             kind = event.get("event")
             if kind == "on_chat_model_stream":
-                delta = _texty(event["data"]["chunk"])
+                chunk = event["data"]["chunk"]
+                thought = _thinky(chunk)
+                if thought:
+                    yield protocol.thinking(thought)
+                delta = _texty(chunk)
                 if delta:
                     yield protocol.text(delta)
             elif kind == "on_tool_start":

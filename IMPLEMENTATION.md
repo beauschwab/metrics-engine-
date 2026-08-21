@@ -1672,3 +1672,34 @@ three backends, and the Polars conformance harness still agreeing with the
 evaluator on the filed table. Those assertions were checked against a
 deliberately broken composition — six of them fail without it, which is the only
 reason to believe the other passing ones mean anything.
+
+## The agent becomes a rail, and the strip learns about mornings
+
+The v3 handoff (ADR-55) moved the chat from a right-hand pane to a left rail
+and made it the first thing a reader sees. The transport is untouched — the
+frozen SSE contract of ADR-37, plus one additive `thinking` event the Python
+service emits only when the model actually streams reasoning blocks. What
+changed is everything around the stream: completions that come from the open
+spec, the registry and the pattern catalog rather than from a list typed into
+the client; file drops that inline real text into the message or refuse with
+the reason; and `✳ ask` pointers that serialize a widget's id, binding and
+the reader's environment into what the agent receives — the scope the user
+was looking at, not just the widget name.
+
+The prototype's six segment kinds became three real ones. Checklists and
+artifact cards are scripted structures in the prototype; the rail renders
+only what the stream genuinely carries, and the in-thread "Approve brief"
+button was declined outright — an approval control inside the agent's own
+output stream is the wrong place for the one act the agent must never
+perform (P6). The phase spine survives as client-derived orientation that
+gates nothing.
+
+The exception strip's value-level rows come from `GET /api/exceptions`,
+which runs every `variance_monitor` in the workspace through the engine's
+`runMonitor` at the requested as-of. The prototype wanted LIM codes with
+thresholds in client state and an "internal amber" parsed from governance
+prose; the workspace already stores limits in a governed, effective-dated,
+cited document kind, so the strip reads those. The consequence is honest and
+visible: a board whose spec lints clean can open on two SIGMA breaches from
+`fr2052a_variance`, because the strip's scope is the morning, not the open
+board's spec — its title changed to say so.

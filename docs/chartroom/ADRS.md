@@ -1102,3 +1102,77 @@ the rest of the graph keeps the one-hop answer it always gave.
 **Materialization is still not built.** The stage is inlined per query, exactly
 as before; ADR-53's note about a `materialize` hint stands unchanged, and having
 an identity to hang one on is the part that had been missing.
+
+## ADR-55 — the design agent is a left rail; the strip reads the variance monitors
+
+The v3 handoff's Track B, over the ADR-52 surface. Two enhancements landed
+and four prototype behaviours were deliberately not reproduced.
+
+**The chat became the rail.** Left side, first thing in the body row, open by
+default in both modes — the intake conversation is part of the surface, not a
+pane you discover. The transport did not move an inch: the same frozen SSE
+contract (ADR-37), the same parser, the same honest degrade when no model or
+no service is there (ADR-35). `thread_id` now round-trips, so the session
+label in the rail's header is the server's actual LangGraph thread (ADR-38),
+and `new` genuinely starts one.
+
+**The composer completes from real things.** `/` offers the seven commands as
+text the agent receives; `@` completes from the open spec's widget ids, the
+registry's contracts, and the board list — a mention offered is a thing that
+exists; `#` completes from the pattern catalog. Dropped files travel only
+when they can actually travel: text up to 32KB is inlined into the message,
+anything else is refused with the reason, because a chip on a message the
+content never reached would be a lie shaped like a feature.
+
+**Pointers are the load-bearing interaction.** `✳ ask` on a frame attaches
+the widget; the message the agent receives carries the widget id, its
+binding, and the environment the reader was looking at — as-of, basis, scope
+— serialized in a context block. "Explain this tile" becomes a resolved
+reference. Asking again detaches; the same die-where-born rule the
+cross-filter follows.
+
+**The `thinking` event is additive.** The protocol grew one event type, which
+ADR-37 explicitly allows — clients ignore unknown types. The Python service
+emits it only when the model actually streams reasoning blocks; the rail
+renders it collapsed, dimmer and italic, because it is pre-verbal.
+
+**The exception strip's value rows come from the variance monitors.** The
+prototype invents LIM-101/LIM-204 with thresholds in client code and asks for
+an "internal amber" read from governance config. This workspace already has a
+governed place where limits live: `kind: variance_monitor`, whose thresholds
+are effective-dated, cited and severity-carrying. `GET /api/exceptions` runs
+every monitor through the engine's own `runMonitor` at the requested as-of;
+the strip shows the breaches with the threshold id as the code — a code a
+steward can open, not a label invented for the strip. The strip's title
+changed to "Exceptions this morning" because its scope genuinely widened: a
+board that lints clean can still open on the morning's breaches, which is the
+entire point of the strip.
+
+**Not reproduced, and why.**
+
+*The phase spine gates nothing.* It is client-derived orientation from the
+message's intent. The gates the prototype's artifact cards advance — brief
+approval, promotion — stay in the Brief and Govern tabs, where a named human
+clicks them (P6). An in-thread "Approve brief" button was considered and
+declined: an approval control inside the agent's own output stream is the
+wrong place to put the one act the agent must never perform.
+
+*Checklist and artifact segment kinds are not rendered.* The real stream
+carries `text`, `tool` and now `thinking`. The prototype scripts its
+checklists and artifact cards; rendering those shapes from anything other
+than real structured events would be a conversation pretending to a
+structure it does not have. When the agent service emits them as typed
+events — an additive protocol change with agent-side work behind it — the
+rail gains the renderers.
+
+*The stress-haircut basis is refused.* A comparison basis needs a governed
+transform per measure; the workspace defines a stress variant only where a
+`*_stress` measure exists. The prototype's `basisMult` multiplier is exactly
+the painted-on control ADR-52 exists to refuse.
+
+*Fixed ENTITY/CCY/PRODUCT selectors, dated annotation entries, and the
+drawer's underlying-rows table* stay as ADR-52 decided: context chips derive
+from `spec.context`; dated bylined annotations are a change to
+`annotation@1`'s governed contract, which has a proposals flow; and
+row-level data has no representation in the query response types
+(`product.md` §7) — a boundary, not a backlog item.
