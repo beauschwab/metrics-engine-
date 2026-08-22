@@ -369,6 +369,15 @@ lineage before proposing, proves every draft with `test_rules` and
 under an `agent:lg-registry` identity, so the write tools above are never in
 its roster to begin with.
 
+Agents working in this repo also get domain skills under `.claude/skills/`:
+one per treasury reporting regime (FR 2052a, LCR, NSFR, Regulation YY
+internal liquidity, FR Y-15 wSTWF, Pillar 3 liquidity disclosure) with the
+citation map and a validation checklist for rules claiming that regime, plus
+`reg-rationale` — the protocol for where business rationale lives (citation,
+description, revision message, review acknowledgement, monitor threshold id)
+and how it travels from a registry rule to the code on a dashboard's
+exception strip.
+
 ## Deploying, and consuming at run time
 
 The surface autosaves every settled edit as a revision. That is right for
