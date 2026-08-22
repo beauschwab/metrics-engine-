@@ -961,3 +961,142 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   background: var(--cr-panel-2); border-top: 1px solid var(--cr-border-subtle);
 }
 .cr-palette-foot span { font-size: 10.5px; color: var(--cr-text-faint); }
+
+/* ---- the design agent rail (ADR-55) ------------------------------------
+   Track B of the v3 handoff: the chat as a left rail. The chat-message,
+   tool-card and unavailable styles above are reused as they stand — the
+   transport and the turns did not change, the frame around them did. */
+
+.cr-rail {
+  width: 428px; flex: 0 0 428px; display: flex; flex-direction: column;
+  min-height: 0; background: var(--cr-panel); font-size: 12.5px;
+  border-right: 1px solid color-mix(in srgb, var(--cr-ai) 26%, transparent);
+}
+.cr-rail[data-drag] { outline: 1px dashed var(--cr-ai); outline-offset: -2px; }
+.cr-rail-head {
+  display: flex; flex-direction: column; gap: 9px; flex: none;
+  padding: 11px 13px 10px; border-bottom: 1px solid var(--cr-border);
+}
+.cr-rail-head-row { display: flex; align-items: center; gap: 8px; }
+.cr-rail-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--cr-ai); }
+.cr-rail-title { font-weight: 600; }
+.cr-rail-session { font-family: var(--cr-mono); font-size: 10px; color: var(--cr-text-faint); }
+.cr-rail-headlink {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: 11px; color: var(--cr-text-muted);
+}
+.cr-rail-headlink:hover { color: var(--cr-accent); }
+
+.cr-rail-phases { display: flex; align-items: center; gap: 4px; }
+.cr-rail-phase {
+  padding: 2px 8px; font-size: 10px; letter-spacing: 0.04em; border-radius: 999px;
+  white-space: nowrap; color: var(--cr-text-faint); border: 1px solid transparent;
+}
+.cr-rail-phase[data-state='active'] { background: var(--cr-accent); color: var(--text-on-accent, #1A1C20); }
+.cr-rail-phase[data-state='done'] { background: var(--cr-panel-2); color: var(--cr-text-muted); }
+
+.cr-rail-thread {
+  flex: 1; min-height: 0; overflow: auto; padding: 14px 13px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+
+.cr-rail-empty { display: flex; flex-direction: column; gap: 8px; }
+.cr-rail-empty-head { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.02em; }
+.cr-rail-starter {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  padding: 8px 10px; cursor: pointer; text-align: left; font: inherit;
+  background: var(--cr-panel-2); border: 1px solid var(--cr-border); border-radius: var(--radius-sm);
+  color: var(--cr-text);
+}
+.cr-rail-starter:hover { border-color: var(--cr-ai); }
+.cr-rail-starter-eyebrow {
+  font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cr-text-faint);
+}
+.cr-rail-starter-text { font-size: 12px; line-height: 1.45; }
+.cr-rail-refs {
+  display: flex; flex-direction: column; gap: 5px; padding-top: 10px;
+  border-top: 1px solid var(--cr-border);
+}
+.cr-rail-refrow { display: flex; flex-wrap: wrap; gap: 5px; }
+.cr-rail-skill {
+  padding: 2px 7px; cursor: pointer; font-family: var(--cr-mono); font-size: 10.5px;
+  color: var(--cr-ai); background: color-mix(in srgb, var(--cr-ai) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cr-ai) 26%, transparent); border-radius: var(--radius-xs);
+}
+
+.cr-rail-think { border-left: 2px solid color-mix(in srgb, var(--cr-ai) 40%, transparent); padding-left: 9px; }
+.cr-rail-think-head {
+  display: flex; align-items: baseline; gap: 6px; width: 100%; padding: 0;
+  cursor: pointer; text-align: left; background: none; border: 0; font: inherit;
+}
+.cr-rail-think-label {
+  flex: none; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cr-ai);
+}
+.cr-rail-think-text {
+  flex: 1; font-size: 11.5px; line-height: 1.6; font-style: italic; color: var(--cr-text-faint);
+}
+.cr-rail-think-text[data-open] { white-space: pre-wrap; }
+
+.cr-rail-composer { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 11px; border-top: 1px solid var(--cr-border); }
+.cr-rail-menu {
+  display: flex; flex-direction: column; max-height: 214px; overflow: auto;
+  border: 1px solid var(--cr-border); border-radius: var(--radius-sm); background: var(--cr-panel);
+}
+.cr-rail-menu-title {
+  padding: 6px 12px 4px; font-size: 9.5px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--cr-text-faint);
+}
+.cr-rail-menu-item {
+  display: flex; align-items: baseline; gap: 8px; padding: 6px 12px; cursor: pointer;
+  text-align: left; font: inherit; background: transparent; border: 0; color: var(--cr-text);
+}
+.cr-rail-menu-item:hover { background: var(--cr-panel-2); }
+.cr-rail-menu-label { font-family: var(--cr-mono); font-size: 11.5px; }
+.cr-rail-menu-args { font-family: var(--cr-mono); font-size: 10px; color: var(--cr-text-faint); }
+.cr-rail-menu-hint { flex: 1; font-size: 11px; text-align: right; color: var(--cr-text-faint); }
+
+.cr-rail-chiprow { display: flex; flex-wrap: wrap; gap: 4px; }
+.cr-rail-pointer {
+  display: inline-flex; align-items: center; gap: 6px; padding: 1px 6px;
+  font-family: var(--cr-mono); font-size: 10.5px; color: var(--cr-ai);
+  background: color-mix(in srgb, var(--cr-ai) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cr-ai) 30%, transparent); border-radius: var(--radius-xs);
+}
+.cr-rail-filechip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 1px 6px;
+  font-size: 10.5px; color: var(--cr-text-muted); background: var(--cr-panel-2);
+  border: 1px solid var(--cr-border); border-radius: var(--radius-xs);
+}
+.cr-rail-chip-x { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-size: 11px; line-height: 1; color: var(--cr-text-faint); }
+.cr-rail-fileproblem { font-size: 10.5px; color: var(--cr-warn); }
+
+.cr-rail-input {
+  display: flex; flex-direction: column; gap: 7px; padding: 8px 9px;
+  background: var(--cr-panel-2); border: 1px solid var(--cr-border); border-radius: var(--radius-sm);
+}
+.cr-rail-input[data-drag] { border-color: var(--cr-ai); }
+.cr-rail-input .cr-chat-textarea { border: 0; background: transparent; padding: 0; }
+.cr-rail-input-row { display: flex; align-items: center; gap: 8px; }
+.cr-rail-filebtn {
+  padding: 2px 7px; cursor: pointer; font: inherit; font-size: 11px;
+  color: var(--cr-text-muted); background: var(--cr-panel);
+  border: 1px solid var(--cr-border); border-radius: var(--radius-xs);
+}
+.cr-rail-scope {
+  padding: 2px 7px; font-family: var(--cr-mono); font-size: 10px; color: var(--cr-text-faint);
+  background: var(--cr-panel); border: 1px solid var(--cr-border); border-radius: var(--radius-xs);
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cr-rail-hint { font-size: 10px; line-height: 1.45; color: var(--cr-text-faint); }
+
+/* The pointer's mark on the canvas: attached-to-chat wins over selected. */
+.cr-frame[data-attached] {
+  border-color: color-mix(in srgb, var(--cr-ai) 55%, transparent);
+  box-shadow: inset 2px 0 0 var(--cr-ai);
+}
+.cr-frame-ask {
+  background: none; border: 0; padding: 0; cursor: pointer; font: inherit;
+  font-size: 10px; color: var(--cr-text-faint);
+}
+.cr-frame-ask:hover { color: var(--cr-ai); }
+.cr-frame-ask[data-attached] { color: var(--cr-ai); }

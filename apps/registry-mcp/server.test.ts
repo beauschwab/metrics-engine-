@@ -25,6 +25,7 @@ const dir = mkdtempSync(join(tmpdir(), 'keel-mcp-server-'));
 
 let client: Client;
 let writable: Client;
+let agent: Client;
 
 /** Start a server against its own database, so the two cases cannot interfere. */
 async function connect(env: Record<string, string>): Promise<Client> {
@@ -53,11 +54,15 @@ const json = (result: unknown) => JSON.parse(payload(result).text);
 beforeAll(async () => {
   client = await connect({ TAG: 'ro' });
   writable = await connect({ TAG: 'rw', KEEL_MCP_WRITE: '1', KEEL_MCP_IDENTITY: 'agent-under-test' });
+  // A model session's connection — the write flag is deliberately ON, because
+  // the point is that it does not matter (ADR-56).
+  agent = await connect({ TAG: 'agent', KEEL_MCP_WRITE: '1', KEEL_MCP_IDENTITY: 'agent:lg-registry' });
 }, 180_000);
 
 afterAll(async () => {
   await client?.close();
   await writable?.close();
+  await agent?.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -71,6 +76,20 @@ describe('the connection', () => {
       'get_lineage', 'get_manifest', 'get_parameters', 'get_release', 'get_rules',
       'list_artifacts', 'list_channels', 'list_releases', 'preview_report', 'promote',
       'save_artifact', 'test_rules', 'validate',
+    ]);
+  });
+
+  it('never even offers the write tools to an agent identity', async () => {
+    // Not present-but-refused: absent. A tool that exists is a permission that
+    // could be granted later, which is exactly what the maker-checker seam
+    // forbids for a model session (ADR-56). Everything else — including the
+    // release and channel reads — is still there.
+    const names = (await agent.listTools()).tools.map((t) => t.name).sort();
+    expect(names).toEqual([
+      'assess_change', 'compile', 'get_artifact', 'get_history',
+      'get_lineage', 'get_manifest', 'get_parameters', 'get_release', 'get_rules',
+      'list_artifacts', 'list_channels', 'list_releases', 'preview_report',
+      'test_rules', 'validate',
     ]);
   });
 

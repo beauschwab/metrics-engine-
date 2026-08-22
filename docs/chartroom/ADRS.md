@@ -1102,3 +1102,142 @@ the rest of the graph keeps the one-hop answer it always gave.
 **Materialization is still not built.** The stage is inlined per query, exactly
 as before; ADR-53's note about a `materialize` hint stands unchanged, and having
 an identity to hang one on is the part that had been missing.
+
+## ADR-55 — the design agent is a left rail; the strip reads the variance monitors
+
+The v3 handoff's Track B, over the ADR-52 surface. Two enhancements landed
+and four prototype behaviours were deliberately not reproduced.
+
+**The chat became the rail.** Left side, first thing in the body row, open by
+default in both modes — the intake conversation is part of the surface, not a
+pane you discover. The transport did not move an inch: the same frozen SSE
+contract (ADR-37), the same parser, the same honest degrade when no model or
+no service is there (ADR-35). `thread_id` now round-trips, so the session
+label in the rail's header is the server's actual LangGraph thread (ADR-38),
+and `new` genuinely starts one.
+
+**The composer completes from real things.** `/` offers the seven commands as
+text the agent receives; `@` completes from the open spec's widget ids, the
+registry's contracts, and the board list — a mention offered is a thing that
+exists; `#` completes from the pattern catalog. Dropped files travel only
+when they can actually travel: text up to 32KB is inlined into the message,
+anything else is refused with the reason, because a chip on a message the
+content never reached would be a lie shaped like a feature.
+
+**Pointers are the load-bearing interaction.** `✳ ask` on a frame attaches
+the widget; the message the agent receives carries the widget id, its
+binding, and the environment the reader was looking at — as-of, basis, scope
+— serialized in a context block. "Explain this tile" becomes a resolved
+reference. Asking again detaches; the same die-where-born rule the
+cross-filter follows.
+
+**The `thinking` event is additive.** The protocol grew one event type, which
+ADR-37 explicitly allows — clients ignore unknown types. The Python service
+emits it only when the model actually streams reasoning blocks; the rail
+renders it collapsed, dimmer and italic, because it is pre-verbal.
+
+**The exception strip's value rows come from the variance monitors.** The
+prototype invents LIM-101/LIM-204 with thresholds in client code and asks for
+an "internal amber" read from governance config. This workspace already has a
+governed place where limits live: `kind: variance_monitor`, whose thresholds
+are effective-dated, cited and severity-carrying. `GET /api/exceptions` runs
+every monitor through the engine's own `runMonitor` at the requested as-of;
+the strip shows the breaches with the threshold id as the code — a code a
+steward can open, not a label invented for the strip. The strip's title
+changed to "Exceptions this morning" because its scope genuinely widened: a
+board that lints clean can still open on the morning's breaches, which is the
+entire point of the strip.
+
+**Not reproduced, and why.**
+
+*The phase spine gates nothing.* It is client-derived orientation from the
+message's intent. The gates the prototype's artifact cards advance — brief
+approval, promotion — stay in the Brief and Govern tabs, where a named human
+clicks them (P6). An in-thread "Approve brief" button was considered and
+declined: an approval control inside the agent's own output stream is the
+wrong place to put the one act the agent must never perform.
+
+*Checklist and artifact segment kinds are not rendered.* The real stream
+carries `text`, `tool` and now `thinking`. The prototype scripts its
+checklists and artifact cards; rendering those shapes from anything other
+than real structured events would be a conversation pretending to a
+structure it does not have. When the agent service emits them as typed
+events — an additive protocol change with agent-side work behind it — the
+rail gains the renderers.
+
+*The stress-haircut basis is refused.* A comparison basis needs a governed
+transform per measure; the workspace defines a stress variant only where a
+`*_stress` measure exists. The prototype's `basisMult` multiplier is exactly
+the painted-on control ADR-52 exists to refuse.
+
+*Fixed ENTITY/CCY/PRODUCT selectors, dated annotation entries, and the
+drawer's underlying-rows table* stay as ADR-52 decided: context chips derive
+from `spec.context`; dated bylined annotations are a change to
+`annotation@1`'s governed contract, which has a proposals flow; and
+row-level data has no representation in the query response types
+(`product.md` §7) — a boundary, not a backlog item.
+
+## ADR-56 — the agent extends to the metrics-engine surface; an agent identity never writes
+
+The design-studio agent concept, applied to the registry's authoring
+surface. One agent service, one frozen protocol, one loop — and per surface,
+the things that actually differ: which MCP server supplies the tools, what
+identity that subprocess asserts, which tool names may never appear in the
+roster, and the system prompt that encodes the surface's journey.
+
+**The prerequisite came first: the write gate became an identity, not a
+flag.** registry-mcp gated `save_artifact`, `promote` and `create_release`
+behind `KEEL_MCP_WRITE=1` — an env flag, which is exactly "a permission that
+could be granted later", the thing the maker-checker seam (P6, ADR-24)
+forbids for a model session. Now an `agent:`-prefixed identity — chartroom's
+convention: `agent:*` is an agent to the server whatever it calls itself
+after the colon — is refused permanently: the server does not register the
+three write tools for that identity at all, the policy forces `canWrite`
+off whatever the flag says, and the tool layer refuses with a message that
+names the loop to use instead. Absent beats present-but-refused: a tool
+that exists is a permission waiting for a flag. The tool-layer refusal
+stays as defense in depth for a server assembled by hand.
+
+**The service is a surface parameter, not a fork.** `AGENT_SURFACE` picks
+chartroom (the default — byte-for-byte the ADR-36 service) or registry:
+registry-mcp over stdio under `KEEL_MCP_IDENTITY=agent:lg-registry`, a
+banned-name guard covering the write tools so a drifting roster fails
+loudly at startup, a registry system prompt, and the same `/agent/chat`
+endpoint speaking the same frozen events. The studio's warehouse query
+executor does not ride along on the registry surface. The registry server
+grew the one route the pure `handle()` contract cannot model — `POST
+/api/chat` streams the agent service's SSE frames through untouched, with
+the same honest `unavailable` degrade the studio's proxy has (ADR-35) —
+default agent port :8790, so both surfaces can run at once.
+
+**The registry surface's journey is propose → prove → hand over.** The
+system prompt encodes it: read `get_lineage` before touching anything
+(`usedBy` is the list of things a change breaks), draft the full document
+body, prove it with `validate`, `test_rules`, `preview_report` and always
+`assess_change` — a `needsReview: true` is something the human hears from
+the agent, not discovers — and hand over the body in a fenced block. The
+rail renders that fence as a code block with a copy button, and that button
+is the entire hand-over mechanism: the author carries the body into the
+editor and saves under their own name, where the same diagnostics hold
+them. A "save" or "apply" button on the rail was considered and declined —
+it would collapse the seam the identity refusal exists to hold open.
+
+**The rail is the ADR-55 rail with the registry's vocabulary in every
+slot.** Phases intake → draft → prove → hand over (orientation only; the
+spine gates nothing). `/` completes the six propose-and-prove commands; `@`
+completes from the lineage's documents and the open view's measures — a
+mention offered is a thing that exists. The pointer is the signature
+interaction re-grounded: on the analyst surface a pointer is a widget; here
+it is a *diagnostic* — `✳ ask` on a problems-strip row attaches the code,
+the line and the message as a resolved reference, asking again detaches
+(die where born), and asking with the rail closed opens it. The `[viewing]`
+block carries document, kind, test-data fixture and active measure.
+
+**Deliberately different from ADR-55: closed by default.** The analyst
+surface opens on the conversation because intake is the landing experience
+for a reader deciding what a board should decide. An author opens this
+surface with a document and intent; the rail is an instrument reached for
+— the toggle in the editor's toolbar, the choice persisted like the
+editing-mode choice — not chrome that arrives uninvited. If use teaches
+otherwise, flipping the default is a one-line change and a new sentence
+here, not a redesign.

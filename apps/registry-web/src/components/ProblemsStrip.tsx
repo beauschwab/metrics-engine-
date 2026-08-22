@@ -19,6 +19,12 @@ interface Props {
   onToggle(): void;
   onGo(line: number): void;
   onFix(fix: Fix): void;
+  /**
+   * Attach this diagnostic to the definition agent's next message (ADR-56).
+   * Optional so the strip stands alone; when absent, no ask affordance renders.
+   */
+  onAsk?(d: Diagnostic): void;
+  asked?(d: Diagnostic): boolean;
 }
 
 const SEV_ORDER = { error: 0, warn: 1, info: 2 } as const;
@@ -26,7 +32,7 @@ const SEV_GLYPH = { error: '✕', warn: '⚠', info: 'i' } as const;
 const SEV_HUE = { error: HUE.unresolved, warn: HUE.warn, info: HUE.measure } as const;
 
 export function ProblemsStrip({
-  diagnostics, conformance, open, loopMs, onToggle, onGo, onFix,
+  diagnostics, conformance, open, loopMs, onToggle, onGo, onFix, onAsk, asked,
 }: Props) {
   const errors = diagnostics.filter((d) => d.sev === 'error').length;
   const warns = diagnostics.filter((d) => d.sev === 'warn').length;
@@ -97,6 +103,22 @@ export function ProblemsStrip({
                   }}
                 >
                   {d.fixLabel || 'Quick fix'}
+                </button>
+              ) : null}
+              {onAsk ? (
+                /* A diagnostic is the rail's pointer: `✳ ask` attaches the
+                   code, the line and the message as a resolved reference, and
+                   asking again detaches (ADR-56). */
+                <button
+                  type="button"
+                  className="mdl-ask"
+                  data-testid={`ask-${d.code}-L${d.line + 1}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAsk(d);
+                  }}
+                >
+                  {asked?.(d) ? '✳ in chat' : '✳ ask'}
                 </button>
               ) : null}
             </div>

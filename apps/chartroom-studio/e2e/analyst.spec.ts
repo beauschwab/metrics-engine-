@@ -145,11 +145,27 @@ test.describe('the scope actually resolves', () => {
 });
 
 test.describe('exceptions are derived, not decorative', () => {
-  test('a clean board says so rather than showing an empty strip', async ({ page }) => {
-    // The seeded monitor lints clean, and the control is calm rather than an
-    // alert with a zero in it.
-    await expect(page.getByTestId('exceptions-toggle')).toHaveAttribute('data-clean', 'true');
-    await expect(page.getByTestId('exceptions-panel')).toHaveCount(0);
+  test('a lint-clean board still shows the morning\u2019s value-level breaches', async ({ page }) => {
+    // The seeded monitor lints clean — but the workspace's variance monitor
+    // raised two moves at the latest close, and the strip is about the
+    // morning, not about the open board's spec (ADR-55). The codes are the
+    // monitor's own threshold ids, traceable to the registry document.
+    const panel = page.getByTestId('exceptions-panel');
+    await expect(panel).toBeVisible();
+    const rows = panel.locator('.cr-exception');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0).locator('.cr-exception-code')).toHaveText('SIGMA-30');
+    await expect(rows.nth(1).locator('.cr-exception-code')).toHaveText('SIGMA-60');
+    await expect(rows.nth(0)).toContainText('day-over-day');
+
+    // Stepping the as-of back re-reads the monitor for that morning — the
+    // list is about the morning being looked at, not a cached one.
+    const options = await page.getByTestId('as-of').locator('option').all();
+    const values = await Promise.all(options.map((o) => o.getAttribute('value')));
+    await page.getByTestId('as-of').selectOption(values[1] as string);
+    // The prior close carried a hard-limit breach — danger, sorted first.
+    await expect(panel.locator('.cr-exception-code').first()).toHaveText('HARD-USD');
+    await expect(panel.locator('.cr-exception').first()).toHaveAttribute('data-tone', 'danger');
   });
 
   test('the strip carries the lint report, and acknowledging hides only that row', async ({ page }) => {
@@ -160,11 +176,13 @@ test.describe('exceptions are derived, not decorative', () => {
 
     const panel = page.getByTestId('exceptions-panel');
     await expect(panel).toBeVisible();
-    // Two BLOCKs and two WARNs on this fixture; SUGGEST findings are excluded
-    // by design, so the strip is not the findings tab with a border on it.
+    // Two BLOCKs and two WARNs from the lint report, plus the two variance
+    // breaches the workspace monitor raised at the latest close; SUGGEST
+    // findings are excluded by design, so the strip is not the findings tab
+    // with a border on it.
     const rows = panel.locator('.cr-exception');
-    await expect(rows).toHaveCount(4);
-    await expect(page.getByTestId('exceptions-toggle')).toContainText('4');
+    await expect(rows).toHaveCount(6);
+    await expect(page.getByTestId('exceptions-toggle')).toContainText('6');
 
     // Blockers sort first, and each row names the rule that produced it — so
     // it is traceable back to the findings tab rather than being a label
@@ -177,8 +195,8 @@ test.describe('exceptions are derived, not decorative', () => {
 
     // Acknowledging retires exactly one row and leaves the rest standing.
     await rows.nth(0).locator('.cr-exception-ack').click();
-    await expect(panel.locator('.cr-exception')).toHaveCount(3);
-    await expect(page.getByTestId('exceptions-toggle')).toContainText('3');
+    await expect(panel.locator('.cr-exception')).toHaveCount(5);
+    await expect(page.getByTestId('exceptions-toggle')).toContainText('5');
   });
 
   test('e hides the strip', async ({ page }) => {

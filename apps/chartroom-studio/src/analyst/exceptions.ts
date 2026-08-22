@@ -13,6 +13,7 @@
  */
 
 import type { LintFinding, LintReport } from 'chartroom-spec';
+import type { MonitorException } from '../data';
 
 /** Mirrors the API's `UpgradeNotice`, narrowed to what the strip reads. */
 export interface UpgradeNotice {
@@ -60,8 +61,25 @@ export function exceptionsOf(
   report: LintReport | null,
   upgrades: UpgradeNotice[],
   acked: ReadonlySet<string>,
+  breaches: MonitorException[] = [],
 ): Exception[] {
   const out: Exception[] = [];
+
+  // Value-level rows first: what actually moved overnight outranks what is
+  // wrong with the spec. The thresholds are the registry's variance monitors
+  // (ADR-55) — effective-dated, cited, severity-carrying — so the code shown
+  // is a threshold id a steward can open, not a label invented for the strip.
+  for (const b of breaches) {
+    out.push({
+      id: `monitor:${b.monitor}:${b.threshold}:${b.key}:${b.date}`,
+      kind: b.severity === 'error' ? 'BREACH' : 'WARNING',
+      tone: b.severity === 'error' ? 'danger' : b.severity === 'warn' ? 'warning' : 'info',
+      code: b.threshold,
+      message: b.message,
+      scope: b.key,
+      action: `Raised by ${b.monitor} — the threshold lives in the registry`,
+    });
+  }
 
   for (const f of report?.findings ?? []) {
     if (f.severity === 'SUGGEST') continue;

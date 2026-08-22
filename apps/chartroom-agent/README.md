@@ -23,6 +23,27 @@ it); the studio pane is unchanged. Without a key — or with this service down �
 the pane gets the honest `unavailable` banner and the rest of the studio keeps
 working (ADR-35).
 
+## Surfaces (ADR-56)
+
+`AGENT_SURFACE` picks which surface one process serves — same endpoint, same
+frozen protocol, same loop:
+
+- `chartroom` (default): chartroom-mcp's governed tools, the design-agent
+  journey, the warehouse query executor riding along.
+- `registry`: registry-mcp over stdio under `KEEL_MCP_IDENTITY=agent:lg-registry`
+  — an identity that server answers by never registering `save_artifact`,
+  `promote` or `create_release` — the propose → prove → hand-over journey, no
+  query executor. The registry server proxies its own `/api/chat` here
+  (default :8790, `KEEL_AGENT_URL` to move it):
+
+```sh
+ANTHROPIC_API_KEY=… AGENT_SURFACE=registry \
+  uv run uvicorn chartroom_agent.app:app --port 8790
+```
+
+Either way the roster is guarded at startup: a banned-name fragment appearing
+in the loaded tools kills the process rather than waiting to matter.
+
 The SSE event protocol is a **frozen contract** (ADR-37): `text · tool_start ·
 tool_result · turn_end · done · error · unavailable`, framed exactly as
 `data: <json>\n\n`. Additions are allowed (`thread` was the first — ADR-38's

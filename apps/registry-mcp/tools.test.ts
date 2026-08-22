@@ -22,9 +22,9 @@ import { Repository } from 'keel-registry/repository';
 import { shippedDocuments } from 'keel-registry/index';
 import { VIEW_FILES } from 'keel-engine/documents';
 import {
-  ToolError, assessProposed, compile, getArtifact, getHistory, getLineage,
+  ToolError, assessProposed, compile, createRelease, getArtifact, getHistory, getLineage,
   getLineageGraph, getParameters, getRules, listArtifacts, policyFromEnv, previewReport,
-  saveArtifact, testRules, validate, type McpPolicy,
+  promote, saveArtifact, testRules, validate, type McpPolicy,
 } from './tools';
 
 const dir = mkdtempSync(join(tmpdir(), 'keel-mcp-'));
@@ -32,8 +32,10 @@ let n = 0;
 let db: Db;
 let repo: Repository;
 
-const READ_ONLY: McpPolicy = { canWrite: false, identity: 'agent-x', fixture: 'nominal' };
-const WRITER: McpPolicy = { canWrite: true, identity: 'agent-x', fixture: 'nominal' };
+const READ_ONLY: McpPolicy = { canWrite: false, identity: 'agent-x', agent: false, fixture: 'nominal' };
+const WRITER: McpPolicy = { canWrite: true, identity: 'agent-x', agent: false, fixture: 'nominal' };
+/** What a model session's connection looks like — even with the write flag forced on. */
+const AGENT: McpPolicy = { canWrite: true, identity: 'agent:lg-registry', agent: true, fixture: 'nominal' };
 
 afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
@@ -304,6 +306,37 @@ describe('the read-only default', () => {
   it('falls back to a real fixture rather than trusting the name given', () => {
     expect(policyFromEnv({ KEEL_MCP_FIXTURE: 'not-a-fixture' }).fixture).toBe('nominal');
     expect(policyFromEnv({ KEEL_MCP_FIXTURE: 'stress' }).fixture).toBe('stress');
+  });
+});
+
+describe('an agent identity can never write (ADR-56)', () => {
+  // The chartroom convention: `agent:*` is an agent to the server whatever it
+  // calls itself after the colon. These prove the refusal is identity, not
+  // configuration — every case runs with the write flag forced ON.
+
+  it('marks agent: identities in the policy, and forces canWrite off', () => {
+    const p = policyFromEnv({ KEEL_MCP_WRITE: '1', KEEL_MCP_IDENTITY: 'agent:lg-registry' });
+    expect(p.agent).toBe(true);
+    expect(p.canWrite).toBe(false);
+    // A human identity with the flag keeps writes; the default stays non-agent.
+    expect(policyFromEnv({ KEEL_MCP_WRITE: '1' }).agent).toBe(false);
+    expect(policyFromEnv({ KEEL_MCP_WRITE: '1', KEEL_MCP_IDENTITY: 'claude-ops' }).canWrite).toBe(true);
+  });
+
+  it('refuses a save, and the refusal names the loop to use instead', async () => {
+    await expect(saveArtifact(repo, AGENT, {
+      name: 'liquidity_pit', body: await bodyOf('liquidity_pit'), message: 'x',
+    })).rejects.toThrow(/can never save an artifact.*assess_change/s);
+  });
+
+  it('refuses to cut a release', async () => {
+    await expect(createRelease(repo, AGENT, { message: 'x' }))
+      .rejects.toThrow(/can never cut a release/);
+  });
+
+  it('refuses to promote', async () => {
+    await expect(promote(repo, AGENT, { channel: 'production', version: 1, message: 'x' }))
+      .rejects.toThrow(/can never promote a release/);
   });
 });
 

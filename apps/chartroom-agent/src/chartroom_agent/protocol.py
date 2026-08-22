@@ -43,10 +43,13 @@ def error(message: str) -> Event:
     return {"type": "error", "message": message}
 
 
-def unavailable() -> Event:
+def unavailable(message: str | None = None) -> Event:
+    # The default is the studio's wording; a surface may say what *its* readers
+    # keep without a model (ADR-56). The event shape itself stays frozen.
     return {
         "type": "unavailable",
-        "message": (
+        "message": message
+        or (
             "No model is configured (ANTHROPIC_API_KEY is not set). The rest of the "
             "studio works without me — the linter and data critic are deterministic."
         ),
@@ -67,6 +70,16 @@ def agent_down() -> Event:
 def thread(thread_id: str) -> Event:
     """Additive (ADR-38): names the server-side thread so the client can resume it."""
     return {"type": "thread", "thread_id": thread_id}
+
+
+def thinking(delta: str) -> Event:
+    """Additive (ADR-55): a reasoning delta, when the model streams one.
+
+    Emitted only when the underlying model actually produces thinking blocks —
+    a model without extended thinking simply never sends this, and clients that
+    predate it ignore the unknown type, exactly as the contract promises.
+    """
+    return {"type": "thinking", "delta": delta}
 
 
 def sse(event: Event) -> str:

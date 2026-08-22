@@ -661,8 +661,15 @@ take a proposed **body** and write nothing. An agent can propose a rule set, see
 which records it strands, and iterate without touching the registry. A tool that
 only saved would be a worse `PUT`.
 
-### Three gates on writing
+### Four gates on writing
 
+0. **An agent identity never writes (ADR-56).** An `agent:`-prefixed
+   `KEEL_MCP_IDENTITY` — the chartroom convention: `agent:*` is an agent
+   whatever it calls itself after the colon — gets a roster with no
+   `save_artifact`, `promote` or `create_release` at all, and the tool layer
+   refuses those verbs permanently even on a hand-assembled server. This gate
+   has no flag: a permission that could be granted later is exactly what the
+   maker-checker seam forbids for a model session.
 1. **Off by default.** `KEEL_MCP_WRITE=1` or nothing is written. An agent that
    can silently rewrite a governed rule set is not a capability anybody should
    acquire by forgetting to disable it.
@@ -1672,3 +1679,69 @@ three backends, and the Polars conformance harness still agreeing with the
 evaluator on the filed table. Those assertions were checked against a
 deliberately broken composition — six of them fail without it, which is the only
 reason to believe the other passing ones mean anything.
+
+## The agent becomes a rail, and the strip learns about mornings
+
+The v3 handoff (ADR-55) moved the chat from a right-hand pane to a left rail
+and made it the first thing a reader sees. The transport is untouched — the
+frozen SSE contract of ADR-37, plus one additive `thinking` event the Python
+service emits only when the model actually streams reasoning blocks. What
+changed is everything around the stream: completions that come from the open
+spec, the registry and the pattern catalog rather than from a list typed into
+the client; file drops that inline real text into the message or refuse with
+the reason; and `✳ ask` pointers that serialize a widget's id, binding and
+the reader's environment into what the agent receives — the scope the user
+was looking at, not just the widget name.
+
+The prototype's six segment kinds became three real ones. Checklists and
+artifact cards are scripted structures in the prototype; the rail renders
+only what the stream genuinely carries, and the in-thread "Approve brief"
+button was declined outright — an approval control inside the agent's own
+output stream is the wrong place for the one act the agent must never
+perform (P6). The phase spine survives as client-derived orientation that
+gates nothing.
+
+The exception strip's value-level rows come from `GET /api/exceptions`,
+which runs every `variance_monitor` in the workspace through the engine's
+`runMonitor` at the requested as-of. The prototype wanted LIM codes with
+thresholds in client state and an "internal amber" parsed from governance
+prose; the workspace already stores limits in a governed, effective-dated,
+cited document kind, so the strip reads those. The consequence is honest and
+visible: a board whose spec lints clean can open on two SIGMA breaches from
+`fr2052a_variance`, because the strip's scope is the morning, not the open
+board's spec — its title changed to say so.
+
+## The agent extends to the authoring surface
+
+ADR-56 applies the studio's agent concept to the registry — and the order of
+work matters more than the feature: the write gate had to stop being a flag
+first. registry-mcp's `KEEL_MCP_WRITE=1` was an env variable standing where
+an identity refusal belonged, and "a permission that could be granted later"
+is exactly what the maker-checker seam forbids for a model session. Now an
+`agent:`-prefixed `KEEL_MCP_IDENTITY` gets a roster with no `save_artifact`,
+`promote` or `create_release` in it at all — absent beats present-but-refused
+— the policy forces `canWrite` off whatever the flag says, and the tool layer
+refuses the verbs permanently as defense in depth. `server.test.ts` drives
+all three postures over real stdio: read-only, writable, and agent-with-the-
+flag-forced-on.
+
+The Python service grew a `Surface` value instead of a fork: `AGENT_SURFACE`
+picks chartroom (the default, byte-for-byte ADR-36) or registry — which MCP
+server to spawn, what identity it asserts, which tool names kill startup if
+they ever appear in the roster, and the system prompt. The registry prompt
+encodes propose → prove → hand over: read `get_lineage` before touching
+anything, draft the full body, run `validate`/`test_rules`/`preview_report`
+and always `assess_change`, then present the body in a fenced block. The
+registry server proxies `POST /api/chat` to it (default :8790) with the same
+pass-through streaming and honest `unavailable` degrade the studio's proxy
+has.
+
+The rail on `registry-web` is the ADR-55 rail with the registry's vocabulary
+in every slot — and one deliberate inversion: closed by default, because an
+author arrives with intent and a document where an analyst arrives to be
+interviewed. The signature interaction is the pointer re-grounded: on the
+analyst surface a pointer is a widget; here it is a *diagnostic*. `✳ ask` on
+a problems-strip row attaches code, line and message as a resolved reference
+(asking again detaches; asking with the rail closed opens it), and the
+hand-over is a copy button on the fenced document body — deliberately not a
+save button, which would collapse the seam the identity refusal holds open.

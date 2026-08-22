@@ -339,8 +339,12 @@ an agent can propose a rule set, see which records it strands, and iterate
 without touching the registry.
 
 Writes go through the same `Repository.save` a browser uses — append-only
-revisions, optimistic concurrency, attribution — behind three gates:
+revisions, optimistic concurrency, attribution — behind four gates:
 
+0. **An agent identity never writes.** An `agent:`-prefixed
+   `KEEL_MCP_IDENTITY` gets a roster with no write tools at all, whatever
+   `KEEL_MCP_WRITE` says — the model session's half of the seam is proposing
+   and proving; the save is a human act (ADR-56).
 1. **Off by default.** An agent that can rewrite a governed rule set is not
    something you get by forgetting to turn it off.
 2. **New errors block.** The same catalogue a person is held to — but only for

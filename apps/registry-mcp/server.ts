@@ -254,6 +254,14 @@ export function register(server: McpServer, repo: Repository, policy: McpPolicy)
     ({ channel }) => attempt(() => getManifest(repo, channel)),
   );
 
+  // An agent policy stops here: the write tools are not registered at all, so
+  // the roster a model session sees is propose-and-read by construction — the
+  // same posture chartroom-mcp holds, where no approval-shaped tool exists for
+  // an `agent:*` identity rather than being present-but-refused (ADR-56). The
+  // tool-layer refusals in `tools.ts` remain as defense in depth for a server
+  // assembled by hand with the wrong roster.
+  if (policy.agent) return;
+
   server.tool(
     'create_release',
     policy.canWrite
@@ -330,7 +338,7 @@ export async function main(): Promise<void> {
   // client bug.
   process.stderr.write(
     `${NAME} ${VERSION} on ${db.dialect.name} — `
-    + `${policy.canWrite ? 'writes ALLOWED' : 'read-only'}, `
+    + `${policy.agent ? 'agent (writes never offered)' : policy.canWrite ? 'writes ALLOWED' : 'read-only'}, `
     + `identity ${policy.identity}, fixture ${policy.fixture}\n`,
   );
 

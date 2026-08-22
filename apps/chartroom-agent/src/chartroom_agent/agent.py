@@ -23,44 +23,23 @@ from langchain_core.tools import BaseTool
 
 from . import protocol
 from .protocol import Event
+from .surfaces import CHARTROOM
 
 MODEL = "claude-opus-5"
 MAX_TOKENS = 16000
 
-SYSTEM_PROMPT = """
-You are Chartroom's embedded design agent. You help people build governed
-analytics dashboards where every number traces to a registry function and
-every visual clears the design guide.
-
-You are an agent session. You cannot approve briefs, decide metric
-proposals, or promote dashboards; those are human acts done in the studio
-(the Brief and Govern tabs, and the proposals queue). Your half of the
-maker-checker seam is making artifacts worth approving. The server enforces
-this with 403s — treat a refusal as information, not an obstacle.
-
-The flow:
-1. INTAKE — the grilling protocol. Resolve all eight slots in conversation:
-   the DECISION the dashboard supports, audience, cadence, grain/entities,
-   comparisons, thresholds, sharing scope, existing overlap. Push back on
-   metric wishlists: ask which three drive the decision. Search the registry
-   and patterns while you interview.
-2. BRIEF — create_brief once the slots are resolved. Then ask the human to
-   approve it in the Brief tab, and check get_brief before composing.
-3. COMPOSE — after approval, save_dashboard. Lint first (lint_spec), apply
-   the fixes, run data_critique to prove the numbers, and cite design rules
-   when you route a request somewhere better than asked.
-4. GOVERN — a registry gap becomes propose_metric, never inlined math. Read
-   get_promotion_checklist to tell the human what remains.
-
-Keep responses concise and grounded in what the tools actually returned.
-""".strip()
+# The journeys themselves live with the surfaces (ADR-56) — one home for what
+# differs between embeddings, and this module keeps the loop they share.
+SYSTEM_PROMPT = CHARTROOM.system_prompt
 
 
 def model_available() -> bool:
     return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
-def build_agent(tools: list[BaseTool], checkpointer: Any) -> Any:
+def build_agent(
+    tools: list[BaseTool], checkpointer: Any, system_prompt: str = SYSTEM_PROMPT
+) -> Any:
     from deepagents import create_deep_agent
     from langchain_anthropic import ChatAnthropic
 
@@ -73,7 +52,7 @@ def build_agent(tools: list[BaseTool], checkpointer: Any) -> Any:
     return create_deep_agent(
         model=model,
         tools=tools,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=system_prompt,
         checkpointer=checkpointer,
     )
 
@@ -92,6 +71,18 @@ def _texty(chunk: Any) -> str:
     return "".join(out)
 
 
+def _thinky(chunk: Any) -> str:
+    """Reasoning text out of a streamed chunk, when the model produced any."""
+    content = getattr(chunk, "content", "")
+    if isinstance(content, str):
+        return ""
+    out: list[str] = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "thinking":
+            out.append(str(block.get("thinking", "")))
+    return "".join(out)
+
+
 def _clip(value: Any, limit: int = 20_000) -> Any:
     text = value if isinstance(value, str) else str(value)
     return text if len(text) <= limit else text[:limit] + " …[truncated]"
@@ -101,12 +92,18 @@ async def stream_turn(
     agent: Any,
     message: str,
     thread_id: str,
-    dashboard_id: str | None = None,
+    context_id: str | None = None,
+    context_template: str = CHARTROOM.context_template,
 ) -> AsyncIterator[Event]:
-    """One user turn → the frozen event protocol, streamed."""
+    """One user turn → the frozen event protocol, streamed.
+
+    ``context_id`` is the artifact the client had open — a dashboard on the
+    studio, a document on the authoring surface — and the surface's template
+    says how that reads to the model.
+    """
     content = message
-    if dashboard_id:
-        content = f'{message}\n\n(The studio currently has dashboard "{dashboard_id}" open.)'
+    if context_id:
+        content = f"{message}\n\n{context_template.format(id=context_id)}"
 
     config = {"configurable": {"thread_id": thread_id}}
     yield protocol.thread(thread_id)
@@ -120,7 +117,11 @@ async def stream_turn(
         ):
             kind = event.get("event")
             if kind == "on_chat_model_stream":
-                delta = _texty(event["data"]["chunk"])
+                chunk = event["data"]["chunk"]
+                thought = _thinky(chunk)
+                if thought:
+                    yield protocol.thinking(thought)
+                delta = _texty(chunk)
                 if delta:
                     yield protocol.text(delta)
             elif kind == "on_tool_start":

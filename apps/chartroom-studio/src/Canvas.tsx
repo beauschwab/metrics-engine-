@@ -39,11 +39,14 @@ interface FrameProps {
   unrenderable: ReadonlySet<string>;
   env: AnalystEnv;
   onExplain(id: string): void;
+  /** This widget is attached to the agent conversation (ADR-55). */
+  attached: boolean;
+  onAsk(id: string): void;
 }
 
 function Frame({
   w, spec, contracts, selected, onSelect, extraFilters, pickDim, picked, onPick,
-  unrenderable, env, onExplain,
+  unrenderable, env, onExplain, attached, onAsk,
 }: FrameProps) {
   const { data, status, error } = useWidgetData(w, spec, contracts, extraFilters, env);
   const Component = COMPONENTS[w.type];
@@ -54,6 +57,7 @@ function Frame({
     <section
       className="cr-frame"
       data-selected={selected || undefined}
+      data-attached={attached || undefined}
       data-status={status}
       data-filtered={extraFilters.length > 0 || undefined}
       data-testid={`widget-${w.id}`}
@@ -129,6 +133,22 @@ function Frame({
         >
           explain
         </button>
+        {/*
+          The pointer (ADR-55): "explain this tile" as a resolved reference.
+          The chip lands in the composer carrying the widget, its binding and
+          the scope the reader was looking at — not a phrase the agent has to
+          guess about.
+        */}
+        <button
+          type="button"
+          className="cr-frame-ask"
+          data-attached={attached || undefined}
+          data-testid={`ask-${w.id}`}
+          title={attached ? 'attached to the conversation' : 'attach this widget to the conversation'}
+          onClick={(e) => { e.stopPropagation(); onAsk(w.id); }}
+        >
+          {attached ? '\u2733 in chat' : '\u2733 ask'}
+        </button>
       </footer>
     </section>
   );
@@ -146,11 +166,14 @@ interface CanvasProps {
   cross: CrossFilter | null;
   onCross(next: CrossFilter | null): void;
   onExplain(id: string): void;
+  /** Widget ids attached to the agent conversation (ADR-55). */
+  attached?: ReadonlySet<string>;
+  onAsk?(id: string): void;
 }
 
 export function Canvas({
   spec, contracts, selected, onSelect, unrenderable = new Set<string>(),
-  env, cross, onCross, onExplain,
+  env, cross, onCross, onExplain, attached = new Set<string>(), onAsk = () => {},
 }: CanvasProps) {
 
   // The watermark the PRD asks for: draft chrome whenever the dashboard is a
@@ -212,6 +235,8 @@ export function Canvas({
             unrenderable={unrenderable}
             env={env}
             onExplain={onExplain}
+            attached={attached.has(w.id)}
+            onAsk={onAsk}
           />
         ))}
       </div>

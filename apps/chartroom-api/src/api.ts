@@ -14,6 +14,7 @@ import {
 } from 'chartroom-spec';
 import { CATALOG } from 'chartroom-widgets/contracts';
 import { RULE_GUIDE, type Pattern } from 'chartroom-patterns';
+import { monitorExceptions } from './monitor';
 import { runDesignCritic } from 'chartroom-critics';
 import { dataCritique } from './datacritic';
 import { buildDeckPlan, renderDeck } from './deck';
@@ -391,6 +392,15 @@ export async function handle(req: ApiRequest, deps: ApiDeps): Promise<ApiRespons
 
     // The as-of dates and comparison bases the analyst bar offers. The engine
     // owns the calendar; the studio asks rather than assuming a range.
+    // The morning's value-level exceptions: the workspace's variance monitors,
+    // run by the engine at the requested as-of (ADR-55). Thresholds come from
+    // governed documents — never from the studio.
+    if (method === 'GET' && path === '/api/exceptions') {
+      const set = await deps.contracts.current();
+      const asOf = typeof req.query?.as_of === 'string' ? req.query.as_of : null;
+      return json(200, { exceptions: monitorExceptions(set.state, asOf) });
+    }
+
     if (method === 'GET' && path === '/api/calendar') {
       return json(200, calendar());
     }

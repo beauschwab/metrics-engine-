@@ -23,7 +23,7 @@ export function ExceptionsPanel({ exceptions, onAck, onHide, onSelect }: Excepti
   return (
     <div className="cr-exceptions" data-testid="exceptions-panel">
       <div className="cr-exceptions-head">
-        <span className="cr-exceptions-title">Exceptions on this board</span>
+        <span className="cr-exceptions-title">Exceptions this morning</span>
         <span className="cr-context-spacer" />
         <button type="button" className="cr-exceptions-hide" data-testid="exceptions-hide" onClick={onHide}>
           hide
