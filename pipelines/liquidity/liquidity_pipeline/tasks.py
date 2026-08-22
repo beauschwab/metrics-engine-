@@ -40,7 +40,8 @@ FEED_SELECTORS = {
 }
 
 
-def land_extract(feed: str, as_of_date: str, corrupt: set[str] = frozenset()) -> dict:
+def land_extract(feed: str, as_of_date: str, corrupt: set[str] = frozenset(),
+                 scenario: str = "base") -> dict:
     """Pull one feed's daily extract and load it, stringly, into raw.
 
     In production this task fetches from the location the contract's server
@@ -50,17 +51,18 @@ def land_extract(feed: str, as_of_date: str, corrupt: set[str] = frozenset()) ->
     out = config.landing_dir(as_of_date)
     backend = for_target()
     try:
-        path = simulate.WRITERS[feed](out, as_of_date, corrupt=corrupt)
+        path = simulate.WRITERS[feed](out, as_of_date, corrupt=corrupt, scenario=scenario)
         rows = backend.land_csv(RAW_TABLES[feed], path)
         return {"feed": feed, "path": str(path), "rows": int(rows)}
     finally:
         backend.close()
 
 
-def land_extracts(as_of_date: str, corrupt: set[str] = frozenset()) -> dict:
+def land_extracts(as_of_date: str, corrupt: set[str] = frozenset(),
+                  scenario: str = "base") -> dict:
     """Every feed at once — the tests' convenience over land_extract."""
     return {
-        feed: land_extract(feed, as_of_date, corrupt=corrupt)
+        feed: land_extract(feed, as_of_date, corrupt=corrupt, scenario=scenario)
         for feed in simulate.WRITERS
     }
 

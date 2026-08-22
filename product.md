@@ -327,6 +327,29 @@ three `regulatory` outputs the run files.
 
 ![The Airflow assets view listing eleven assets grouped as raw-feed, conformed-slice, conformed and regulatory](docs/vision/pipeline-assets.png)
 
+### 7.6b The same rules, a different world
+
+A scenario is an input, not a model. The pipeline can run the identical
+governed release over a stressed book — deposits running harder than
+contract, inflows that do not arrive, a haircut on the buffer — in its own
+warehouse, so the two runs share nothing except the registry release:
+
+| | base | stress |
+|---|---|---|
+| HQLA | $390,919,734.51 | $344,009,366.38 |
+| filed weighted outflows | $47,972,038.05 | $59,965,047.53 |
+| **consolidated LCR** | **1286.0%** | **721.7%** (−564.3pp) |
+
+`scenarios.compare()` refuses to report a comparison whose runs came from
+different releases, because a base-vs-stress figure computed across two rule
+versions is not a comparison. This is the axis where drift is least visible
+and most consequential: in most institutions the stressed LCR and the
+reported LCR are produced by different machinery, and no one can say whether
+a difference is the scenario or the implementation.
+
+**It is not a forecast.** Nothing here projects a balance sheet forward;
+multi-period projection is a modelling capability this does not have.
+
 ### 7.7 What this walkthrough is evidence for
 
 - **One definition, two consumers, no retyping.** The filed

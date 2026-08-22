@@ -239,6 +239,47 @@ per-row cent rounding), grain uniqueness, and balance conservation from
 conformed to enriched. The run record under `.local/runs/<date>/` carries the
 release, every check, and the headline LCRs.
 
+## Scenarios: the same rules over a different world
+
+A scenario is an **input**, not a model. `liquidity_pipeline/scenarios.py`
+runs the pipeline over a stressed book — deposits running harder than
+contract, inflows that do not arrive, a monetisation haircut on the buffer —
+while the rates, the FR 2052a classification, the LCR formula and the
+compiled submission plan stay exactly what the registry's `production`
+channel serves.
+
+```python
+from liquidity_pipeline import scenarios
+scenarios.compare("2026-06-30")     # every scenario, side by side
+```
+
+Each scenario runs in **its own warehouse** (a separate DuckDB file in dev, a
+separate catalog in prod), so two runs share nothing at all except the
+registry release — no filtered table, no rewritten plan. `compare()` asserts
+that: if the runs were computed against different releases it raises, because
+a base-vs-stress comparison across two rule versions is not a comparison.
+
+Against release r2 (`O.W.2` at 50%), on the same book:
+
+| | base | stress | |
+| --- | --- | --- | --- |
+| HQLA | $390,919,734.51 | $344,009,366.38 | ×0.88 haircut |
+| filed weighted outflows | $47,972,038.05 | $59,965,047.53 | ×1.25 run |
+| net outflows, 30d | $30,398,391.34 | $47,663,494.85 | |
+| **consolidated LCR** | **1286.0%** | **721.7%** | −564.3pp |
+
+The stress multipliers are illustrative of a Reg YY-style internal liquidity
+stress (12 CFR 252.35), not a calibrated scenario; a real deployment would
+source them from a governed scenario artifact rather than a constant in a
+simulator.
+
+**Not a forecast.** Nothing here projects a balance sheet forward — a
+scenario re-prices *today's* book under different assumptions. Multi-period
+projection is a genuine modelling capability this pipeline does not have. The
+seam is the same shape (the registry computes a period's number given that
+period's positions, so a forecast is a question of who supplies the
+positions), but it is not built and is not claimed.
+
 ## What is proven
 
 The DuckDB path is exercised end to end, and the partition machinery is
