@@ -102,11 +102,17 @@ def run_dbt(as_of_date: str, command: str = "build", feed: str | None = None) ->
     dbt_vars: dict = {"as_of_date": as_of_date}
     if feed:
         dbt_vars["source_system"] = feed
+    # Build output goes to the data dir, not into the project. On Kubernetes
+    # the DAG bundle usually arrives on a read-only volume (git-sync), and a
+    # dbt that writes target/ next to its models crashes there.
+    scratch = config.data_dir() / "dbt"
     cmd = [
         str(dbt), command,
         "--project-dir", str(config.DBT_DIR),
         "--profiles-dir", str(config.DBT_DIR / "profiles"),
         "--target", config.target(),
+        "--target-path", str(scratch / "target"),
+        "--log-path", str(scratch / "logs"),
         "--vars", json.dumps(dbt_vars),
         *(["--select", FEED_SELECTORS[feed]] if feed else []),
     ]

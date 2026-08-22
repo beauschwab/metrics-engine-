@@ -72,6 +72,40 @@ uv run airflow dags test daily_liquidity_regulatory 2026-06-30
 Under a real scheduler the second command is unnecessary — the regulatory
 DAG triggers itself off the conformance DAG's asset events.
 
+## Deploying to a Kubernetes Airflow (non-prod)
+
+One command, two delivery modes, matching how Kubernetes Airflow instances
+actually consume DAGs:
+
+```bash
+# instance uses the Helm chart's git-sync sidecar (the common setup):
+DAGS_GIT_URL=git@github.com:beauschwab/airflow-dags.git \
+  ./scripts/deploy_dags.sh --mode git
+
+# instance mounts a shared DAGs volume (PVC) — quick push, no git round trip:
+AIRFLOW_NAMESPACE=airflow-nonprod ./scripts/deploy_dags.sh --mode kubectl
+```
+
+The script stages a self-contained bundle — the two DAG files plus
+everything they resolve at run time (`liquidity_pipeline/`, `contracts/`,
+`dbt/`, `registry_snapshot/`), a `.airflowignore` keeping the parser out of
+the non-DAG directories, and a `BUILD_INFO` recording the source commit —
+then either commits it to the branch/subdir git-sync watches (deploy is a
+push, rollback is a revert, identical re-pushes are a no-op) or streams it
+into the pods' DAGs path over `kubectl exec`. The bundle root becomes the
+DAGs folder, which is what puts `liquidity_pipeline` on the scheduler's
+`sys.path`; discovery from a pushed bundle is proven by cloning it back and
+running `airflow dags reserialize` + `dags list` against it.
+
+[`deploy/airflow-values.nonprod.yaml`](deploy/airflow-values.nonprod.yaml)
+is the matching overlay for the official Airflow Helm chart: git-sync
+pointed at the deploy branch, the pipeline's env (`LIQ_TARGET`,
+`LIQ_DATA_DIR=/tmp/liquidity` — git-sync volumes are read-only, and dbt's
+build output is already routed to the data dir for the same reason —
+`KEEL_BASE_URL`, `KYUUBI_*`), and the worker dependencies via
+`_PIP_ADDITIONAL_REQUIREMENTS` for a sandbox or a baked image for anything
+more. Airflow 3.x is required — the DAGs use the `airflow.sdk` asset API.
+
 No server is needed for either: the registry is consumed from the committed
 snapshot by default (below). To run against the live registry instead:
 
