@@ -30,9 +30,12 @@ PRODUCT_IDS = {
 
 @pytest.fixture(scope="module")
 def run():
+    # The same per-feed chains the conformance DAG wires: each feed lands,
+    # is held to its contract, and conforms its own (as_of_date, source_system)
+    # sub-partition independently.
     out = {"landed": tasks.land_extracts(AS_OF)}
     out["contracts"] = {f: tasks.enforce_feed_contract(f, AS_OF) for f in config.FEEDS}
-    out["dbt"] = tasks.run_dbt(AS_OF)
+    out["conformed"] = {f: tasks.conform_feed(f, AS_OF) for f in config.FEEDS}
     out["release"] = tasks.fetch_release(AS_OF)
     out["rules"] = tasks.apply_rules(AS_OF)
     out["report"] = tasks.file_submission(AS_OF)
@@ -68,6 +71,50 @@ def test_dbt_conformed_the_union(run, db):
         "WHERE segment IN ('RTL', 'SBB', 'WSL') OR direction IN ('I', 'O')"
     ).fetchone()[0]
     assert decoded == 0
+    # Each conformance run reported the sub-partition it now holds — the same
+    # numbers its asset event carries.
+    for feed in ("gl_core", "murex_eu"):
+        held = db.execute(
+            "SELECT count(*) FROM alm.fct_2052a_positions "
+            "WHERE as_of_date = ?::DATE AND source_system = ?", [AS_OF, feed]
+        ).fetchone()[0]
+        assert held == run["conformed"][feed]["rows"] == run["landed"][feed]["rows"]
+    assert run["conformed"]["treasury"]["table"] == "alm.fct_liquidity_position"
+
+
+def test_sub_partitions_replace_independently(run, db):
+    """Re-conforming one feed touches only that feed's slice of the day.
+
+    The daily partition is subdivided by producing system; the composite
+    incremental key means a gl_core re-run deletes and reinserts gl_core's
+    rows and leaves murex_eu's byte-identical — the isolation the per-feed
+    DAG chains rely on.
+    """
+    def slice_of(feed):
+        return db.execute(
+            "SELECT count(*), round(sum(balance_usd), 2) FROM alm.fct_2052a_positions "
+            "WHERE as_of_date = ?::DATE AND source_system = ?", [AS_OF, feed]
+        ).fetchone()
+
+    murex_before = slice_of("murex_eu")
+    gl_before = slice_of("gl_core")
+    db.close()
+
+    tasks.conform_feed("gl_core", AS_OF)
+
+    con = duckdb.connect(str(config.warehouse_path()), read_only=True)
+    murex_after = con.execute(
+        "SELECT count(*), round(sum(balance_usd), 2) FROM alm.fct_2052a_positions "
+        "WHERE as_of_date = ?::DATE AND source_system = 'murex_eu'", [AS_OF]
+    ).fetchone()
+    gl_after = con.execute(
+        "SELECT count(*), round(sum(balance_usd), 2) FROM alm.fct_2052a_positions "
+        "WHERE as_of_date = ?::DATE AND source_system = 'gl_core'", [AS_OF]
+    ).fetchone()
+    con.close()
+
+    assert murex_after == murex_before, "a gl_core re-run must not touch murex_eu's sub-partition"
+    assert gl_after == gl_before, "the deterministic batch reconforms to the same slice"
 
 
 def test_rules_came_from_the_deployed_release(run):

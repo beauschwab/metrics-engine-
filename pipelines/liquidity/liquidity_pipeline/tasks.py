@@ -30,25 +30,38 @@ RAW_TABLES = {
     "treasury": "raw.treasury_hqla_daily",
 }
 
+#: What one feed's conformance run builds: its staging model plus the
+#: conformed table it sub-partitions (`+model` = the model and its parents).
+FEED_SELECTORS = {
+    "gl_core": "+fct_2052a_positions",
+    "murex_eu": "+fct_2052a_positions",
+    "treasury": "+fct_liquidity_position",
+}
 
-def land_extracts(as_of_date: str, corrupt: set[str] = frozenset()) -> dict:
-    """Pull each feed's daily extract and load it, stringly, into raw.
 
-    In production this task fetches from the locations the contracts' server
-    blocks name; here the simulators play the producers. ``corrupt`` exists
+def land_extract(feed: str, as_of_date: str, corrupt: set[str] = frozenset()) -> dict:
+    """Pull one feed's daily extract and load it, stringly, into raw.
+
+    In production this task fetches from the location the contract's server
+    block names; here the simulators play the producers. ``corrupt`` exists
     for the tests that need to watch a bad batch get refused.
     """
     out = config.landing_dir(as_of_date)
     backend = for_target()
     try:
-        landed = {}
-        for feed, writer in simulate.WRITERS.items():
-            path = writer(out, as_of_date, corrupt=corrupt)
-            rows = backend.land_csv(RAW_TABLES[feed], path)
-            landed[feed] = {"path": str(path), "rows": int(rows)}
-        return landed
+        path = simulate.WRITERS[feed](out, as_of_date, corrupt=corrupt)
+        rows = backend.land_csv(RAW_TABLES[feed], path)
+        return {"feed": feed, "path": str(path), "rows": int(rows)}
     finally:
         backend.close()
+
+
+def land_extracts(as_of_date: str, corrupt: set[str] = frozenset()) -> dict:
+    """Every feed at once — the tests' convenience over land_extract."""
+    return {
+        feed: land_extract(feed, as_of_date, corrupt=corrupt)
+        for feed in simulate.WRITERS
+    }
 
 
 def enforce_feed_contract(feed: str, as_of_date: str) -> dict:
@@ -72,20 +85,30 @@ def enforce_feed_contract(feed: str, as_of_date: str) -> dict:
         backend.close()
 
 
-def run_dbt(as_of_date: str, command: str = "build") -> dict:
+def run_dbt(as_of_date: str, command: str = "build", feed: str | None = None) -> dict:
     """Conformance and normalization: dbt owns raw → alm.
 
     Invoked as a subprocess against this environment's dbt, the way an
     Airflow worker or a cluster job would run it — and `build` rather than
     `run`, so the schema tests gate the batch the same way the contracts do.
+
+    With ``feed``, the run is one feed's sub-partition: dbt selects that
+    feed's slice of the graph and the ``source_system`` var restricts the
+    batch, so the incremental composite key (as_of_date, source_system)
+    replaces exactly one system's rows for the day. Without it, every source
+    conforms in one pass.
     """
     dbt = Path(sys.executable).parent / "dbt"
+    dbt_vars: dict = {"as_of_date": as_of_date}
+    if feed:
+        dbt_vars["source_system"] = feed
     cmd = [
         str(dbt), command,
         "--project-dir", str(config.DBT_DIR),
         "--profiles-dir", str(config.DBT_DIR / "profiles"),
         "--target", config.target(),
-        "--vars", json.dumps({"as_of_date": as_of_date}),
+        "--vars", json.dumps(dbt_vars),
+        *(["--select", FEED_SELECTORS[feed]] if feed else []),
     ]
     env = {
         **os.environ,
@@ -97,7 +120,53 @@ def run_dbt(as_of_date: str, command: str = "build") -> dict:
     if proc.returncode != 0:
         tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-40:])
         raise RuntimeError(f"dbt {command} failed for {as_of_date}:\n{tail}")
-    return {"command": command, "target": config.target(), "ok": True}
+    return {"command": command, "target": config.target(), "feed": feed, "ok": True}
+
+
+def conform_feed(feed: str, as_of_date: str) -> dict:
+    """One feed's conformance run, plus the sub-partition it now holds —
+    the numbers the producer task stamps onto its asset event."""
+    result = run_dbt(as_of_date, feed=feed)
+    table = ("alm.fct_2052a_positions" if FEED_SELECTORS[feed] == "+fct_2052a_positions"
+             else "alm.fct_liquidity_position")
+    backend = for_target()
+    try:
+        rows = backend.scalar(
+            f"SELECT count(*) FROM {table} "
+            f"WHERE as_of_date = DATE '{as_of_date}' AND source_system = '{feed}'"
+        )
+    finally:
+        backend.close()
+    return {**result, "table": table, "as_of_date": as_of_date,
+            "source_system": feed, "rows": int(rows)}
+
+
+def resolve_as_of(triggering_events: dict | None, fallback: str | None) -> str:
+    """Which daily partition an asset-triggered run should process.
+
+    An asset-scheduled run's logical date is the trigger time, not the batch
+    date — the batch date rides on the asset events, in the partition extras
+    the producers stamped. Every triggering event must agree: mixed dates
+    mean a late feed collided with today's run, and processing either date
+    silently would file the wrong day for somebody. No events (a manual run,
+    `dags test`) falls back to the logical date.
+    """
+    dates: set[str] = set()
+    for events in (triggering_events or {}).values():
+        for event in events:
+            extra = getattr(event, "extra", None) or {}
+            if extra.get("as_of_date"):
+                dates.add(extra["as_of_date"])
+    if len(dates) > 1:
+        raise ValueError(
+            f"triggering asset events disagree on the partition: {sorted(dates)} — "
+            "a late sub-partition met a newer run; re-trigger for the date intended"
+        )
+    if dates:
+        return dates.pop()
+    if not fallback:
+        raise ValueError("no asset events and no logical date — nothing names the partition")
+    return fallback
 
 
 def fetch_release(as_of_date: str) -> dict:

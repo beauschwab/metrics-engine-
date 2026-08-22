@@ -8,9 +8,10 @@
 #                       started first, so the live-registry tests run here too
 #                       rather than skipping: CI proves both the HTTP path and
 #                       that the committed snapshot serves the same bytes.
-#   airflow dags test   the same run, executed by Airflow itself — the DAG
-#                       wiring, context injection and XCom passing are part of
-#                       what "works end to end" means.
+#   airflow dags test   the same runs, executed by Airflow itself — both DAGs,
+#                       plus a check that the conformance run recorded the
+#                       asset events (with their sub-partition extras) the
+#                       regulatory DAG's asset schedule consumes.
 name: liquidity-pipeline
 
 on:
@@ -71,7 +72,9 @@ jobs:
       - name: airflow dags test
         run: |
           uv run airflow db migrate
-          uv run airflow dags test daily_liquidity_position 2026-06-30
+          uv run airflow dags test daily_liquidity_conformance 2026-06-30
+          uv run python scripts/check_asset_events.py
+          uv run airflow dags test daily_liquidity_regulatory 2026-06-30
         env:
           AIRFLOW_HOME: ${{ github.workspace }}/pipelines/liquidity/.local/airflow
           AIRFLOW__CORE__DAGS_FOLDER: ${{ github.workspace }}/pipelines/liquidity/dags

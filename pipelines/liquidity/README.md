@@ -7,15 +7,50 @@ business-rule application, the **LCR calculation**, and the **FR 2052a daily
 submission**. PySpark over Iceberg is the product target for every compute
 step; development and CI run the identical pipeline on DuckDB.
 
-Proven end to end: 22 pytest checks — contract refusal, conformance, rule
-coverage, LCR arithmetic, filing grain, idempotent re-runs, plan-vs-row-stage
-reconciliation — plus a full `airflow dags test` execution of the DAG itself.
+Proven end to end: 29 pytest checks — contract refusal, conformance, rule
+coverage, sub-partition isolation, LCR arithmetic, filing grain, idempotent
+re-runs, plan-vs-row-stage reconciliation — plus full `airflow dags test`
+executions of both DAGs and inspection of the asset events they record.
+
+Two DAGs, joined by **Airflow 3 assets** rather than by an edge or a cron:
 
 ```
-land ─→ contracts ─→ dbt ─→ fetch_release ─→ apply_rules ─→ file_2052a ─→ reconcile
-(3 feeds, mapped)   (build)  (pin manifest)      │                            ↑
-                                                 └────────→ calculate_lcr ────┘
+daily_liquidity_conformance                       ⬢ = Airflow Asset
+  land_gl_core  ─→ enforce ─→ conform ──→ ⬢ alm.fct_2052a_positions
+  land_murex_eu ─→ enforce ─→ conform ──→ ⬢    (a sub-partition each)
+  land_treasury ─→ enforce ─→ conform ──→ ⬢ alm.fct_liquidity_position
+
+daily_liquidity_regulatory        schedule = positions & hqla  (AssetAll)
+  resolve_partition ─→ fetch_release ─→ apply_rules ─→ file_2052a ──→ ⬢ reg.fr2052a_daily
+                                            └────────→ calculate_lcr → ⬢ reg.lcr_daily
+                                                       └──── reconcile ─┘
 ```
+
+## Assets and partitioning
+
+The conformed tables are partitioned by day and **sub-partitioned by
+producing source system** — `(as_of_date, source_system)`. Each feed's chain
+replaces exactly its own slice (dbt incremental on the composite key in dev;
+Iceberg dynamic `insert_overwrite` over the two-level partition spec in
+prod), so the feeds land, validate and conform independently: a late Murex
+extract delays the Murex sub-partition, not the GL one.
+
+Each conformance task declares the conformed table as its **outlet** and
+stamps the sub-partition onto the asset event —
+
+```json
+{"as_of_date": "2026-06-30", "source_system": "murex_eu", "rows": 220}
+```
+
+Airflow 3.1 has no first-class asset partitions yet (AIP-76); event extras
+are the documented interim convention, and when AIP-76 lands they become the
+partition declaration with this topology unchanged. The regulatory DAG is
+scheduled on the **asset condition** `positions & hqla` — it runs when both
+conformed tables have fresh events, however many sub-partitions produced
+them — and its first task resolves the batch date from those events'
+partition extras (refusing a mixed set: a late sub-partition meeting a newer
+run must be a loud re-trigger, not a silently misfiled day). Manual runs and
+`dags test` fall back to the logical date.
 
 ## Run it
 
@@ -24,13 +59,17 @@ cd pipelines/liquidity
 uv sync                                  # Airflow 3 + dbt-duckdb + DuckDB
 uv run pytest                            # the end-to-end proof, hermetic
 
-# the same run, executed by Airflow:
+# the same runs, executed by Airflow:
 export AIRFLOW_HOME=$PWD/.local/airflow \
        AIRFLOW__CORE__DAGS_FOLDER=$PWD/dags \
        AIRFLOW__CORE__LOAD_EXAMPLES=false
 uv run airflow db migrate
-uv run airflow dags test daily_liquidity_position 2026-06-30
+uv run airflow dags test daily_liquidity_conformance 2026-06-30
+uv run airflow dags test daily_liquidity_regulatory 2026-06-30
 ```
+
+Under a real scheduler the second command is unnecessary — the regulatory
+DAG triggers itself off the conformance DAG's asset events.
 
 No server is needed for either: the registry is consumed from the committed
 snapshot by default (below). To run against the live registry instead:
@@ -79,8 +118,15 @@ source binding declares — and the conformed layer unions them into
 governed rule compiles against. Schema tests restate the classification
 rules' reading assumptions (domains, nullability, key uniqueness, the
 secured/collateral invariant), so a vocabulary drift fails the build rather
-than silently matching no rule. `dbt build` runs models and tests together;
-conformed models replace only the batch date's rows on re-run.
+than silently matching no rule. `dbt build` runs models and tests together.
+
+A conformance run is per feed: `--select +fct_2052a_positions` with the
+`source_system` var restricts the batch to one system, and the incremental
+composite key `(as_of_date, source_system)` replaces exactly that
+sub-partition of the day — `delete+insert` on DuckDB, Iceberg dynamic
+`insert_overwrite` over `partition_by: [as_of_date, source_system]` on
+Spark. Re-running one feed never touches a sibling's rows (pinned by the
+sub-partition isolation test).
 
 Classification, rates and reporting are deliberately **not** in dbt: a rule
 change must never require a dbt PR.
@@ -134,13 +180,13 @@ release, every check, and the headline LCRs.
 
 ```
 contracts/               ODCS v3 data contracts, one per inbound feed
-dags/                    the Airflow DAG (thin: every body is in liquidity_pipeline/)
+dags/                    the two Airflow DAGs (thin: every body is in liquidity_pipeline/)
 dbt/                     conformance project; profiles for duckdb + spark/iceberg
-liquidity_pipeline/      contracts enforcement, backends, registry client,
-                         rules application, LCR, task bodies
+liquidity_pipeline/      contracts enforcement, asset definitions, backends,
+                         registry client, rules application, LCR, task bodies
 registry_snapshot/       captured runtime responses from the deployed channel
 scripts/                 snapshot refresh
-tests/                   contract refusal, DAG wiring, live registry, the e2e proof
+tests/                   contract refusal, DAG + asset wiring, live registry, the e2e proof
 ```
 
 ## Known limits, stated on purpose

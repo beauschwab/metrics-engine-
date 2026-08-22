@@ -25,6 +25,11 @@ vars:
   # The batch date. Always passed explicitly by the pipeline:
   #   dbt build --vars '{as_of_date: 2026-06-30}'
   as_of_date: null
+  # One producing system, when a run conforms a single feed's sub-partition:
+  #   dbt build --select +fct_2052a_positions \
+  #             --vars '{as_of_date: 2026-06-30, source_system: murex_eu}'
+  # Null means every source in one pass (how the tests exercise the union).
+  source_system: null
 
 models:
   liquidity_conformance:
@@ -33,12 +38,21 @@ models:
       +materialized: view
       +schema: stg
     conformed:
-      # Incremental with per-day replacement: re-running a batch replaces that
-      # date's rows and touches nothing else — the same idempotency contract
-      # as the report writer's partition overwrite.
+      # Incremental with *sub-partition* replacement. The daily partition is
+      # subdivided by producing system — (as_of_date, source_system) — so each
+      # feed's conformance run replaces exactly its own slice and never
+      # touches a sibling feed's rows. On DuckDB that is delete+insert on the
+      # composite key (the key tuples present in the batch are the rows
+      # deleted); on Spark it is Iceberg's dynamic insert_overwrite over the
+      # two-level partition spec — only partitions present in the batch are
+      # replaced. Same contract, two engines.
       +materialized: incremental
       +schema: alm
-      +unique_key: as_of_date
+      # A new column (like source_system, when the sub-partition key arrived)
+      # is added to an existing target rather than crashing the composite-key
+      # replacement against a table that predates it.
+      +on_schema_change: append_new_columns
+      +unique_key: ['as_of_date', 'source_system']
       +incremental_strategy: "{{ 'insert_overwrite' if target.type == 'spark' else 'delete+insert' }}"
-      +partition_by: "{{ ['as_of_date'] if target.type == 'spark' else none }}"
+      +partition_by: "{{ ['as_of_date', 'source_system'] if target.type == 'spark' else none }}"
       +file_format: "{{ 'iceberg' if target.type == 'spark' else none }}"

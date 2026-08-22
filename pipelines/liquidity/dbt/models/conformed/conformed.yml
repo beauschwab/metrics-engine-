@@ -6,8 +6,15 @@ models:
       Canonical daily positions in FR 2052a scope, unioned across source
       systems. The vocabulary tests below restate the classification rules'
       reading assumptions: a value outside these domains would silently match
-      no rule (or the wrong one), so it is stopped here.
+      no rule (or the wrong one), so it is stopped here. Partitioned
+      (as_of_date, source_system) — each producing system owns a
+      sub-partition of the day.
     columns:
+      - name: source_system
+        tests:
+          - not_null
+          - accepted_values:
+              values: [gl_core, murex_eu]
       - name: position_id
         tests: [not_null]
       - name: as_of_date
@@ -46,8 +53,16 @@ models:
         tests: [not_null]
 
   - name: fct_liquidity_position
-    description: Conformed daily HQLA inventory; numerator inputs for the LCR.
+    description: >
+      Conformed daily HQLA inventory; numerator inputs for the LCR. Same
+      (as_of_date, source_system) sub-partition contract as the positions
+      table.
     columns:
+      - name: source_system
+        tests:
+          - not_null
+          - accepted_values:
+              values: [treasury]
       - name: security_id
         tests: [not_null]
       - name: as_of_date
