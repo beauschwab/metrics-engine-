@@ -13,21 +13,22 @@ coverage, sub-partition isolation, LCR arithmetic, filing grain, idempotent
 re-runs, plan-vs-row-stage reconciliation — plus full `airflow dags test`
 executions of both DAGs and inspection of the asset events they record.
 
-Two DAGs, joined by **Airflow 3 assets** rather than by an edge or a cron:
+Two DAGs, joined by **partitioned Airflow 3.3 assets** rather than by an
+edge or a cron:
 
 ```
-daily_liquidity_conformance                       ⬢ = Airflow Asset
-  land_gl_core  ─→ enforce ─→ conform ──→ ⬢ alm.fct_2052a_positions
-  land_murex_eu ─→ enforce ─→ conform ──→ ⬢    (a sub-partition each)
-  land_treasury ─→ enforce ─→ conform ──→ ⬢ alm.fct_liquidity_position
+daily_liquidity_conformance · CronPartitionTimetable("45 5 * * 1-5")   ⬢ = Asset
+  land_gl_core  ─→ enforce ─→ conform ──→ ⬢ …positions@gl_core   ┐
+  land_murex_eu ─→ enforce ─→ conform ──→ ⬢ …positions@murex_eu  │ one slice
+  land_treasury ─→ enforce ─→ conform ──→ ⬢ …hqla@treasury       ┘ per source
 
-daily_liquidity_regulatory        schedule = positions & hqla  (AssetAll)
+daily_liquidity_regulatory · PartitionedAssetTimetable(all three slices)
   resolve_partition ─→ fetch_release ─→ apply_rules ─→ file_2052a ──→ ⬢ reg.fr2052a_daily
                                             └────────→ calculate_lcr → ⬢ reg.lcr_daily
                                                        └──── reconcile ─┘
 ```
 
-## Assets and partitioning
+## Assets and partitioning (Airflow 3.3, AIP-76)
 
 The conformed tables are partitioned by day and **sub-partitioned by
 producing source system** — `(as_of_date, source_system)`. Each feed's chain
@@ -36,28 +37,39 @@ Iceberg dynamic `insert_overwrite` over the two-level partition spec in
 prod), so the feeds land, validate and conform independently: a late Murex
 extract delays the Murex sub-partition, not the GL one.
 
-Each conformance task declares the conformed table as its **outlet** and
-stamps the sub-partition onto the asset event —
+Partitions here are **scheduler state, not a convention**. The conformance
+DAG runs under a `CronPartitionTimetable` keyed `%Y-%m-%d`, so each run *is*
+a batch date and every asset event it emits carries that key. Tasks read
+`dag_run.partition_key` — there is no logical-date arithmetic and no
+agreement to encode the slice into an event's `extra`.
 
-```json
-{"as_of_date": "2026-06-30", "source_system": "murex_eu", "rows": 220}
+Because Airflow aligns *assets* on a shared key, each `(table,
+source_system)` slice is its own asset — `alm.fct_2052a_positions@murex_eu`
+— and the regulatory DAG names all three in one condition:
+
+```python
+schedule=PartitionedAssetTimetable(
+    assets=positions@gl_core & positions@murex_eu & hqla@treasury
+)
 ```
 
-Airflow 3.1 has no first-class asset partitions yet (AIP-76); event extras
-are the documented interim convention, and when AIP-76 lands they become the
-partition declaration with this topology unchanged. The regulatory DAG is
-scheduled on the **asset condition** `positions & hqla` — it runs when both
-conformed tables have fresh events, however many sub-partitions produced
-them — and its first task resolves the batch date from those events'
-partition extras (refusing a mixed set: a late sub-partition meeting a newer
-run must be a loud re-trigger, not a silently misfiled day). Manual runs and
-`dags test` fall back to the logical date.
+The scheduler then starts that DAG for a date exactly once, when every
+slice for that date has been conformed, and hands it the key. "Wait for all
+feeds" is a property of the asset graph rather than a sensor or a
+convention the consumer has to re-implement. The table-level assets are
+still updated alongside each slice, for consumers that subscribe to the
+table as a whole: **slices schedule, tables describe.**
+
+(The alternative — one composite `feed|date` key rolled up with
+`RollupMapper` — needs a categorical window that keeps the temporal
+segment, and the built-in `SegmentWindow` deliberately ignores the anchor,
+so it fits a pure-categorical rollup rather than this one.)
 
 ## Run it
 
 ```bash
 cd pipelines/liquidity
-uv sync                                  # Airflow 3 + dbt-duckdb + DuckDB
+uv sync                                  # Airflow 3.3 + dbt-duckdb + DuckDB
 uv run pytest                            # the end-to-end proof, hermetic
 
 # the same runs, executed by Airflow:
@@ -70,7 +82,11 @@ uv run airflow dags test daily_liquidity_regulatory 2026-06-30
 ```
 
 Under a real scheduler the second command is unnecessary — the regulatory
-DAG triggers itself off the conformance DAG's asset events.
+DAG is started by the scheduler once all three slices for a date exist.
+Note that `dags test` builds a *manual* run, which carries no partition key;
+`batch_date()` falls back to the logical date so a test run still targets a
+specific batch. Partition keys are assigned by the scheduler, and the
+end-to-end scheduler proof is described under "What is proven" below.
 
 ## Deploying to a Kubernetes Airflow (non-prod)
 
@@ -104,7 +120,7 @@ pointed at the deploy branch, the pipeline's env (`LIQ_TARGET`,
 build output is already routed to the data dir for the same reason —
 `KEEL_BASE_URL`, `KYUUBI_*`), and the worker dependencies via
 `_PIP_ADDITIONAL_REQUIREMENTS` for a sandbox or a baked image for anything
-more. Airflow 3.x is required — the DAGs use the `airflow.sdk` asset API.
+more. Airflow 3.3+ is required — the DAGs use first-class asset partitions.
 
 No server is needed for either: the registry is consumed from the committed
 snapshot by default (below). To run against the live registry instead:
@@ -222,6 +238,48 @@ executions of the same governed logic, agreeing within the plan's declared
 per-row cent rounding), grain uniqueness, and balance conservation from
 conformed to enriched. The run record under `.local/runs/<date>/` carries the
 release, every check, and the headline LCRs.
+
+## What is proven
+
+The DuckDB path is exercised end to end, and the partition machinery is
+exercised where it actually lives — in the scheduler.
+
+- **pytest** — contract refusal by named check, conformance across both
+  source systems, sub-partition isolation (re-conforming `gl_core` leaves
+  `murex_eu` byte-identical), rule coverage with zero unmapped positions,
+  LCR arithmetic, filing grain, idempotent re-runs, the plan-vs-row-stage
+  tie-out, the Kyuubi backend's emitted SQL against a stub connection, and
+  the DAG/asset/partition wiring.
+- **`airflow dags test`** — both DAGs run to `state=success`, and
+  `scripts/check_asset_events.py` reads the metadata DB to confirm every
+  slice and table asset received an event. A `dags test` run is *manual*, so
+  it carries no partition key; this is the path `batch_date()`'s logical-date
+  fallback covers.
+- **A real scheduler** — the AIP-76 claim cannot be made by `dags test`,
+  because partition keys are assigned when the *scheduler* creates a run
+  from a partitioned timetable. Running `airflow standalone` against these
+  DAGs (with the conformance cron narrowed so a slot falls immediately)
+  produces exactly the designed behaviour:
+
+  | run | type | partition key | state |
+  | --- | --- | --- | --- |
+  | `daily_liquidity_conformance` | `scheduled` | `2026-08-22` | success |
+  | `daily_liquidity_regulatory` | `asset_triggered` | `2026-08-22` | success |
+
+  All twelve asset events that run emitted carry the key — the three
+  conformed slices, both table assets, and the three regulatory outputs.
+  The regulatory run was created from slice alignment alone: no cron, no
+  sensor, and nothing in the DAG that reads a logical date.
+
+An earlier scheduler run also surfaced something `dags test` never could.
+`dags test` executes tasks one at a time, so the three feed chains had never
+actually run concurrently; under a real executor they did, and collided on
+the DuckDB warehouse file — one file, one writer. The fix is in
+`warehouse_lock.py`: an advisory lock the dev engine holds while a process
+has the warehouse open, taken by both writers (the backend and dbt's
+subprocess), and a no-op on Kyuubi, where each connection gets its own Spark
+engine and Iceberg handles concurrent partition writes. Retries would have
+hidden it; the constraint is deterministic, so it is enforced deterministically.
 
 ## Layout
 

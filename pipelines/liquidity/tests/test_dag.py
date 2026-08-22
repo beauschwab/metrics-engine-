@@ -1,6 +1,7 @@
 """The two DAGs are real Airflow DAGs wired the way the modules promise:
-per-feed conformance chains producing asset sub-partition events, and a
-regulatory DAG scheduled on the conformed assets rather than a cron.
+per-feed conformance chains under a partitioned cron timetable, and a
+regulatory DAG the scheduler starts only when every conformed slice for a
+batch date exists.
 """
 
 from __future__ import annotations
@@ -11,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from liquidity_pipeline.assets import CONFORMED_FOR_FEED, RAW
-from liquidity_pipeline.tasks import RAW_TABLES, resolve_as_of
+from liquidity_pipeline.assets import CONFORMED_FOR_FEED, CONFORMED_SLICE, RAW
+from liquidity_pipeline.tasks import RAW_TABLES, batch_date
 
 DAGS = Path(__file__).parent.parent / "dags"
 
@@ -38,29 +39,58 @@ def test_conformance_dag_has_independent_per_feed_chains():
         assert not land.upstream_list
 
 
-def test_conformance_tasks_declare_their_assets():
+def test_conformance_runs_are_partitioned_by_batch_date():
+    """AIP-76: each run *is* a partition, keyed by the day it conforms."""
+    from airflow.sdk import CronPartitionTimetable
+
+    dag = load("daily_liquidity_conformance")
+    assert isinstance(dag.timetable, CronPartitionTimetable)
+    # The contracts promise extracts by 05:30 America/New_York; conformance
+    # must not run before they are due.
+    assert dag.timetable.expression == "45 5 * * 1-5"
+    # Keys are batch dates, not timestamps — the as-of date SQL interpolates.
+    assert dag.timetable.key_format == "%Y-%m-%d"
+
+
+def test_conformance_tasks_declare_slice_and_table_assets():
     dag = load("daily_liquidity_conformance")
     for feed in RAW_TABLES:
         assert [a.name for a in dag.get_task(f"land_{feed}").outlets] == [RAW[feed].name]
-        assert [a.name for a in dag.get_task(f"conform_{feed}").outlets] == [
-            CONFORMED_FOR_FEED[feed].name
-        ]
-    # Two position feeds sub-partition one asset; treasury owns the other.
+        outlets = {a.name for a in dag.get_task(f"conform_{feed}").outlets}
+        # The slice is what the regulatory DAG aligns on; the table is what a
+        # downstream consumer subscribes to.
+        assert outlets == {CONFORMED_SLICE[feed].name, CONFORMED_FOR_FEED[feed].name}
+    # Two position feeds are slices of one table; treasury owns the other.
     assert CONFORMED_FOR_FEED["gl_core"].name == CONFORMED_FOR_FEED["murex_eu"].name
+    assert CONFORMED_SLICE["gl_core"].name != CONFORMED_SLICE["murex_eu"].name
     assert CONFORMED_FOR_FEED["treasury"].name != CONFORMED_FOR_FEED["gl_core"].name
 
 
-def test_regulatory_dag_is_scheduled_on_both_conformed_assets():
-    from airflow.timetables.simple import AssetTriggeredTimetable
+def test_regulatory_dag_waits_for_every_conformed_slice():
+    from airflow.sdk import PartitionedAssetTimetable
 
     dag = load("daily_liquidity_regulatory")
-    assert isinstance(dag.timetable, AssetTriggeredTimetable)
+    assert isinstance(dag.timetable, PartitionedAssetTimetable)
     condition = dag.timetable.asset_condition
-    assert type(condition).__name__ == "AssetAll", "both tables, not either"
-    assert {a.name for _, a in condition.iter_assets()} == {
-        "alm.fct_2052a_positions",
-        "alm.fct_liquidity_position",
+    assert type(condition).__name__ == "AssetAll", "every slice, not any"
+    assert {a.name for a in condition.objects} == {
+        "alm.fct_2052a_positions@gl_core",
+        "alm.fct_2052a_positions@murex_eu",
+        "alm.fct_liquidity_position@treasury",
     }
+
+
+def test_slices_and_consumer_share_one_granularity():
+    """The default mapper is identity, so a slice's key *is* the run's key.
+
+    Alignment is the whole mechanism: three slices carrying 2026-06-30 start
+    one regulatory run for 2026-06-30. A mapper that rewrote the key (rolling
+    days into months, say) would silently change which run fires.
+    """
+    dag = load("daily_liquidity_regulatory")
+    mapper = dag.timetable.default_partition_mapper
+    assert type(mapper).__name__ == "IdentityMapper"
+    assert mapper.to_downstream("2026-06-30") == "2026-06-30"
 
 
 def test_regulatory_dag_wiring():
@@ -74,53 +104,30 @@ def test_regulatory_dag_wiring():
     assert {"file_2052a", "calculate_lcr"} <= downstream_of_rules
     recon_up = {t.task_id for t in dag.get_task("reconcile").upstream_list}
     assert {"file_2052a", "calculate_lcr", "fetch_release"} <= recon_up
-    # The regulatory outputs are declared as assets too, for downstream lineage.
+    # The regulatory outputs are assets too, for downstream lineage.
     assert [a.name for a in dag.get_task("file_2052a").outlets] == ["reg.fr2052a_daily"]
     assert [a.name for a in dag.get_task("calculate_lcr").outlets] == ["reg.lcr_daily"]
 
 
-def test_conformance_schedule_is_post_delivery():
-    dag = load("daily_liquidity_conformance")
-    # The contracts promise extracts by 05:30 America/New_York; conformance
-    # must not run before they are due.
-    assert "45 5" in str(dag.schedule)
-
-
 # ---------------------------------------------------------------------------
-# Partition resolution for asset-triggered runs
+# Reading the batch date off the run
 # ---------------------------------------------------------------------------
 
-class _Event:
-    def __init__(self, extra):
-        self.extra = extra
+class _Run:
+    def __init__(self, partition_key=None):
+        self.partition_key = partition_key
 
 
-def test_resolve_as_of_prefers_the_events_partition():
-    events = {
-        "alm.fct_2052a_positions": [
-            _Event({"as_of_date": "2026-06-30", "source_system": "gl_core"}),
-            _Event({"as_of_date": "2026-06-30", "source_system": "murex_eu"}),
-        ],
-        "alm.fct_liquidity_position": [
-            _Event({"as_of_date": "2026-06-30", "source_system": "treasury"}),
-        ],
-    }
-    assert resolve_as_of(events, fallback="2099-01-01") == "2026-06-30"
+def test_batch_date_is_the_runs_partition_key():
+    assert batch_date(_Run("2026-06-30"), fallback="2099-01-01") == "2026-06-30"
 
 
-def test_resolve_as_of_refuses_mixed_partitions():
-    events = {
-        "alm.fct_2052a_positions": [
-            _Event({"as_of_date": "2026-06-29", "source_system": "murex_eu"}),
-            _Event({"as_of_date": "2026-06-30", "source_system": "gl_core"}),
-        ],
-    }
-    with pytest.raises(ValueError, match="disagree"):
-        resolve_as_of(events, fallback="2026-06-30")
+def test_batch_date_narrows_a_timestamp_key_to_its_day():
+    assert batch_date(_Run("2026-06-30T05:45:00")) == "2026-06-30"
 
 
-def test_resolve_as_of_falls_back_to_logical_date():
-    assert resolve_as_of({}, fallback="2026-06-30") == "2026-06-30"
-    assert resolve_as_of(None, fallback="2026-06-30") == "2026-06-30"
-    with pytest.raises(ValueError, match="nothing names the partition"):
-        resolve_as_of({}, fallback=None)
+def test_batch_date_falls_back_to_the_logical_date():
+    assert batch_date(_Run(None), fallback="2026-06-30") == "2026-06-30"
+    assert batch_date(None, fallback="2026-06-30") == "2026-06-30"
+    with pytest.raises(ValueError, match="nothing names the batch"):
+        batch_date(None, fallback=None)

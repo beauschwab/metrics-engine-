@@ -23,6 +23,7 @@ from . import config, lcr, rules, simulate
 from .backend import for_target
 from .contracts import enforce, load_contract
 from .registry_client import get_registry
+from .warehouse_lock import warehouse_write_lock
 
 RAW_TABLES = {
     "gl_core": "raw.gl_core_positions_daily",
@@ -122,7 +123,8 @@ def run_dbt(as_of_date: str, command: str = "build", feed: str | None = None) ->
         "LIQ_WAREHOUSE": str(config.warehouse_path()),
         "DBT_SEND_ANONYMOUS_USAGE_STATS": "false",
     }
-    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    with warehouse_write_lock():
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if proc.returncode != 0:
         tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-40:])
         raise RuntimeError(f"dbt {command} failed for {as_of_date}:\n{tail}")
@@ -130,8 +132,8 @@ def run_dbt(as_of_date: str, command: str = "build", feed: str | None = None) ->
 
 
 def conform_feed(feed: str, as_of_date: str) -> dict:
-    """One feed's conformance run, plus the sub-partition it now holds —
-    the numbers the producer task stamps onto its asset event."""
+    """One feed's conformance run, plus a count of the sub-partition it now
+    holds — the run record's evidence that this slice of the day was written."""
     result = run_dbt(as_of_date, feed=feed)
     table = ("alm.fct_2052a_positions" if FEED_SELECTORS[feed] == "+fct_2052a_positions"
              else "alm.fct_liquidity_position")
@@ -147,32 +149,30 @@ def conform_feed(feed: str, as_of_date: str) -> dict:
             "source_system": feed, "rows": int(rows)}
 
 
-def resolve_as_of(triggering_events: dict | None, fallback: str | None) -> str:
-    """Which daily partition an asset-triggered run should process.
+def batch_date(dag_run=None, fallback: str | None = None) -> str:
+    """Which daily partition this run is for.
 
-    An asset-scheduled run's logical date is the trigger time, not the batch
-    date — the batch date rides on the asset events, in the partition extras
-    the producers stamped. Every triggering event must agree: mixed dates
-    mean a late feed collided with today's run, and processing either date
-    silently would file the wrong day for somebody. No events (a manual run,
-    `dags test`) falls back to the logical date.
+    Under Airflow 3.3 a run *has* a partition key (AIP-76): the conformance
+    DAG's ``CronPartitionTimetable`` sets it to the batch date, and the
+    regulatory DAG's ``PartitionedAssetTimetable`` is started against the key
+    its upstream slices agree on. So this reads the key and stops — the
+    version of this function that reconciled ``as_of_date`` out of every
+    triggering event's extras, and refused a mixed set, existed only because
+    partitions were a convention rather than scheduler state.
+
+    ``fallback`` is the logical date, for a run with no partition key at all
+    (a plain manual trigger against an unpartitioned schedule).
     """
-    dates: set[str] = set()
-    for events in (triggering_events or {}).values():
-        for event in events:
-            extra = getattr(event, "extra", None) or {}
-            if extra.get("as_of_date"):
-                dates.add(extra["as_of_date"])
-    if len(dates) > 1:
-        raise ValueError(
-            f"triggering asset events disagree on the partition: {sorted(dates)} — "
-            "a late sub-partition met a newer run; re-trigger for the date intended"
-        )
-    if dates:
-        return dates.pop()
-    if not fallback:
-        raise ValueError("no asset events and no logical date — nothing names the partition")
-    return fallback
+    key = getattr(dag_run, "partition_key", None)
+    if key:
+        # Keys are formatted %Y-%m-%d by the timetable; a deployment that
+        # widens key_format to a timestamp still yields a usable date here.
+        return str(key)[:10]
+    if fallback:
+        return fallback
+    raise ValueError(
+        "this run has no partition key and no logical date — nothing names the batch"
+    )
 
 
 def fetch_release(as_of_date: str) -> dict:

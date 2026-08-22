@@ -1,38 +1,42 @@
 """daily_liquidity_regulatory — rules, LCR and the FR 2052a filing.
 
-Scheduled on data, not on a clock:
+Scheduled on data, and on the *right slice* of it:
 
-    schedule = alm.fct_2052a_positions & alm.fct_liquidity_position
+    schedule = PartitionedAssetTimetable(
+        assets = …positions@gl_core & …positions@murex_eu & …hqla@treasury
+    )
 
-The asset condition means this DAG runs when *both* conformed tables have new
-events since its last run — however many sub-partitions produced them and
-however late a feed was. There is no cron here to guess when conformance
-finishes and no sensor poking a table; the conformance DAG's asset events are
-the trigger.
+Airflow 3.3 aligns the three upstream slices on a shared partition key, so
+this DAG is started for a batch date exactly once — when every source
+system's sub-partition for that date has been conformed. A late Murex
+extract delays this run rather than letting it file a partial book, and no
+sensor polls anything: the wait is a property of the asset graph.
 
-An asset-triggered run's logical date is the trigger time, so the first task
-resolves the batch date from the triggering events' partition extras (the
-`as_of_date` every producer stamped) and refuses a mixed set — a late
-sub-partition meeting a newer run must be a loud re-trigger, not a silently
-misfiled day. Manual runs and `dags test` fall back to the logical date,
-which is how the e2e proof drives a specific partition.
+The batch date arrives as `dag_run.partition_key`. That replaces the
+resolution this DAG used to do by hand (reading `as_of_date` out of every
+triggering event's extras and refusing a mixed set) — under first-class
+partitions a run *has* one key, and the scheduler is the thing that
+guarantees the upstreams agree on it.
 """
 
 from __future__ import annotations
 
 import pendulum
-from airflow.sdk import dag, get_current_context, task
+from airflow.sdk import PartitionedAssetTimetable, dag, task
 
 from liquidity_pipeline import tasks
 from liquidity_pipeline.assets import (
-    CONFORMED_HQLA, CONFORMED_POSITIONS, REG_ENRICHED, REG_LCR, REG_REPORT,
+    ALL_CONFORMED_SLICES, REG_ENRICHED, REG_LCR, REG_REPORT,
 )
 
 
 @dag(
     dag_id="daily_liquidity_regulatory",
-    description="Registry rules, LCR and FR 2052a over the conformed daily partition — asset-triggered",
-    schedule=(CONFORMED_POSITIONS & CONFORMED_HQLA),
+    description="Registry rules, LCR and FR 2052a over one conformed daily partition — asset-triggered",
+    # No cron: the run exists because every conformed slice for a date does.
+    # The default partition mapper is identity, which is what we want — the
+    # slices and this DAG share one granularity, the batch day.
+    schedule=PartitionedAssetTimetable(assets=ALL_CONFORMED_SLICES),
     start_date=pendulum.datetime(2026, 6, 1, tz="America/New_York"),
     catchup=False,
     tags=["liquidity", "fr2052a", "lcr", "reference"],
@@ -40,9 +44,9 @@ from liquidity_pipeline.assets import (
 )
 def daily_liquidity_regulatory():
     @task
-    def resolve_partition(ds: str | None = None) -> str:
-        context = get_current_context()
-        return tasks.resolve_as_of(context.get("triggering_asset_events"), ds)
+    def resolve_partition(dag_run=None, ds: str | None = None) -> str:
+        """The batch date this run is for — its partition key."""
+        return tasks.batch_date(dag_run, ds)
 
     @task
     def fetch_release(as_of: str) -> dict:
@@ -50,28 +54,15 @@ def daily_liquidity_regulatory():
 
     @task(outlets=[REG_ENRICHED])
     def apply_rules(as_of: str) -> dict:
-        result = tasks.apply_rules(as_of)
-        context = get_current_context()
-        context["outlet_events"][REG_ENRICHED].extra = {
-            "as_of_date": as_of, "release": result["release"], "rows": result["rows"],
-        }
-        return result
+        return tasks.apply_rules(as_of)
 
     @task(outlets=[REG_REPORT])
     def file_2052a(as_of: str) -> dict:
-        result = tasks.file_submission(as_of)
-        context = get_current_context()
-        context["outlet_events"][REG_REPORT].extra = {
-            "as_of_date": as_of, "release": result["release"], "rows": result["rows"],
-        }
-        return result
+        return tasks.file_submission(as_of)
 
     @task(outlets=[REG_LCR])
     def calculate_lcr(as_of: str) -> dict:
-        result = tasks.compute_lcr(as_of)
-        context = get_current_context()
-        context["outlet_events"][REG_LCR].extra = {"as_of_date": as_of}
-        return result
+        return tasks.compute_lcr(as_of)
 
     @task
     def reconcile(as_of: str, release: dict) -> dict:

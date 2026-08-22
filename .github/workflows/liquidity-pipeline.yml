@@ -9,9 +9,14 @@
 #                       rather than skipping: CI proves both the HTTP path and
 #                       that the committed snapshot serves the same bytes.
 #   airflow dags test   the same runs, executed by Airflow itself — both DAGs,
-#                       plus a check that the conformance run recorded the
-#                       asset events (with their sub-partition extras) the
-#                       regulatory DAG's asset schedule consumes.
+#                       plus a check that the conformance run recorded an
+#                       asset event for every conformed slice and table.
+#
+# What CI deliberately does not cover: partition keys are assigned by the
+# *scheduler* when it creates a run from a partitioned timetable (AIP-76), and
+# `dags test` builds a manual run. Standing a scheduler up here would trade a
+# 90-second job for a flaky multi-minute one; the scheduler proof is run by
+# hand and written up in the README's "What is proven".
 name: liquidity-pipeline
 
 on:

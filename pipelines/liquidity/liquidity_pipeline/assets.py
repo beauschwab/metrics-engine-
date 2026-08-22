@@ -1,31 +1,47 @@
-"""The pipeline's data assets, declared once.
+"""The pipeline's data assets and their partitions.
 
-Airflow 3 assets are the seam between the two DAGs: the conformance DAG
-*produces* the conformed tables and the regulatory DAG is *scheduled on*
-them — `CONFORMED_POSITIONS & CONFORMED_HQLA`, an asset condition rather
-than a cron guess about when upstream is done.
+Airflow 3.3 (AIP-76) made partitions first-class, which is what this module
+leans on. Two things follow from that, and they are the whole design:
 
-Partitioning. The conformed tables are partitioned by day and sub-partitioned
-by producing source system — `(as_of_date, source_system)` — so each feed's
-conformance task replaces only its own slice and the feeds succeed or fail
-independently. Airflow 3.1 has no first-class asset partitions yet (AIP-76),
-so the convention is the documented interim one: every asset event carries
-its partition key in the event's ``extra`` —
+**A partition key, not a convention.** Before 3.3 a producer could only
+*describe* which slice it had written, by stuffing a key into the asset
+event's ``extra`` and hoping the consumer read it back the same way. Now the
+scheduler owns the key: the conformance DAG runs under a
+``CronPartitionTimetable`` whose key is the batch date, every asset event it
+emits carries that key, and a consumer scheduled with a
+``PartitionedAssetTimetable`` is only started for a key its upstreams have
+actually produced. ``dag_run.partition_key`` replaces the hand-rolled
+resolution that used to read event extras.
 
-    {"as_of_date": "2026-06-30", "source_system": "murex_eu", "rows": 220}
+**Sub-partitions are their own assets.** The conformed tables are
+partitioned by day and sub-partitioned by producing source system. Airflow
+aligns *assets* on a shared partition key, so each (table, source_system)
+slice gets its own asset — ``alm.fct_2052a_positions@murex_eu`` — carrying
+the day as its key. The regulatory DAG then names all three slices in one
+asset condition, and the scheduler starts it for a date exactly once, when
+every slice for that date has landed. That is the "wait for all feeds"
+requirement stated as data rather than implemented as a sensor.
 
-Producers set it through ``outlet_events`` and consumers read it from
-``triggering_asset_events``; when AIP-76 lands, these extras become the
-partition declaration with the topology unchanged.
+The table-level assets stay, updated alongside each slice: they are what a
+downstream consumer subscribes to when it wants "the positions table"
+without caring which systems feed it. Slices schedule; tables describe.
 
-Names are the physical table names — the same strings the SQL reads — so an
-asset in the UI's lineage graph and a table in the warehouse never need a
-translation table between them.
+(The alternative — one composite ``feed|date`` key rolled up with
+``RollupMapper`` — needs a categorical window that keeps the temporal
+segment, and the built-in ``SegmentWindow`` deliberately ignores the anchor,
+so it fits a pure-categorical rollup rather than this one. Slice assets get
+the same semantics out of built-ins, and read better in the UI's asset
+graph.)
 """
 
 from __future__ import annotations
 
 from airflow.sdk import Asset
+
+#: How a batch date is spelled as a partition key. ISO day, because the batch
+#: *is* a day — and because the same string is the as-of date every SQL
+#: statement downstream already interpolates.
+PARTITION_KEY_FORMAT = "%Y-%m-%d"
 
 #: Landed raw batches, one asset per contracted feed.
 RAW = {
@@ -46,8 +62,10 @@ RAW = {
     ),
 }
 
-#: The conformed layer. Two position feeds produce sub-partitions of the same
-#: asset; the HQLA feed produces its own table.
+# ---------------------------------------------------------------------------
+# The conformed layer: tables, and the per-source slices of them
+# ---------------------------------------------------------------------------
+
 CONFORMED_POSITIONS = Asset(
     name="alm.fct_2052a_positions",
     group="conformed",
@@ -59,14 +77,36 @@ CONFORMED_HQLA = Asset(
     extra={"partitioned_by": ["as_of_date", "source_system"]},
 )
 
-#: Which conformed asset each feed's conformance task updates.
+#: Which conformed table each feed writes into.
 CONFORMED_FOR_FEED = {
     "gl_core": CONFORMED_POSITIONS,
     "murex_eu": CONFORMED_POSITIONS,
     "treasury": CONFORMED_HQLA,
 }
 
-#: The regulatory layer: daily partitions, produced by the consumer DAG.
+
+def _slice(table: Asset, feed: str) -> Asset:
+    """One (table, source_system) sub-partition stream, keyed by day."""
+    return Asset(
+        name=f"{table.name}@{feed}",
+        group="conformed-slice",
+        extra={"table": table.name, "source_system": feed, "partition_key": "as_of_date"},
+    )
+
+
+#: The scheduling surface: one asset per sub-partition stream.
+CONFORMED_SLICE = {feed: _slice(table, feed) for feed, table in CONFORMED_FOR_FEED.items()}
+
+#: The regulatory DAG waits on every slice for a date — stated as an asset
+#: condition the scheduler evaluates, not as a sensor the pipeline polls.
+ALL_CONFORMED_SLICES = (
+    CONFORMED_SLICE["gl_core"] & CONFORMED_SLICE["murex_eu"] & CONFORMED_SLICE["treasury"]
+)
+
+# ---------------------------------------------------------------------------
+# The regulatory layer: daily partitions, produced by the consumer DAG
+# ---------------------------------------------------------------------------
+
 REG_ENRICHED = Asset(
     name="reg.fr2052a_enriched",
     group="regulatory",

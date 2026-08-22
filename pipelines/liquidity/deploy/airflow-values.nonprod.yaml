@@ -11,7 +11,8 @@
 #   ./scripts/deploy_dags.sh --mode git       # push the bundle
 #   ...git-sync pulls it onto every pod within its poll interval
 #
-# Airflow 3.x is required — the DAGs use the airflow.sdk asset API.
+# Airflow 3.3+ is required — the DAGs use first-class asset partitions
+# (AIP-76): CronPartitionTimetable and PartitionedAssetTimetable.
 
 dags:
   gitSync:
@@ -58,7 +59,7 @@ env:
 
 # For anything past a sandbox, bake the dependencies instead:
 #
-#   FROM apache/airflow:3.1.8-python3.11
+#   FROM apache/airflow:3.3.1-python3.11
 #   RUN pip install --no-cache-dir "dbt-duckdb>=1.9.0" "duckdb>=1.1" "pyyaml>=6.0"
 #   # prod engine path (Kyuubi thrift clients):
 #   # RUN pip install --no-cache-dir "dbt-spark[PyHive]>=1.9.0" "pyhive[hive_pure_sasl]>=0.7"

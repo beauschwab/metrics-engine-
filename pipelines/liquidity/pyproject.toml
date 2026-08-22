@@ -26,7 +26,7 @@ dependencies = [
   # Airflow 3: `airflow dags test` executes a full DAG run in-process, which
   # is what the e2e proof uses. The standard provider carries PythonOperator
   # and friends.
-  "apache-airflow>=3.0,<3.2",
+  "apache-airflow>=3.3,<3.4",
 
   # --- conformance and normalization ---------------------------------------
   # dbt-core arrives via the adapter. dbt-duckdb is the dev target; the prod

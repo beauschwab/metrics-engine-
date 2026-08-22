@@ -54,10 +54,20 @@ class DuckDBBackend:
     def __init__(self, db_path: Path | None = None):
         import duckdb
 
+        from .warehouse_lock import warehouse_write_lock
+
         self.path = Path(db_path or config.warehouse_path())
-        self.con = duckdb.connect(str(self.path))
-        for schema in SCHEMAS:
-            self.con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+        # One file, one writer: the lock is held until close(), so parallel
+        # per-feed tasks queue instead of colliding. See warehouse_lock.py.
+        self._lock = warehouse_write_lock("duckdb")
+        self._lock.__enter__()
+        try:
+            self.con = duckdb.connect(str(self.path))
+            for schema in SCHEMAS:
+                self.con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+        except BaseException:
+            self._lock.__exit__(None, None, None)
+            raise
 
     def sql(self, query: str) -> list[tuple]:
         return self.con.execute(query).fetchall()
@@ -97,7 +107,10 @@ class DuckDBBackend:
         ).fetchone()[0]
 
     def close(self) -> None:
-        self.con.close()
+        try:
+            self.con.close()
+        finally:
+            self._lock.__exit__(None, None, None)
 
 
 # ---------------------------------------------------------------------------
