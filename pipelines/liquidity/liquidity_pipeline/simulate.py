@@ -22,6 +22,49 @@ import random
 from datetime import date, timedelta
 from pathlib import Path
 
+#: Scenario worlds. A scenario changes the *book* — balances, HQLA, how much
+#: of what was promised actually arrives — and never the rules: run-off rates,
+#: product classification and the LCR formula are governed artifacts the
+#: registry serves, identical in every world. That separation is the point: a
+#: stressed LCR and a reported LCR that disagree because someone
+#: re-implemented the rule for the stress run is exactly the drift this
+#: platform exists to prevent.
+#:
+#: The multipliers below are illustrative of a Reg YY-style internal liquidity
+#: stress (12 CFR 252.35) — a deposit run, inflows that do not arrive, and a
+#: monetisation haircut on the buffer. They are not a calibrated scenario; a
+#: real deployment would source them from a governed scenario artifact rather
+#: than a constant in a simulator.
+SCENARIOS = {
+    "base": {
+        "label": "Base — the book as it stands",
+        "outflow_balance": 1.00,
+        "inflow_balance": 1.00,
+        "hqla_haircut": 1.00,
+    },
+    "stress": {
+        "label": "Stress — 30-day idiosyncratic liquidity stress",
+        # Deposits and drawdowns run harder than contract.
+        "outflow_balance": 1.25,
+        # Counterparties stop paying on time; recognised inflows fall away.
+        "inflow_balance": 0.70,
+        # The buffer is monetised into a falling market.
+        "hqla_haircut": 0.88,
+    },
+}
+
+
+def scenario_factors(scenario: str) -> dict:
+    if scenario not in SCENARIOS:
+        raise ValueError(f"unknown scenario {scenario!r} — one of {sorted(SCENARIOS)}")
+    return SCENARIOS[scenario]
+
+
+def _flow_factor(factors: dict, direction: str) -> float:
+    """How much of this position the scenario says is really there."""
+    return factors["outflow_balance"] if direction == "OUTFLOW" else factors["inflow_balance"]
+
+
 ENTITIES_GL = ["BANK_US", "BANK_SG"]
 ENTITIES_MUREX = ["BANK_UK", "BANK_DE"]
 ENTITIES_ALL = ["BANK_US", "BANK_UK", "BANK_SG", "BANK_DE"]
@@ -56,8 +99,10 @@ def _position(rng: random.Random, as_of: date) -> dict:
     }
 
 
-def write_gl_core_extract(out: Path, as_of_date: str, corrupt: set[str] = frozenset()) -> Path:
+def write_gl_core_extract(out: Path, as_of_date: str, corrupt: set[str] = frozenset(),
+                          scenario: str = "base") -> Path:
     as_of = date.fromisoformat(as_of_date)
+    f = scenario_factors(scenario)
     rng = random.Random(f"gl_core:{as_of_date}")
     path = out / "gl_core_positions_daily.csv"
     rows = []
@@ -77,7 +122,7 @@ def write_gl_core_extract(out: Path, as_of_date: str, corrupt: set[str] = frozen
                 "collateral_class": p["collateral_class"],
                 "direction": p["direction"],
                 "maturity_date": p["maturity_date"].isoformat() if p["maturity_date"] else "",
-                "balance_usd": f"{p['balance_usd']:.2f}",
+                "balance_usd": f"{p['balance_usd'] * _flow_factor(f, p['direction']):.2f}",
             })
 
     if "bad_segment" in corrupt:
@@ -93,8 +138,10 @@ def write_gl_core_extract(out: Path, as_of_date: str, corrupt: set[str] = frozen
     return path
 
 
-def write_murex_extract(out: Path, as_of_date: str, corrupt: set[str] = frozenset()) -> Path:
+def write_murex_extract(out: Path, as_of_date: str, corrupt: set[str] = frozenset(),
+                        scenario: str = "base") -> Path:
     as_of = date.fromisoformat(as_of_date)
+    f = scenario_factors(scenario)
     compact = as_of_date.replace("-", "")
     rng = random.Random(f"murex_eu:{as_of_date}")
     path = out / "murex_eu_positions_daily.csv"
@@ -115,7 +162,7 @@ def write_murex_extract(out: Path, as_of_date: str, corrupt: set[str] = frozense
                 "COLL_CLASS": p["collateral_class"],
                 "FLOW_DIR": "I" if p["direction"] == "INFLOW" else "O",
                 "MAT_DATE": p["maturity_date"].strftime("%Y%m%d") if p["maturity_date"] else "00000000",
-                "BAL_AMT_USD": f"{p['balance_usd']:.2f}",
+                "BAL_AMT_USD": f"{p['balance_usd'] * _flow_factor(f, p['direction']):.2f}",
             })
 
     if "bad_segment" in corrupt:
@@ -128,7 +175,9 @@ def write_murex_extract(out: Path, as_of_date: str, corrupt: set[str] = frozense
     return path
 
 
-def write_treasury_extract(out: Path, as_of_date: str, corrupt: set[str] = frozenset()) -> Path:
+def write_treasury_extract(out: Path, as_of_date: str, corrupt: set[str] = frozenset(),
+                           scenario: str = "base") -> Path:
+    f = scenario_factors(scenario)
     rng = random.Random(f"treasury:{as_of_date}")
     path = out / "treasury_hqla_daily.csv"
     rows = []
@@ -141,7 +190,8 @@ def write_treasury_extract(out: Path, as_of_date: str, corrupt: set[str] = froze
                 "as_of_date": as_of_date,
                 "hqla_level": level,
                 # Post-haircut amounts: level 1 dominates a real buffer.
-                "hqla_eligible_amount": f"{(1.5 + rng.random()) * (2.2e6 if level == 'L1' else 0.8e6):.2f}",
+                "hqla_eligible_amount":
+                    f"{(1.5 + rng.random()) * (2.2e6 if level == 'L1' else 0.8e6) * f['hqla_haircut']:.2f}",
                 "is_encumbered": str(rng.random() < 0.12).lower(),
                 "currency": "EUR" if rng.random() > 0.8 else "USD",
             })

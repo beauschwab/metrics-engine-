@@ -158,11 +158,218 @@ steward → publish path metrics use. A contract may be approved before a
 renderer exists — flagged unrenderable rather than refused, so design review
 never queues behind implementation.
 
+**The nightly pipeline** — `pipelines/liquidity` is a reference
+implementation of the run these definitions are authored for: daily positions
+sourced under Open Data Contracts, conformed by dbt-core into tables
+sub-partitioned by producing source system, then the governed rules, the LCR
+and the FR 2052a submission taken from the registry's deployed channel at run
+time. Two Airflow 3.3 DAGs joined by partitioned assets; DuckDB in dev and CI,
+Spark over Iceberg through an Apache Kyuubi gateway as the product target.
+Section 7 follows a rule change through it.
+
 **Not yet built:** outward integrations — DataHub emission, git materialization
 at Team+, decommissioning, Rogo import (Phase 11). Streaming (Deephaven)
 remains a deliberate deferral behind an executor seam written to accept it.
 
-## 7. Boundaries
+## 7. One rule change, both paths — a walkthrough
+
+Sections 1–6 claim that a definition authored here reaches a filed submission
+and a committee dashboard without being retyped. This section shows it, with
+screenshots of the running system: one governed rate is changed, and the
+change is followed down **both** consumption paths — the nightly
+Airflow/Spark pipeline that files FR 2052a, and the Chartroom dashboards two
+liquidity desks read.
+
+The change is deliberately small and entirely typical: **the run-off rate on
+non-operational wholesale funding (`O.W.2`) moves from 40% to 50%**, a
+supervisory reinterpretation. It is one line in one governed document.
+
+The two liquidity use cases it lands in:
+
+| | Use case | Reads | Path |
+|---|---|---|---|
+| **1** | **LCR coverage** — is the buffer adequate today? | `lcr_pct`, `lcr_headroom`, `weighted_outflows_30d` | pipeline files `reg.lcr_daily`; desk reads *Liquidity Coverage Monitor* |
+| **2** | **FR 2052a weighted outflows** — what are we filing, and what moved? | `weighted_outflows_30d` by product × bucket | pipeline files `reg.fr2052a_daily`; desk reads *Weighted Outflows — Variance Walk* |
+
+### 7.1 Before: the rate table as production serves it
+
+`lcr_outflow_rates` is a governed `parameter_set` — sixteen rates, each with
+the paragraph it implements. The header reads `production r1 · live`: the
+workspace and the deployed channel agree.
+
+![The governed LCR rate table in the authoring surface, showing sixteen rates with their citations and the header marker "production r1 · live"](docs/vision/baseline-authoring-rate-table.png)
+
+Both dashboards, at that release. Use case 1 — LCR 118.4%, headroom
+$44,220,000, weighted outflows by maturity totalling $10.50mm inside the
+30-day window:
+
+![Liquidity Coverage Monitor before the change: LCR 118.4%, headroom $44,220,000, weighted outflows by maturity bucket](docs/vision/baseline-usecase1-lcr-monitor.png)
+
+Use case 2 — the variance walk, prior $10,384,264 → current $10,502,587:
+
+![Weighted Outflows Variance Walk before the change, current $10,502,587](docs/vision/baseline-usecase2-outflow-walk.png)
+
+And the nightly run against that same release files:
+
+| | as filed at `production r1` |
+|---|---|
+| `reg.fr2052a_daily` · weighted outflows | **$44,410,173.36** |
+| of which `O.W.2` | $14,247,458.56 |
+| `reg.lcr_daily` · consolidated LCR | **1456.7%** |
+
+### 7.2 The change, and the control that fires immediately
+
+The author edits one rate. Two things happen before anything is deployed.
+
+The header changes to `production r1 · 1 ahead` — the workspace is one
+revision beyond what the channel serves, stated rather than implied. And a
+diagnostic appears against the line:
+
+> **KEEL072** · `O.W.2` changed from 0.40 to 0.50 but still cites the same
+> paragraph — a rate change usually means a new citation or a change ticket
+
+![The rate table after the change: O.W.2 at 50.0%, the header reading "production r1 · 1 ahead", and diagnostic KEEL072 warning that the rate moved without its citation moving](docs/vision/proposed-authoring-rate-table.png)
+
+The registry is not objecting to the number. It is objecting that a governed
+assumption moved under an unchanged authority — which is exactly the case a
+model-risk reviewer will ask about, raised while the author is still in the
+document rather than in a quarterly review.
+
+### 7.3 The paths diverge — on purpose
+
+This is the part worth reading twice, because the two paths bind at
+**different moments**, and the gap between them is the governance.
+
+**Chartroom moves now.** The studio reads the workspace, so the dashboards
+show the proposed number the instant it is saved — and label it. Use case 2's
+walk goes from $10,502,587 to **$11,477,004**, and the board carries
+`DRAFT · UNCERTIFIED METRICS PRESENT`:
+
+![Weighted Outflows Variance Walk after the save: current $11,477,004, marked DRAFT · UNCERTIFIED METRICS PRESENT](docs/vision/proposed-usecase2-outflow-walk.png)
+
+Use case 1's board moves the same way, in its outflow widgets:
+
+![Liquidity Coverage Monitor after the save, weighted outflow buckets higher](docs/vision/proposed-usecase1-lcr-monitor.png)
+
+**The pipeline does not move.** It dereferences the `production` channel,
+which still serves r1. Re-running the nightly job with the edit saved files
+*exactly* what it filed before:
+
+| | before the edit | after the edit, before promotion |
+|---|---|---|
+| channel release | r1 | **r1** |
+| rate-table revision served | 1 | **1** |
+| filed weighted outflows | $44,410,173.36 | **$44,410,173.36** |
+
+An analyst can therefore explore a proposed rule against live numbers without
+any risk of it reaching a regulatory filing — and cannot mistake the
+exploration for the filed figure, because the board says so.
+
+### 7.4 Promotion is a separate, refused-by-default act
+
+Cutting release r2 and promoting it is refused:
+
+```
+refusing to promote r2 to production without acknowledgement — versus what
+production currently serves, this weakens something:
+  · lcr_outflow_rates: Changes 1 governed rate
+    O.W.2: 0.40 → 0.50
+    1 rate moved without its citation moving. A governed assumption changing
+    under an unchanged authority is the case worth explaining.
+Re-send with acknowledgeReview: true if intended.
+```
+
+The same finding as KEEL072, now blocking deployment rather than advising.
+The steward promotes with an explicit acknowledgement, and the reason is
+written into the channel history beside the actor:
+
+```
+r2  m.reyes  Supervisory reinterpretation of non-operational wholesale funding;
+             the paragraph is unchanged, the reading of it is not. Reviewed with
+             Liquidity Regulatory Reporting. [review acknowledged: Changes 1 governed rate]
+r1  m.reyes  Baseline: FR 2052a rules and LCR rates as filed
+```
+
+The edit itself carries its own author (`a.okafor`, revision 2) — identity is
+asserted by the proxy in front of the registry, never by the client, so the
+name against a rule change is part of the control rather than a label.
+
+### 7.5 After: the pipeline files the new number
+
+With the channel repointed, the next nightly run picks the new rate up with
+no pipeline change of any kind — no deploy, no DAG edit, no code review:
+
+| | at `production r1` | at `production r2` | change |
+|---|---|---|---|
+| channel release / rate revision | r1 / 1 | r2 / 2 | promoted |
+| `reg.fr2052a_daily` · weighted outflows | $44,410,173.36 | **$47,972,038.05** | +$3,561,864.69 |
+| of which `O.W.2` | $14,247,458.56 | **$17,809,323.25** | +$3,561,864.69 |
+| `reg.lcr_daily` · consolidated LCR | 1456.7% | **1286.0%** | −170.7pp |
+| net outflows, 30d | $26,836,526.70 | $30,398,391.34 | +$3,561,864.64 |
+
+The whole movement sits in `O.W.2` — the product whose rate changed — and the
+totals move by exactly that amount. That is the arithmetic a reviewer checks
+first, and it holds because one definition produced both rows.
+
+### 7.6 What the pipeline path looks like while it runs
+
+The nightly run is two Airflow DAGs joined by partitioned assets: each
+source system conforms its own `(as_of_date, source_system)` slice, and the
+regulatory DAG is started by the scheduler only once every slice for a date
+exists.
+
+![The Airflow DAGs view showing daily_liquidity_conformance on a cron partition timetable and daily_liquidity_regulatory triggered by assets](docs/vision/pipeline-dags.png)
+
+The asset view is the topology: three `raw-feed` landings, three
+`conformed-slice` assets (one per producing system) each scheduling the
+downstream DAG, the two `conformed` tables consumers subscribe to, and the
+three `regulatory` outputs the run files.
+
+![The Airflow assets view listing eleven assets grouped as raw-feed, conformed-slice, conformed and regulatory](docs/vision/pipeline-assets.png)
+
+### 7.6b The same rules, a different world
+
+A scenario is an input, not a model. The pipeline can run the identical
+governed release over a stressed book — deposits running harder than
+contract, inflows that do not arrive, a haircut on the buffer — in its own
+warehouse, so the two runs share nothing except the registry release:
+
+| | base | stress |
+|---|---|---|
+| HQLA | $390,919,734.51 | $344,009,366.38 |
+| filed weighted outflows | $47,972,038.05 | $59,965,047.53 |
+| **consolidated LCR** | **1286.0%** | **721.7%** (−564.3pp) |
+
+`scenarios.compare()` refuses to report a comparison whose runs came from
+different releases, because a base-vs-stress figure computed across two rule
+versions is not a comparison. This is the axis where drift is least visible
+and most consequential: in most institutions the stressed LCR and the
+reported LCR are produced by different machinery, and no one can say whether
+a difference is the scenario or the implementation.
+
+**It is not a forecast.** Nothing here projects a balance sheet forward;
+multi-period projection is a modelling capability this does not have.
+
+### 7.7 What this walkthrough is evidence for
+
+- **One definition, two consumers, no retyping.** The filed
+  `reg.fr2052a_daily` row and the dashboard widget both trace to
+  `lcr_outflow_rates` revision 2. Neither holds a copy of the rate.
+- **Drift is structurally unavailable**, not merely discouraged: the
+  pipeline cannot read a rate the channel does not serve, and the dashboard
+  cannot show one without saying whose revision it is.
+- **The gate is where the risk is.** Saving is cheap and reversible;
+  deploying is refused by default when it weakens a governed assumption, and
+  the override is recorded with a name and a reason.
+- **Binding times differ deliberately** — the studio at save, the pipeline at
+  promotion — which is what lets an analyst explore a proposed rule against
+  live numbers with no path to a filing.
+
+Every figure above was produced by running the system; the screenshots are
+regenerated by `docs/vision/capture.mjs` and the recipe in
+[`docs/vision/README.md`](docs/vision/README.md).
+
+## 8. Boundaries
 
 Things that are deliberately not on the roadmap, because allowing them would
 dissolve the product:
@@ -177,7 +384,7 @@ dissolve the product:
 - **No unit overrides in presentation.** A bp metric renders as bps on every
   dashboard, or the same number reads differently in two meetings.
 
-## 8. How we know it works
+## 9. How we know it works
 
 The dogfood boards are the acceptance test: hand-authored against the real
 registry, seeded on first boot, and covered by a test that fails when a measure
