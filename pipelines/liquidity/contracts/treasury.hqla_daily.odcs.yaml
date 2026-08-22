@@ -1,0 +1,121 @@
+# ODCS v3 — Treasury HQLA inventory, daily.
+#
+# The numerator side of the LCR. The regulatory engine inside Treasury already
+# applies haircuts and the level-2 caps; this feed hands over the post-haircut
+# eligible amount per security position, plus the encumbrance flag the
+# governed `hqla_total` measure filters on (12 CFR 249.20-22).
+apiVersion: v3.0.2
+kind: DataContract
+
+id: urn:datacontract:liquidity:treasury-hqla-daily
+name: Treasury — daily HQLA inventory
+version: 1.0.0
+status: active
+domain: liquidity
+dataProduct: daily-liquidity-position
+tenant: treasury
+
+description:
+  purpose: >
+    Daily security-level inventory of high-quality liquid assets with
+    post-haircut eligible amounts, one file per as-of date, by 05:30
+    America/New_York.
+  usage: >
+    Input to the conformed table alm.fct_liquidity_position; the LCR numerator
+    (hqla_total) sums hqla_eligible_amount over unencumbered rows.
+  limitations: >
+    Amounts are post-haircut and post-cap; do not re-apply haircuts
+    downstream.
+
+servers:
+  - server: dev
+    type: duckdb
+    environment: dev
+    database: warehouse.duckdb
+    schema: raw
+  - server: prod
+    type: s3
+    environment: prod
+    location: s3://bank-landing/liquidity/treasury/hqla/{as_of_date}/
+    format: parquet
+
+schema:
+  - name: hqla_daily
+    physicalName: raw.treasury_hqla_daily
+    logicalType: object
+    physicalType: table
+    dataGranularityDescription: security_id × entity_id × as_of_date
+    properties:
+      - name: security_id
+        logicalType: string
+        physicalType: varchar
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 1
+      - name: entity_id
+        logicalType: string
+        physicalType: varchar
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 2
+        quality:
+          - rule: validValues
+            validValues: [BANK_US, BANK_UK, BANK_SG, BANK_DE]
+      - name: as_of_date
+        logicalType: date
+        physicalType: date
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 3
+      - name: hqla_level
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [L1, L2A, L2B]
+      - name: hqla_eligible_amount
+        logicalType: number
+        physicalType: double
+        required: true
+        description: Post-haircut, post-cap eligible amount in USD.
+      - name: is_encumbered
+        logicalType: boolean
+        physicalType: boolean
+        required: true
+      - name: currency
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [USD, EUR]
+    quality:
+      - rule: rowCount
+        sql: SELECT count(*) FROM {table}
+        mustBeGreaterThan: 0
+      - rule: freshness
+        sql: SELECT count(*) FROM {table} WHERE as_of_date <> DATE '{as_of_date}'
+        mustBe: 0
+      - rule: nonNegative
+        description: Haircuts shrink an amount; they never make it negative.
+        sql: SELECT count(*) FROM {table} WHERE CAST(hqla_eligible_amount AS DOUBLE) < 0
+        mustBe: 0
+
+slaProperties:
+  - property: frequency
+    value: 1
+    unit: d
+  - property: timeOfAvailability
+    value: "05:30"
+    driver: regulatory
+
+team:
+  - username: treasury-regulatory-engine
+    role: producer
+  - username: liquidity-data-integration
+    role: consumer
+
+support:
+  - channel: "#liq-data-feeds"
+    tool: slack

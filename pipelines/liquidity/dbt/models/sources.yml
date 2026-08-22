@@ -1,0 +1,24 @@
+version: 2
+
+# The raw layer: one table per contracted feed, landed as strings by the
+# pipeline's landing task and already contract-checked by the time dbt runs.
+# The freshness and schema promises live in the ODCS documents under
+# ../contracts — these declarations point at what landing produced.
+sources:
+  - name: raw
+    description: Landed daily extracts, one table per data contract, string-typed.
+    schema: raw
+    tables:
+      - name: gl_core_positions_daily
+        description: >
+          GL Core daily positions per contract
+          urn:datacontract:liquidity:gl-core-positions-daily.
+      - name: murex_eu_positions_daily
+        description: >
+          Murex EU book daily positions per contract
+          urn:datacontract:liquidity:murex-eu-positions-daily. Client shape —
+          codes and compact dates — decoded in staging.
+      - name: treasury_hqla_daily
+        description: >
+          Treasury HQLA inventory per contract
+          urn:datacontract:liquidity:treasury-hqla-daily.
