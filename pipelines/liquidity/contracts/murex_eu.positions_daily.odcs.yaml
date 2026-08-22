@@ -1,0 +1,177 @@
+# ODCS v3 — Murex EU book, daily position extract.
+#
+# This contract pins the feed in the *client system's* shape: Murex column
+# names, Y/N flags, YYYYMMDD dates, RTL/SBB/WSL segment codes. Conformance to
+# the canonical vocabulary is dbt's job (stg_murex_eu__positions), and the
+# decode tables in that model mirror the governed `murex_eu` source binding in
+# the rules registry — the registry document is the authority on what these
+# codes mean, this contract is the authority on what the file contains.
+apiVersion: v3.0.2
+kind: DataContract
+
+id: urn:datacontract:liquidity:murex-eu-positions-daily
+name: Murex EU — daily liquidity positions
+version: 1.0.0
+status: active
+domain: liquidity
+dataProduct: daily-liquidity-position
+tenant: treasury
+
+description:
+  purpose: >
+    Daily extract of the EU trading book's liquidity-relevant positions from
+    Murex, one file per COB date, delivered by 05:00 America/New_York.
+  usage: >
+    Input to the conformed table alm.fct_2052a_positions via the Murex staging
+    model. Codes are decoded downstream; producers must not re-map them.
+  limitations: >
+    BAL_AMT_USD is already USD in this feed — no conversion in staging.
+    MAT_DATE is the string '00000000' for open positions.
+
+servers:
+  - server: dev
+    type: duckdb
+    environment: dev
+    database: warehouse.duckdb
+    schema: raw
+  - server: prod
+    type: s3
+    environment: prod
+    location: s3://bank-landing/liquidity/murex_eu/positions/{as_of_date}/
+    format: csv
+    delimiter: ","
+
+schema:
+  - name: positions_daily
+    physicalName: raw.murex_eu_positions_daily
+    logicalType: object
+    physicalType: table
+    description: One row per Murex trade leg per COB date.
+    dataGranularityDescription: TRADE_ID × COB_DATE
+    properties:
+      - name: TRADE_ID
+        logicalType: string
+        physicalType: varchar
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 1
+      - name: COB_DATE
+        logicalType: string
+        physicalType: varchar
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 2
+        description: Close-of-business date, YYYYMMDD.
+        quality:
+          - rule: pattern
+            pattern: '^[0-9]{8}$'
+      - name: LEGAL_ENT
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [BANK_UK, BANK_DE]
+      - name: CCY
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [USD, EUR]
+      - name: CUST_SEG
+        logicalType: string
+        physicalType: varchar
+        required: true
+        description: "Murex segment code: RTL retail, SBB small business, WSL wholesale."
+        quality:
+          - rule: validValues
+            validValues: [RTL, SBB, WSL]
+      - name: CPTY_TYPE
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [RETAIL, SMB, NONFIN_CORP, FINANCIAL, SOVEREIGN]
+      - name: ACCT_TYPE
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [TRANSACTIONAL, SAVINGS, TIME, OPERATIONAL, NON_OPERATIONAL]
+      - name: FDIC_INS
+        logicalType: string
+        physicalType: varchar
+        required: true
+        description: Y/N deposit-insurance flag.
+        quality:
+          - rule: validValues
+            validValues: ["Y", "N"]
+      - name: SECURED_FLG
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: ["Y", "N"]
+      - name: COLL_CLASS
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [L1, L2A, L2B, NON_HQLA, UNSECURED]
+      - name: FLOW_DIR
+        logicalType: string
+        physicalType: varchar
+        required: true
+        description: "I inflow, O outflow."
+        quality:
+          - rule: validValues
+            validValues: [I, O]
+      - name: MAT_DATE
+        logicalType: string
+        physicalType: varchar
+        required: true
+        description: Contractual maturity YYYYMMDD; '00000000' when open.
+        quality:
+          - rule: pattern
+            pattern: '^[0-9]{8}$'
+      - name: BAL_AMT_USD
+        logicalType: number
+        physicalType: double
+        required: true
+    quality:
+      - rule: rowCount
+        sql: SELECT count(*) FROM {table}
+        mustBeGreaterThan: 0
+      - rule: freshness
+        description: Every row carries the batch COB date.
+        sql: SELECT count(*) FROM {table} WHERE COB_DATE <> '{as_of_date_compact}'
+        mustBe: 0
+      - rule: securedHasCollateral
+        sql: >
+          SELECT count(*) FROM {table}
+          WHERE (SECURED_FLG = 'Y' AND COLL_CLASS = 'UNSECURED')
+             OR (SECURED_FLG = 'N' AND COLL_CLASS <> 'UNSECURED')
+        mustBe: 0
+
+slaProperties:
+  - property: frequency
+    value: 1
+    unit: d
+  - property: timeOfAvailability
+    value: "05:00"
+    driver: regulatory
+
+team:
+  - username: murex-platform
+    role: producer
+  - username: liquidity-data-integration
+    role: consumer
+
+support:
+  - channel: "#liq-data-feeds"
+    tool: slack

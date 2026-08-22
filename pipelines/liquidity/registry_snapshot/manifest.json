@@ -1,0 +1,75 @@
+{
+    "channel": "production",
+    "release": {
+        "version": 1,
+        "name": "",
+        "createdAt": "2026-08-22T15:17:48.951Z",
+        "promotedAt": "2026-08-22T15:17:49.209Z",
+        "promotedBy": "unknown"
+    },
+    "artifacts": [
+        {
+            "name": "fr2052a_outflows",
+            "kind": "metrics_view",
+            "stage": "prepare",
+            "revision": 1,
+            "contentHash": "6f730bc5db2faf32967be1795c1671bf8a3d4efb0e9e6537645f5bb25de1da36"
+        },
+        {
+            "name": "fr2052a_prepared",
+            "kind": "prepared_source",
+            "stage": "prepare",
+            "revision": 1,
+            "contentHash": "ee2325ba3811d48d378eec541ad68bcbf76ec6b8fe1a96755af0853e437d124f"
+        },
+        {
+            "name": "fr2052a_product_id",
+            "kind": "classification",
+            "stage": "prepare",
+            "revision": 1,
+            "contentHash": "025d5bc6cead6998221e35da292632a9793079507bf3a2af62c151ef46508732"
+        },
+        {
+            "name": "fr2052a_submission",
+            "kind": "report",
+            "stage": "file",
+            "revision": 1,
+            "contentHash": "cfaa1566f5a2197453e0416bd436d354586aae574b4d098e568e7d86dd6760a9"
+        },
+        {
+            "name": "fr2052a_variance",
+            "kind": "variance_monitor",
+            "stage": "watch",
+            "revision": 1,
+            "contentHash": "77fee7e792c59b4a815340ac32642b6561886781bdaee2e3bfc39bf4235cb7ab"
+        },
+        {
+            "name": "irrbb_eve",
+            "kind": "metrics_view",
+            "stage": "publish",
+            "revision": 1,
+            "contentHash": "c98e9e155431a98cb2cfab280ac7dcb9727c52d4eca0f33d47af2c638da94d9a"
+        },
+        {
+            "name": "lcr_outflow_rates",
+            "kind": "parameter_set",
+            "stage": "prepare",
+            "revision": 1,
+            "contentHash": "50d431d5146d4b0b71dfe156127fbc97c69607eee7d591feaba076e4ed66d05a"
+        },
+        {
+            "name": "liquidity_pit",
+            "kind": "metrics_view",
+            "stage": "publish",
+            "revision": 1,
+            "contentHash": "660a95b4775bdb516060fcdc32485d6c19757f913082cb35fc13a3ee1d1344f8"
+        },
+        {
+            "name": "murex_eu_binding",
+            "kind": "source_binding",
+            "stage": "prepare",
+            "revision": 1,
+            "contentHash": "496f488ed934e0d3e1131b465ffc4244c159cca21758d018cb751d25001cd89a"
+        }
+    ]
+}

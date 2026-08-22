@@ -1,0 +1,78 @@
+# The liquidity pipeline's own gate: the end-to-end run, on every change to it.
+#
+# Two legs in one job, because they share a setup and an ordering:
+#
+#   pytest              lands the contracted extracts, builds the dbt models,
+#                       applies the deployed rules, files the report, computes
+#                       the LCR and reconciles — all on DuckDB. The registry is
+#                       started first, so the live-registry tests run here too
+#                       rather than skipping: CI proves both the HTTP path and
+#                       that the committed snapshot serves the same bytes.
+#   airflow dags test   the same run, executed by Airflow itself — the DAG
+#                       wiring, context injection and XCom passing are part of
+#                       what "works end to end" means.
+name: liquidity-pipeline
+
+on:
+  push:
+    branches: [main]
+    paths: ['pipelines/liquidity/**', '.github/workflows/liquidity-pipeline.yml']
+  pull_request:
+    paths: ['pipelines/liquidity/**', '.github/workflows/liquidity-pipeline.yml']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  UV_HTTP_TIMEOUT: '180'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pipelines/liquidity
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+
+      # The registry, live, seeded from the shipped workspace. The snapshot
+      # refresh cuts and promotes release 1 if the channel is empty — the same
+      # two acts a human performs — and then asserts the committed snapshot
+      # still matches what the channel serves.
+      - run: npm ci
+        working-directory: .
+      - run: |
+          npx tsx packages/registry/index.ts &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8787/api/health && break; sleep 1
+          done
+        working-directory: .
+        env:
+          KEEL_SQLITE_FILE: /tmp/keel-ci.db
+      - run: ./scripts/refresh_registry_snapshot.sh
+      # Manifest and artifact responses carry promotion/save timestamps, so a
+      # fresh registry can never reproduce them byte-for-byte; the rules and
+      # compiled plans are pure functions of the released documents and must
+      # not drift from what is committed.
+      - run: git diff --exit-code registry_snapshot/rules registry_snapshot/plans
+
+      - run: uv run pytest -q
+
+      - name: airflow dags test
+        run: |
+          uv run airflow db migrate
+          uv run airflow dags test daily_liquidity_position 2026-06-30
+        env:
+          AIRFLOW_HOME: ${{ github.workspace }}/pipelines/liquidity/.local/airflow
+          AIRFLOW__CORE__DAGS_FOLDER: ${{ github.workspace }}/pipelines/liquidity/dags
+          AIRFLOW__CORE__LOAD_EXAMPLES: 'false'

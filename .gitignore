@@ -21,3 +21,10 @@ __pycache__/
 
 # The agent's virtualenv — `npm run setup:agent` builds it.
 .venv/
+
+# The liquidity pipeline's local state: landed extracts, the dev warehouse,
+# Airflow's scratch home and run records (.local/), and dbt's build output.
+pipelines/liquidity/.local/
+pipelines/liquidity/dbt/target/
+pipelines/liquidity/dbt/logs/
+pipelines/liquidity/dbt/.user.yml

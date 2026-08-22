@@ -1,0 +1,23 @@
+# Two targets, one project — the LIQ_TARGET switch the whole pipeline shares.
+#
+#   duckdb  dev and CI: the whole warehouse is one file, and an e2e run needs
+#           nothing but this repo.
+#   spark   prod: Spark SQL with Iceberg as the table format. `method: session`
+#           binds to the driver's own SparkSession (Airflow on a Spark-enabled
+#           worker or a spark-submit'd dbt); swap for `method: thrift` + host
+#           to point at a standing cluster instead. The session's default
+#           catalog must be the Iceberg one — the same assumption the
+#           pipeline's SparkIcebergBackend documents.
+liquidity:
+  target: "{{ env_var('LIQ_TARGET', 'duckdb') }}"
+  outputs:
+    duckdb:
+      type: duckdb
+      path: "{{ env_var('LIQ_WAREHOUSE', '.local/warehouse.duckdb') }}"
+      schema: main
+      threads: 4
+    spark:
+      type: spark
+      method: session
+      schema: alm
+      threads: 4

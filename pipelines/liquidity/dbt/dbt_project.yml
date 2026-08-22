@@ -1,0 +1,44 @@
+# The conformance and normalization layer.
+#
+# dbt owns the road from "what each producer sends" (raw, strings, client
+# vocabularies) to "the canonical tables the governed rules read"
+# (alm.fct_2052a_positions, alm.fct_liquidity_position). Classification, rate
+# application and reporting deliberately do NOT happen here — those are the
+# registry's, so a rule change never requires a dbt PR.
+#
+# One project, two engines: profiles.yml targets DuckDB in dev and Spark over
+# Iceberg in prod, and the models restrict themselves to SQL both run. Where
+# the engines genuinely differ (compact-date parsing, file formats) the
+# difference lives in a macro or a config, never in a model body.
+name: liquidity_conformance
+version: "1.0.0"
+
+profile: liquidity
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # The batch date. Always passed explicitly by the pipeline:
+  #   dbt build --vars '{as_of_date: 2026-06-30}'
+  as_of_date: null
+
+models:
+  liquidity_conformance:
+    staging:
+      # Views: per-source conformance is a lens over raw, not a copy of it.
+      +materialized: view
+      +schema: stg
+    conformed:
+      # Incremental with per-day replacement: re-running a batch replaces that
+      # date's rows and touches nothing else — the same idempotency contract
+      # as the report writer's partition overwrite.
+      +materialized: incremental
+      +schema: alm
+      +unique_key: as_of_date
+      +incremental_strategy: "{{ 'insert_overwrite' if target.type == 'spark' else 'delete+insert' }}"
+      +partition_by: "{{ ['as_of_date'] if target.type == 'spark' else none }}"
+      +file_format: "{{ 'iceberg' if target.type == 'spark' else none }}"
