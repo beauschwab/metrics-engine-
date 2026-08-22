@@ -4,10 +4,11 @@ An Airflow pipeline that sources daily liquidity positions from source systems
 under **Open Data Contracts**, conforms and normalizes them with **dbt-core**,
 then calls the **rules-engine registry** (this repo's `packages/registry`) for
 business-rule application, the **LCR calculation**, and the **FR 2052a daily
-submission**. PySpark over Iceberg is the product target for every compute
-step; development and CI run the identical pipeline on DuckDB.
+submission**. Spark over Iceberg — reached through the Apache Kyuubi
+gateway — is the product target for every compute step; development and CI
+run the identical pipeline on DuckDB.
 
-Proven end to end: 29 pytest checks — contract refusal, conformance, rule
+Proven end to end: 35 pytest checks — contract refusal, conformance, rule
 coverage, sub-partition isolation, LCR arithmetic, filing grain, idempotent
 re-runs, plan-vs-row-stage reconciliation — plus full `airflow dags test`
 executions of both DAGs and inspection of the asset events they record.
@@ -83,12 +84,24 @@ KEEL_BASE_URL=http://localhost:8787 uv run pytest
 Every stage runs on the engine `LIQ_TARGET` selects — `duckdb` (default) or
 `spark` — through two seams that switch together: `backend.for_target()` for
 landing, rules, LCR and the report write, and the dbt profile for
-conformance. The Spark path lands external tables over the object-store
-locations the contracts name, builds the conformed layer as Iceberg tables
-(`dbt-spark`, `file_format: iceberg`, `insert_overwrite`), and files the
-report with Iceberg's dynamic partition overwrite — the
-`overwrite_partitions` contract the governed report document declares.
-`uv sync --extra prod` pulls PySpark, dbt-spark and PyIceberg.
+conformance.
+
+The Spark path goes through **Apache Kyuubi**: nothing in the pipeline owns
+a SparkSession. Kyuubi is the multi-tenant gateway in front of the Spark
+fleet — the pipeline's backend and dbt (`method: thrift`) both connect to
+its HiveServer2-compatible front end (`KYUUBI_HOST` / `KYUUBI_PORT` /
+`KYUUBI_USER`) as the same service identity, submit Spark SQL, and
+disconnect; engine pooling, share level and the Iceberg catalog
+(`spark.sql.catalog.*`) are Kyuubi engine configuration, never client
+configuration. Landing declares external CSV tables over the object-store
+locations the contracts name (string-typed — the contract casts, not the
+loader), conformance builds Iceberg tables via `insert_overwrite` over the
+`(as_of_date, source_system)` partition spec, and the report writer uses
+Iceberg's dynamic `INSERT OVERWRITE` — the `overwrite_partitions` contract
+the governed report document declares, with the dynamic mode riding the
+connection's session-configuration overlay. `uv sync --extra prod` pulls the
+Thrift clients (PyHive and dbt-spark's PyHive extra); the backend's emitted
+SQL is pinned by unit tests against a stub connection.
 
 ## The four stages
 
@@ -194,8 +207,10 @@ tests/                   contract refusal, DAG + asset wiring, live registry, th
 - The registry compiles plans against its pinned as-of date; `rebind_as_of`
   substitutes exactly one date literal and fails loudly on any other shape.
   The right fix is an `asOf` parameter on the plan endpoint.
-- The Spark backend and dbt-spark profile are written to the same seams the
-  DuckDB path proves, but are not exercised by this repo's CI — they assume a
-  worker whose Spark session has an Iceberg catalog configured.
+- The Kyuubi backend and dbt-spark thrift profile are written to the same
+  seams the DuckDB path proves, and their emitted SQL is unit-tested against
+  a stub connection — but no gateway is stood up in this repo's CI. They
+  assume a Kyuubi whose engines carry the Iceberg catalog config, and
+  authentication (LDAP/Kerberos) is left to the deployment.
 - Contract enforcement implements the ODCS subset it documents
   (`contracts.py` docstring); SLA and team blocks are carried, not enforced.

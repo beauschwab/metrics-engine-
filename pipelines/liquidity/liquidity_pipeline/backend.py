@@ -2,10 +2,12 @@
 
 Everything downstream of landing — contract checks, rules application, the
 LCR, the report — is expressed as SQL against tables, and this module is the
-only place that knows *which* engine runs it. The product target is PySpark
-over Iceberg; development and CI run DuckDB over one warehouse file. The
-interface is kept narrow on purpose: if a method here needs an engine-specific
-caller, the portability story is already broken.
+only place that knows *which* engine runs it. The product target is Spark
+over Iceberg **reached through Apache Kyuubi**; development and CI run DuckDB
+over one warehouse file. The interface is kept narrow on purpose: if a method
+here needs an engine-specific caller, the portability story is already
+broken — and Kyuubi enforces that at the protocol level, since a SQL gateway
+accepts nothing but SQL.
 
   raw       landed extracts, strings exactly as the file arrived
   alm       the conformed layer dbt builds (fct_2052a_positions, …)
@@ -17,8 +19,9 @@ tests all switch together.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import Any, Iterable, Protocol
+from typing import Any, Protocol
 
 from . import config
 
@@ -98,72 +101,113 @@ class DuckDBBackend:
 
 
 # ---------------------------------------------------------------------------
-# PySpark + Iceberg — the product engine
+# Spark over Iceberg, through Apache Kyuubi — the product engine
 # ---------------------------------------------------------------------------
 
-class SparkIcebergBackend:
-    """The prod backend: Spark SQL against an Iceberg catalog.
+class KyuubiSparkBackend:
+    """The prod backend: Spark SQL over Kyuubi's HiveServer2-compatible Thrift.
 
-    Assumes a session whose default catalog is the Iceberg one (REST or Glue),
-    configured outside this module — on the Airflow worker image, or by
-    ``spark-submit --conf spark.sql.catalog...``. The pipeline's SQL is engine
-    -portable by construction; what differs is only landing (external tables
-    over the object-store paths the contracts name) and the partition write,
-    which Iceberg's INSERT OVERWRITE handles natively in dynamic mode.
+    In production nothing in this pipeline owns a SparkSession. Kyuubi is the
+    multi-tenant gateway in front of the Spark fleet: the pipeline connects as
+    a service user (engine share level and pooling are Kyuubi's, configured
+    server-side), submits SQL, and disconnects. Two consequences shape this
+    class:
 
-    Not exercised by the local e2e run — DuckDB is the dev engine — but kept
-    to the same Protocol so switching is LIQ_TARGET=spark, not a rewrite.
+      * SQL only. The compiled plans, the rules CASE chain, the LCR and the
+        contract checks are already SQL, so nothing is lost — and there is no
+        DataFrame API to be tempted by.
+      * The Iceberg catalog is *engine* configuration, not client
+        configuration: ``spark.sql.catalog.*`` lives in kyuubi-defaults.conf
+        (or the engine's spark-defaults), and the client sees Iceberg tables
+        as plain names. The one session-scoped setting the pipeline needs —
+        dynamic partition overwrite — rides the connection's configuration
+        overlay, which Kyuubi forwards to the engine it launches or reuses.
+
+    Landing through a gateway means DDL over shared storage, not upload: the
+    raw table is declared as an external CSV table over the object-store
+    location the contract's ``servers`` block names (string-typed, header
+    row, same shape as the DuckDB loader produces). A local path only works
+    when the engine shares the filesystem — a dev nicety, not the contract.
+
+    dbt reaches the same gateway via ``method: thrift`` in profiles.yml, so
+    conformance and the pipeline's own SQL run on the same engines under the
+    same service identity.
+
+    Connection settings come from KYUUBI_HOST / KYUUBI_PORT (default 10009) /
+    KYUUBI_USER; authentication (LDAP, Kerberos) is deployment-specific and
+    belongs on the connection kwargs where the worker image configures it.
+    Not exercised by the local e2e run — DuckDB is the dev engine — but held
+    to the same Protocol, and its emitted SQL is pinned by unit tests against
+    a stub connection.
     """
 
     dialect = "spark"
 
-    def __init__(self, spark=None):
-        if spark is None:
-            from pyspark.sql import SparkSession
+    def __init__(self, connection=None, host: str | None = None,
+                 port: int | None = None, user: str | None = None):
+        if connection is None:
+            from pyhive import hive  # part of the `prod` extra
 
-            spark = (
-                SparkSession.builder.appName("daily_liquidity_position")
-                .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
-                .getOrCreate()
+            connection = hive.Connection(
+                host=host or os.environ.get("KYUUBI_HOST", "localhost"),
+                port=port or int(os.environ.get("KYUUBI_PORT", "10009")),
+                username=user or os.environ.get("KYUUBI_USER", "liquidity-pipeline"),
+                configuration={
+                    # Only touched partitions are replaced on INSERT OVERWRITE —
+                    # the sub-partition idempotency contract.
+                    "spark.sql.sources.partitionOverwriteMode": "dynamic",
+                    # Names the workload in Kyuubi's session listing.
+                    "kyuubi.session.name": "daily_liquidity_position",
+                },
             )
-        self.spark = spark
+        self.con = connection
         for schema in SCHEMAS:
-            self.spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {schema}")
+            self._execute(f"CREATE NAMESPACE IF NOT EXISTS {schema}")
+
+    def _execute(self, query: str):
+        cursor = self.con.cursor()
+        cursor.execute(query)
+        return cursor
 
     def sql(self, query: str) -> list[tuple]:
-        return [tuple(r) for r in self.spark.sql(query).collect()]
+        return [tuple(r) for r in self._execute(query).fetchall()]
 
     def scalar(self, query: str) -> Any:
-        rows = self.spark.sql(query).collect()
+        rows = self._execute(query).fetchall()
         return rows[0][0] if rows else None
 
     def columns(self, table: str) -> list[str]:
-        return self.spark.table(table).columns
+        cursor = self._execute(f"SELECT * FROM {table} LIMIT 0")
+        # HiveServer2 metadata may qualify names as "table.column".
+        return [d[0].split(".")[-1] for d in cursor.description]
 
     def land_csv(self, table: str, path: Path) -> int:
-        df = (
-            self.spark.read.option("header", True)
-            .option("inferSchema", False)  # strings, same as dev: contract casts later
-            .csv(str(path))
+        self._execute(f"DROP TABLE IF EXISTS {table}")
+        self._execute(
+            f"CREATE TABLE {table} "
+            f"USING csv OPTIONS (path '{path}', header 'true', inferSchema 'false')"
         )
-        df.writeTo(table).using("iceberg").createOrReplace()
-        return self.spark.table(table).count()
+        return int(self.scalar(f"SELECT count(*) FROM {table}"))
 
     def overwrite_partition(self, table: str, partition_col: str, value: str,
                             select_sql: str) -> int:
-        df = self.spark.sql(select_sql)
-        if not self.spark.catalog.tableExists(table):
-            df.writeTo(table).using("iceberg").partitionedBy(partition_col).create()
-        else:
-            # Dynamic partition overwrite: only the partitions present in the
+        schema, name = table.split(".")
+        exists = bool(self.sql(f"SHOW TABLES IN {schema} LIKE '{name}'"))
+        if exists:
+            # Iceberg + dynamic overwrite: only the partitions present in the
             # select are replaced — the daily idempotency contract.
-            df.writeTo(table).overwritePartitions()
-        return self.spark.sql(
+            self._execute(f"INSERT OVERWRITE {table} {select_sql}")
+        else:
+            self._execute(
+                f"CREATE TABLE {table} USING iceberg "
+                f"PARTITIONED BY ({partition_col}) AS {select_sql}"
+            )
+        return int(self.scalar(
             f"SELECT count(*) FROM {table} WHERE {partition_col} = DATE '{value}'"
-        ).collect()[0][0]
+        ))
 
     def close(self) -> None:
-        pass  # the session belongs to the worker, not to one task
+        self.con.close()
 
 
 def for_target(target: str | None = None) -> Backend:
@@ -171,5 +215,5 @@ def for_target(target: str | None = None) -> Backend:
     if which == "duckdb":
         return DuckDBBackend()
     if which == "spark":
-        return SparkIcebergBackend()
+        return KyuubiSparkBackend()
     raise ValueError(f"unknown LIQ_TARGET {which!r} — duckdb or spark")

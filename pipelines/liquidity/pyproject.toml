@@ -10,11 +10,11 @@
 # transitive graph is the artifact.
 #
 #   uv sync                # dev: Airflow + dbt-duckdb + DuckDB
-#   uv sync --extra prod   # adds PySpark, dbt-spark and PyIceberg
+#   uv sync --extra prod   # adds the Kyuubi Thrift clients (PyHive, dbt-spark)
 #
 # The `prod` extra is not installed in CI or the local e2e run — DuckDB is the
 # dev engine end to end (the point of this reference implementation), and the
-# Spark/Iceberg backend is exercised where a JVM and an Iceberg catalog exist.
+# Spark/Iceberg path runs where a Kyuubi gateway is reachable.
 [project]
 name = "liquidity-pipeline"
 version = "0.1.0"
@@ -42,12 +42,13 @@ dependencies = [
 
 [project.optional-dependencies]
 prod = [
-  # The product target: PySpark writing Iceberg through a REST or Glue
-  # catalog. dbt-spark conforms in the same engine; PyIceberg gives the
-  # report writer partition-scoped overwrites without a Spark round trip.
-  "pyspark>=3.5,<4",
-  "dbt-spark[session]>=1.9.0",
-  "pyiceberg>=0.9",
+  # The product target: Spark over Iceberg, reached through Apache Kyuubi's
+  # HiveServer2-compatible Thrift front end. Nothing here owns a
+  # SparkSession — PyHive is the client for the pipeline's own SQL and the
+  # PyHive extra of dbt-spark is the client for conformance, both against
+  # the same gateway. The Iceberg catalog is Kyuubi engine configuration.
+  "dbt-spark[PyHive]>=1.9.0",
+  "pyhive[hive_pure_sasl]>=0.7",
 ]
 
 [dependency-groups]
@@ -70,5 +71,5 @@ packages = ["liquidity_pipeline"]
 testpaths = ["tests"]
 markers = [
   "live_registry: needs a running keel registry (KEEL_BASE_URL)",
-  "spark: needs the prod extra and a JVM",
+  "spark: needs the prod extra and a reachable Kyuubi gateway",
 ]

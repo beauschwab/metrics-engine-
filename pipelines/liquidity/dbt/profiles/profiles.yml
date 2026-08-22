@@ -2,12 +2,15 @@
 #
 #   duckdb  dev and CI: the whole warehouse is one file, and an e2e run needs
 #           nothing but this repo.
-#   spark   prod: Spark SQL with Iceberg as the table format. `method: session`
-#           binds to the driver's own SparkSession (Airflow on a Spark-enabled
-#           worker or a spark-submit'd dbt); swap for `method: thrift` + host
-#           to point at a standing cluster instead. The session's default
-#           catalog must be the Iceberg one — the same assumption the
-#           pipeline's SparkIcebergBackend documents.
+#   spark   prod: Spark SQL with Iceberg as the table format, reached through
+#           Apache Kyuubi's HiveServer2-compatible Thrift front end — the
+#           same gateway, host and service identity the pipeline's
+#           KyuubiSparkBackend uses, so dbt's models and the pipeline's own
+#           SQL run on the same engines. The Iceberg catalog is configured on
+#           the Kyuubi engine side (kyuubi-defaults.conf), never here; dbt
+#           sees Iceberg tables as plain names. Authentication (LDAP,
+#           Kerberos) is deployment-specific — add `auth`/`kerberos_*` keys
+#           where the worker image provides them.
 liquidity:
   target: "{{ env_var('LIQ_TARGET', 'duckdb') }}"
   outputs:
@@ -18,6 +21,11 @@ liquidity:
       threads: 4
     spark:
       type: spark
-      method: session
+      method: thrift
+      host: "{{ env_var('KYUUBI_HOST', 'localhost') }}"
+      port: "{{ env_var('KYUUBI_PORT', '10009') | as_number }}"
+      user: "{{ env_var('KYUUBI_USER', 'liquidity-pipeline') }}"
       schema: alm
       threads: 4
+      connect_retries: 3
+      connect_timeout: 30
