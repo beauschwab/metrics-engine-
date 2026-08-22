@@ -1,7 +1,7 @@
 # chartroom-agent
 
 Chartroom's agent runtime (Phase 7, ADR-36): a LangGraph + deepagents loop on
-FastAPI, whose tools are `chartroom-mcp` consumed over stdio — the same 25
+FastAPI, whose tools are `chartroom-mcp` consumed over stdio — the same 28
 governed tools every other agent surface sees, under an `agent:lg-<session>`
 identity the server refuses at every approval route.
 

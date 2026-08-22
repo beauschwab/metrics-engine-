@@ -122,7 +122,7 @@ runs the compiled plans in real interpreters and requires them to agree.
 
 **Chartroom** — the spec DSL and a 20-rule linter with golden tests and
 mechanical fixes; a catalog of 12 widgets and 6 patterns; the agent loop
-(intake → brief → compose → critique) over 25 governed MCP tools; briefs with a
+(intake → brief → compose → critique) over 28 governed MCP tools; briefs with a
 human approval gate; metric proposals validated through the real engine; the
 draft/team/certified promotion matrix with sign-offs and exposure records;
 version-pin upgrade notices carrying the diff; a deterministic data critic;
