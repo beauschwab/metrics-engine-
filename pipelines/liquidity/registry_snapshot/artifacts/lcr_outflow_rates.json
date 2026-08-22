@@ -1,0 +1,10 @@
+{
+    "name": "lcr_outflow_rates",
+    "kind": "",
+    "revision": 1,
+    "body": "version: 1\nkind: parameter_set\nname: lcr_outflow_rates\ndisplay_name: LCR inflow / outflow rates\nkeys: [product_id]\nvalue: outflow_rate\n\neffective:\n  from: 2025-10-01\n\ngovernance:\n  owner: Liquidity Regulatory Reporting\n  sr_11_7_tier: 1\n  citation: 12 CFR 249 Subpart D\n  validation_status: validated\n\nentries:\n  - product_id: O.D.1\n    outflow_rate: 0.03\n    citation: 12 CFR 249.32(a)(1)\n\n  - product_id: O.D.2\n    outflow_rate: 0.03\n    citation: 12 CFR 249.32(a)(1)\n\n  - product_id: O.D.3\n    outflow_rate: 0.10\n    citation: 12 CFR 249.32(a)(2)\n\n  - product_id: O.D.5\n    outflow_rate: 0.03\n    citation: 12 CFR 249.32(a)(3)\n\n  - product_id: O.D.6\n    outflow_rate: 0.10\n    citation: 12 CFR 249.32(a)(3)\n\n  - product_id: O.S.1\n    outflow_rate: 0.00\n    citation: 12 CFR 249.32(j)(1)\n\n  - product_id: O.S.2\n    outflow_rate: 0.15\n    citation: 12 CFR 249.32(j)(2)\n\n  - product_id: O.S.3\n    outflow_rate: 0.25\n    citation: 12 CFR 249.32(j)(3)\n\n  - product_id: O.S.5\n    outflow_rate: 1.00\n    citation: 12 CFR 249.32(j)(4)\n\n  - product_id: O.W.1\n    outflow_rate: 0.25\n    citation: 12 CFR 249.32(h)(1)\n\n  - product_id: O.W.2\n    outflow_rate: 0.40\n    citation: 12 CFR 249.32(h)(2)\n\n  - product_id: O.W.3\n    outflow_rate: 1.00\n    citation: 12 CFR 249.32(h)(5)\n\n  - product_id: I.S.1\n    outflow_rate: 0.00\n    citation: 12 CFR 249.33(f)(1)\n\n  - product_id: I.S.2\n    outflow_rate: 0.50\n    citation: 12 CFR 249.33(f)\n\n  - product_id: I.U.1\n    outflow_rate: 1.00\n    citation: 12 CFR 249.33(c)\n\n  - product_id: I.O.1\n    outflow_rate: 0.50\n    citation: 12 CFR 249.33(g)",
+    "contentHash": "50d431d5146d4b0b71dfe156127fbc97c69607eee7d591feaba076e4ed66d05a",
+    "author": "system",
+    "message": "Shipped with the registry",
+    "createdAt": "2026-08-22T15:17:38.483Z"
+}

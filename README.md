@@ -12,6 +12,11 @@ editor.
 `IMPLEMENTATION.md` records how it was built and what broke on the way.
 [`chartroom/`](chartroom/README.md) is the consumption half — an agent-guided
 studio for dashboards bound to these definitions.
+[`pipelines/liquidity/`](pipelines/liquidity/README.md) is the nightly run this
+surface authors for — a reference Airflow pipeline that sources positions under
+Open Data Contracts, conforms them with dbt, and consumes this registry's
+deployed channel for rules, the LCR and the FR 2052a filing (DuckDB in dev,
+PySpark + Iceberg as the product target).
 
 ```
 npm install

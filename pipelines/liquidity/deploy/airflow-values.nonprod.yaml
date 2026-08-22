@@ -1,0 +1,67 @@
+# Values overlay for the official Apache Airflow Helm chart
+# (https://airflow.apache.org/docs/helm-chart/) — the pieces a Kubernetes
+# non-prod instance needs to run these DAGs. Merge into your instance's
+# values; nothing here is a complete install.
+#
+#   helm upgrade airflow apache-airflow/airflow \
+#     -n airflow-nonprod -f airflow-values.nonprod.yaml [your other -f files]
+#
+# The deploy loop this enables:
+#
+#   ./scripts/deploy_dags.sh --mode git       # push the bundle
+#   ...git-sync pulls it onto every pod within its poll interval
+#
+# Airflow 3.3+ is required — the DAGs use first-class asset partitions
+# (AIP-76): CronPartitionTimetable and PartitionedAssetTimetable.
+
+dags:
+  gitSync:
+    enabled: true
+    # The repo and branch scripts/deploy_dags.sh --mode git pushes to
+    # (DAGS_GIT_URL / DAGS_GIT_BRANCH). Read-only deploy key is enough.
+    repo: git@github.com:beauschwab/airflow-dags.git
+    branch: nonprod-dags
+    # deploy_dags.sh writes the bundle under this subdir (DAGS_GIT_SUBDIR);
+    # its root becomes the DAGs folder, which is what puts the
+    # liquidity_pipeline package on the scheduler's sys.path.
+    subPath: liquidity
+    period: 60s
+    # credentialsSecret / sshKeySecret per your git hosting.
+
+env:
+  # The pipeline's whole configuration surface (see liquidity_pipeline/config.py).
+  # duckdb keeps non-prod self-contained: every task runs against a warehouse
+  # file on the worker's scratch volume. Point LIQ_TARGET at spark + the
+  # KYUUBI_* trio to smoke the prod engine path instead.
+  - name: LIQ_TARGET
+    value: duckdb
+  # git-sync volumes are read-only; landed extracts, the dev warehouse and
+  # dbt build output all go here instead (emptyDir/scratch is fine  — every
+  # run re-lands and re-conforms its batch).
+  - name: LIQ_DATA_DIR
+    value: /tmp/liquidity
+  # Unset = the committed registry_snapshot in the bundle (hermetic).
+  # Point at your registry service to consume the live production channel.
+  # - name: KEEL_BASE_URL
+  #   value: http://keel-registry.metrics.svc:8787
+  # - name: KYUUBI_HOST
+  #   value: kyuubi.nonprod.svc
+  # - name: KYUUBI_PORT
+  #   value: "10009"
+  # - name: KYUUBI_USER
+  #   value: liquidity-pipeline
+
+  # NON-PROD ONLY: the official image installs these at container start.
+  # Slow to boot and unpinned by your image — fine for a sandbox, wrong for
+  # prod. The real fix is baking them into the Airflow image (see below).
+  - name: _PIP_ADDITIONAL_REQUIREMENTS
+    value: "dbt-duckdb>=1.9.0 duckdb>=1.1 pyyaml>=6.0"
+
+# For anything past a sandbox, bake the dependencies instead:
+#
+#   FROM apache/airflow:3.3.1-python3.11
+#   RUN pip install --no-cache-dir "dbt-duckdb>=1.9.0" "duckdb>=1.1" "pyyaml>=6.0"
+#   # prod engine path (Kyuubi thrift clients):
+#   # RUN pip install --no-cache-dir "dbt-spark[PyHive]>=1.9.0" "pyhive[hive_pure_sasl]>=0.7"
+#
+# and set images.airflow.repository/tag here.

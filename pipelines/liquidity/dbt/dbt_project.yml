@@ -1,0 +1,58 @@
+# The conformance and normalization layer.
+#
+# dbt owns the road from "what each producer sends" (raw, strings, client
+# vocabularies) to "the canonical tables the governed rules read"
+# (alm.fct_2052a_positions, alm.fct_liquidity_position). Classification, rate
+# application and reporting deliberately do NOT happen here — those are the
+# registry's, so a rule change never requires a dbt PR.
+#
+# One project, two engines: profiles.yml targets DuckDB in dev and Spark over
+# Iceberg in prod, and the models restrict themselves to SQL both run. Where
+# the engines genuinely differ (compact-date parsing, file formats) the
+# difference lives in a macro or a config, never in a model body.
+name: liquidity_conformance
+version: "1.0.0"
+
+profile: liquidity
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # The batch date. Always passed explicitly by the pipeline:
+  #   dbt build --vars '{as_of_date: 2026-06-30}'
+  as_of_date: null
+  # One producing system, when a run conforms a single feed's sub-partition:
+  #   dbt build --select +fct_2052a_positions \
+  #             --vars '{as_of_date: 2026-06-30, source_system: murex_eu}'
+  # Null means every source in one pass (how the tests exercise the union).
+  source_system: null
+
+models:
+  liquidity_conformance:
+    staging:
+      # Views: per-source conformance is a lens over raw, not a copy of it.
+      +materialized: view
+      +schema: stg
+    conformed:
+      # Incremental with *sub-partition* replacement. The daily partition is
+      # subdivided by producing system — (as_of_date, source_system) — so each
+      # feed's conformance run replaces exactly its own slice and never
+      # touches a sibling feed's rows. On DuckDB that is delete+insert on the
+      # composite key (the key tuples present in the batch are the rows
+      # deleted); on Spark it is Iceberg's dynamic insert_overwrite over the
+      # two-level partition spec — only partitions present in the batch are
+      # replaced. Same contract, two engines.
+      +materialized: incremental
+      +schema: alm
+      # A new column (like source_system, when the sub-partition key arrived)
+      # is added to an existing target rather than crashing the composite-key
+      # replacement against a table that predates it.
+      +on_schema_change: append_new_columns
+      +unique_key: ['as_of_date', 'source_system']
+      +incremental_strategy: "{{ 'insert_overwrite' if target.type == 'spark' else 'delete+insert' }}"
+      +partition_by: "{{ ['as_of_date', 'source_system'] if target.type == 'spark' else none }}"
+      +file_format: "{{ 'iceberg' if target.type == 'spark' else none }}"

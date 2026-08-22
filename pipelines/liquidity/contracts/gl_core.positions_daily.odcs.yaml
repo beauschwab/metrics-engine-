@@ -1,0 +1,175 @@
+# Open Data Contract Standard (ODCS) v3 — GL Core daily position extract.
+#
+# The producer-facing half of sourcing: what the general-ledger core system
+# promises about the file it lands every morning. The pipeline enforces this
+# *before* dbt touches the data — a violated contract fails the feed's task and
+# nothing downstream runs on the bad batch.
+#
+# This feed is already canonically shaped (the GL core team adopted the
+# canonical vocabulary), so its staging model is mostly casts. Contrast
+# murex_eu.positions_daily.odcs.yaml, where the contract pins the *client*
+# shape and dbt does real decoding.
+apiVersion: v3.0.2
+kind: DataContract
+
+id: urn:datacontract:liquidity:gl-core-positions-daily
+name: GL Core — daily liquidity positions
+version: 1.0.0
+status: active
+domain: liquidity
+dataProduct: daily-liquidity-position
+tenant: treasury
+
+description:
+  purpose: >
+    Daily position-level extract of on- and off-balance-sheet items in scope
+    for FR 2052a classification, one file per as-of date, delivered by 05:30
+    America/New_York.
+  usage: >
+    Input to the conformed table alm.fct_2052a_positions. Classification
+    (product ID), rate application and reporting happen downstream against the
+    governed rules registry — this feed must not pre-classify.
+  limitations: >
+    Balances are already USD-converted by the GL at the WM/Reuters 4pm London
+    rate. Open positions (no contractual maturity) carry a null maturity_date.
+
+servers:
+  - server: dev
+    type: duckdb
+    environment: dev
+    database: warehouse.duckdb
+    schema: raw
+  - server: prod
+    type: s3
+    environment: prod
+    location: s3://bank-landing/liquidity/gl_core/positions/{as_of_date}/
+    format: parquet
+    description: Landed by the GL export job; registered as an external table for Spark.
+
+schema:
+  - name: positions_daily
+    physicalName: raw.gl_core_positions_daily
+    logicalType: object
+    physicalType: table
+    description: One row per position per as-of date.
+    dataGranularityDescription: position_id × as_of_date
+    properties:
+      - name: position_id
+        logicalType: string
+        physicalType: varchar
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 1
+        description: Stable position identifier within GL Core.
+      - name: as_of_date
+        logicalType: date
+        physicalType: date
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 2
+        description: Close-of-business date the position is observed on (ISO 8601).
+      - name: entity_id
+        logicalType: string
+        physicalType: varchar
+        required: true
+        description: Legal entity booking the position.
+        quality:
+          - rule: validValues
+            validValues: [BANK_US, BANK_UK, BANK_SG, BANK_DE]
+      - name: currency
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [USD, EUR]
+      - name: segment
+        logicalType: string
+        physicalType: varchar
+        required: true
+        description: Customer segment, canonical vocabulary.
+        quality:
+          - rule: validValues
+            validValues: [RETAIL, SMALL_BUSINESS, WHOLESALE]
+      - name: counterparty_type
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [RETAIL, SMB, NONFIN_CORP, FINANCIAL, SOVEREIGN]
+      - name: account_type
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [TRANSACTIONAL, SAVINGS, TIME, OPERATIONAL, NON_OPERATIONAL]
+      - name: insured_flag
+        logicalType: boolean
+        physicalType: boolean
+        required: true
+        description: Deposit-insurance coverage on the balance.
+      - name: is_secured
+        logicalType: boolean
+        physicalType: boolean
+        required: true
+      - name: collateral_class
+        logicalType: string
+        physicalType: varchar
+        required: true
+        description: HQLA class of the securing collateral; UNSECURED when is_secured is false.
+        quality:
+          - rule: validValues
+            validValues: [L1, L2A, L2B, NON_HQLA, UNSECURED]
+      - name: direction
+        logicalType: string
+        physicalType: varchar
+        required: true
+        quality:
+          - rule: validValues
+            validValues: [INFLOW, OUTFLOW]
+      - name: maturity_date
+        logicalType: date
+        physicalType: date
+        required: false
+        description: Contractual maturity; null for open positions.
+      - name: balance_usd
+        logicalType: number
+        physicalType: double
+        required: true
+        description: USD-converted balance, post GL translation.
+    quality:
+      - rule: rowCount
+        description: An empty file is a failed extract, not an empty book.
+        sql: SELECT count(*) FROM {table}
+        mustBeGreaterThan: 0
+      - rule: freshness
+        description: Every row carries the batch as-of date — a mixed file is a replay accident.
+        sql: SELECT count(*) FROM {table} WHERE as_of_date <> DATE '{as_of_date}'
+        mustBe: 0
+      - rule: securedHasCollateral
+        description: A secured position must state its collateral class; an unsecured one must not.
+        sql: >
+          SELECT count(*) FROM {table}
+          WHERE (is_secured = true AND collateral_class = 'UNSECURED')
+             OR (is_secured = false AND collateral_class <> 'UNSECURED')
+        mustBe: 0
+
+slaProperties:
+  - property: frequency
+    value: 1
+    unit: d
+  - property: timeOfAvailability
+    value: "05:30"
+    driver: regulatory
+
+team:
+  - username: gl-core-integration
+    role: producer
+  - username: liquidity-data-integration
+    role: consumer
+
+support:
+  - channel: "#liq-data-feeds"
+    tool: slack
