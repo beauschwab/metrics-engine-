@@ -326,7 +326,8 @@ npm run mcp                      # read-only
 KEEL_MCP_WRITE=1 npm run mcp     # writes allowed
 ```
 
-Twelve tools over stdio. The reads return **resolved semantics, not YAML** —
+Eighteen tools over stdio — reads, dry-runs, and the release/deploy verbs. The
+reads return **resolved semantics, not YAML** —
 `get_rules` gives every rule in evaluation order with its condition, emitted
 value, citation and share of the book, because first-match precedence means a
 rule's position is part of its meaning and no caller should re-derive that.
@@ -359,6 +360,14 @@ revisions, optimistic concurrency, attribution — behind four gates:
 
 Identity comes from `KEEL_MCP_IDENTITY`, never from a tool argument. An author
 field the caller can set to any string is not an attribution.
+
+This server has a built-in consumer: the **definition agent** (ADR-56), the
+same Python agent service the studio uses, started with
+`AGENT_SURFACE=registry` and surfaced as a rail beside the editor. It reads
+lineage before proposing, proves every draft with `test_rules` and
+`assess_change`, and presents the finished body for the author to save —
+under an `agent:lg-registry` identity, so the write tools above are never in
+its roster to begin with.
 
 ## Deploying, and consuming at run time
 
@@ -462,6 +471,15 @@ to a WARN when no model is available; the deterministic linter stays the hard
 gate. Since Phase 7 the loop itself is a Python LangGraph + deepagents service
 consuming that same MCP roster.
 
+The studio also opens *read-first*: an analyst mode with as-of and comparison
+basis resolved in the engine, an exception strip whose value-level rows come
+from running the workspace's own `variance_monitor` documents (governed
+threshold ids as the codes — never a limit typed into a client), and the
+design agent as a left rail — completions drawn from the open spec, the
+registry and the pattern catalog, and `✳ ask` pointers that turn "explain
+this tile" into a resolved reference carrying the widget's binding and the
+reader's environment.
+
 Queries route by backend — `CHARTROOM_BACKEND=fixtures|duckdb|dremio`. The
 fixture path stays the default *and the oracle*: a parity harness runs every
 query shape against both engines over identical rows and requires agreement to
@@ -497,9 +515,9 @@ against a real implementation of the protocol rather than against Dremio itself.
 
 ```
 npm run verify       # everything below, across all 14 workspaces
-npm run test         # 823 unit, conformance, server and MCP tests
+npm run test         # 855 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e          # 111 browser checks against the built bundles
+npm run e2e          # 129 browser checks against the built bundles
 npm run setup:agent  # build the Python agent's venv, once
 
 Turborepo runs these over the package graph and caches by input hash, so a
