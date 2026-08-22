@@ -60,6 +60,22 @@ ADR: the text ramp steps up one because Aperture's tertiary grey misses AA at
 11px, and breach text is the danger red lightened toward the system's
 lightest grey.
 
+The studio then learns to be read (ADR-52): it opens in a read-first analyst
+mode — as-of and comparison basis resolved in the engine and part of the
+query cache key, exceptions derived from the lint report, a drill-down that
+ends at the aggregate breakdown because row-level data has no representation
+in the query types. ADR-55 makes the conversation part of that surface: the
+chat becomes a left rail, open by default, with composer completions drawn
+from the open spec, the registry and the pattern catalog, `✳ ask` pointers
+that serialize a widget's binding and the reader's environment, and an
+exception strip whose value-level rows come from running the workspace's own
+`variance_monitor` documents through the engine — governed threshold ids as
+the codes, never a limit typed into the client. ADR-56 extends the same
+agent concept to the registry's authoring surface, behind a hardening: an
+`agent:*` identity is never even offered the registry's write tools, so the
+definition agent proposes, proves with `test_rules` and `assess_change`, and
+hands the body to the human who saves it.
+
 ```
 npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance, chat proxy
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
@@ -200,7 +216,13 @@ studio's own design system, over a frozen SSE protocol (ADR-37). Run the
 agent service with `ANTHROPIC_API_KEY` to enable it; without it the pane says
 so plainly and everything else keeps working (ADR-35).
 
-## The two dogfood dashboards
+Since ADR-55 the pane is a left *rail*, open by default — the intake
+conversation is part of the surface a reader lands on. Same frozen protocol,
+same parser; what's new is around the stream: the phase spine (orientation
+only — it gates nothing), completions from real things, pointers, inlined
+file drops, and the additive `thinking` event.
+
+## The three dogfood dashboards
 
 Seeded on first boot, bound to real registry functions, linting clean — the
 Phase-1 hard gate (`apps/chartroom-api/test/seed.test.ts` keeps it true):
@@ -210,6 +232,8 @@ Phase-1 hard gate (`apps/chartroom-api/test/seed.test.ts` keeps it true):
   and an entity × product pivot with totals.
 - **limit-board** — shortfall / volatility / day-over-day / stress tiles and
   the per-entity HQLA delta table.
+- **outflow-walk** — the variance walk, instantiated from the shipped
+  `variance-walk@1` pattern rather than a `none` justification (Phase 9).
 
 Every deviation from the implementation spec's pinned decisions — and every
 DSL gap the dogfooding surfaced — is a numbered entry in [`ADRS.md`](ADRS.md).

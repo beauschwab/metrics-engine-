@@ -90,7 +90,9 @@ dashboard sprawl.
 **P6 — Humans approve at every boundary.** The agent proposes; named humans
 approve. This is the SR 11-7 posture: the agent is a development tool, never an
 approver. Approval, stewardship decisions, and promotion are refused to
-`agent:*` identities at the API — permanently, not by configuration.
+`agent:*` identities at the API — permanently, not by configuration — and the
+registry's tool surface holds the same line: an `agent:*` connection is never
+even offered the save, cut, or promote tools, whatever the write flag says.
 
 **P7 — Refuse rather than guess.** Every layer would rather say what it cannot
 do than produce something plausible. The compiler refuses to emit SQL for
@@ -118,20 +120,31 @@ Nine phases are built, verified, and merged. The engine and both surfaces run.
 `prepared_source`), each with
 its own answer to "is this right?"; a real CodeMirror editor; compilation to
 SQL/Polars/PySpark plus semantic views and dbt models; a conformance suite that
-runs the compiled plans in real interpreters and requires them to agree.
+runs the compiled plans in real interpreters and requires them to agree; and a
+definition agent in a rail beside the editor that drafts full document bodies,
+proves them with the same diagnostics and impact assessment a person is held
+to, and hands the body over — the save stays a human act, under the author's
+own name.
 
 **Chartroom** — the spec DSL and a 20-rule linter with golden tests and
 mechanical fixes; a catalog of 12 widgets and 6 patterns; the agent loop
-(intake → brief → compose → critique) over 25 governed MCP tools; briefs with a
+(intake → brief → compose → critique) over 28 governed MCP tools; briefs with a
 human approval gate; metric proposals validated through the real engine; the
 draft/team/certified promotion matrix with sign-offs and exposure records;
 version-pin upgrade notices carrying the diff; a deterministic data critic;
 cross-filtering; PPTX committee packs; a shareable read-only view mode; usage
-instrumentation; and an embedded agent chat.
+instrumentation; a read-first analyst mode whose exception strip runs the
+workspace's own variance monitors (governed threshold ids as the codes); and
+the design agent as a left rail — completions from real things, pointers that
+carry a widget's binding and the reader's environment, and the same honest
+degrade when no model is there.
 
-**The agent runtime** is a Python LangGraph + deepagents service on FastAPI
-whose tools are the same governed MCP roster every other surface sees, with
-durable threads and a frozen SSE protocol.
+**The agent runtime** is one Python LangGraph + deepagents service on FastAPI
+serving two surfaces by configuration: the studio's design agent over the
+chartroom roster, and the authoring surface's definition agent over the
+registry's — a roster that structurally cannot write. Durable threads, one
+frozen SSE protocol, and per-surface system prompts that encode each
+surface's journey.
 
 **Query backends** are a routing decision: `fixtures | duckdb | dremio`.
 Fixtures remain the default *and the test oracle* — a parity harness runs every
@@ -171,10 +184,11 @@ registry, seeded on first boot, and covered by a test that fails when a measure
 is renamed. `outflow-walk` is built on a shipped pattern rather than a "no
 pattern" justification.
 
-Verification is one command (`npm run verify`) and currently runs 603 engine
-unit tests, 89 browser checks, 189 chartroom unit tests, 27 Python tests
-including the cross-backend parity harness, and 22 studio browser checks.
+Verification is one command (`npm run verify`) and currently runs 855 unit,
+conformance, server and MCP tests across the TypeScript workspaces, 34 Python
+tests including the cross-backend parity harness, and 129 browser checks (93
+against the authoring surface, 36 against the studio).
 
 Every architectural deviation from the pinned spec decisions is recorded in
-`docs/chartroom/ADRS.md` — 51 entries, including the ones that record a mistake and
+`docs/chartroom/ADRS.md` — 56 entries, including the ones that record a mistake and
 its correction.
