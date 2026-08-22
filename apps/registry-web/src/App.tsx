@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DefinitionRail, type RailPointer } from './agent/DefinitionRail';
 import { DefinitionCard, type CardTarget } from './components/DefinitionCard';
 import { MetricEditor, type MetricEditorHandle } from './components/MetricEditor';
 import { ProblemsStrip } from './components/ProblemsStrip';
@@ -169,6 +170,41 @@ export default function App() {
   const [layout, setLayout] = useLayout();
   const editor = useRef<MetricEditorHandle>(null);
   const hoverTimer = useRef<number | undefined>(undefined);
+
+  /**
+   * The definition agent rail (ADR-56).
+   *
+   * Closed by default — deliberately the opposite of the analyst surface's
+   * posture (ADR-55): an author opens this surface with intent and a document,
+   * so the conversation is an instrument they reach for, not the landing
+   * experience. The choice persists like the editing mode does.
+   */
+  const [railOpen, setRailOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('mdl.rail') === 'open';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('mdl.rail', railOpen ? 'open' : 'closed');
+    } catch {
+      // A surface that will not render because storage is unavailable is worse
+      // than one that forgets a preference.
+    }
+  }, [railOpen]);
+
+  /** Diagnostics attached to the next message — the strip's `✳ ask`. */
+  const [railPointers, setRailPointers] = useState<RailPointer[]>([]);
+  const askDiagnostic = useCallback((d: { code: string; line: number; message: string }) => {
+    const id = `${d.code}-L${d.line + 1}`;
+    setRailPointers((ps) =>
+      ps.some((p) => p.id === id)
+        ? ps.filter((p) => p.id !== id) // asking again detaches — die where born
+        : [...ps, { id, detail: `${d.code} · line ${d.line + 1} · ${d.message}` }]);
+    setRailOpen(true);
+  }, []);
 
   // Nothing renders until the workspace has loaded, so anything measuring the
   // DOM has to wait for it.
@@ -533,8 +569,27 @@ export default function App() {
   return (
     <div
       className="mdl-shell"
-      style={{ gridTemplateColumns: `${layout.registry}px 5px minmax(0, 1fr) 5px ${layout.validation}px` }}
+      style={{
+        gridTemplateColumns:
+          `${railOpen ? '380px ' : ''}${layout.registry}px 5px minmax(0, 1fr) 5px ${layout.validation}px`,
+      }}
     >
+      {railOpen ? (
+        <DefinitionRail
+          file={file}
+          kind={graph.kind}
+          fixture={fixture}
+          active={active}
+          online={connection.state === 'online'}
+          documents={lineage.nodes.map((n) => ({ name: n.name, kind: n.kind }))}
+          measures={graph.kind === 'metrics_view' ? Object.keys(graph.byName) : []}
+          pointers={railPointers}
+          onRemovePointer={(id) => setRailPointers((ps) => ps.filter((p) => p.id !== id))}
+          onClearPointers={() => setRailPointers([])}
+          onClose={() => setRailOpen(false)}
+        />
+      ) : null}
+
       <RegistryPanel
         lineage={lineage}
         file={file}
@@ -696,6 +751,19 @@ export default function App() {
               <option value="stress">Stressed</option>
             </select>
 
+            <span className="mdl-divider" aria-hidden="true" />
+
+            <button
+              type="button"
+              className="mdl-modeswitch"
+              data-testid="mdl-agent-toggle"
+              data-current={railOpen}
+              aria-pressed={railOpen}
+              title="The definition agent — proposes and proves; you save"
+              onClick={() => setRailOpen((v) => !v)}
+            >
+              ✳ Agent
+            </button>
           </div>
         </div>
 
@@ -755,6 +823,8 @@ export default function App() {
           onToggle={() => setProblemsOpen((v) => !v)}
           onGo={(line) => editor.current?.goToLine(line)}
           onFix={applyQuickFix}
+          onAsk={askDiagnostic}
+          asked={(d) => railPointers.some((p) => p.id === `${d.code}-L${d.line + 1}`)}
         />
       </div>
 

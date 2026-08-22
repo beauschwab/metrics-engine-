@@ -48,3 +48,25 @@ async def test_bad_request_is_an_error_event_not_a_500(
     events = _events(r.text)
     assert events[0]["type"] == "error"
     assert "send a message" in events[0]["message"]
+
+
+async def test_registry_surface_serves_the_same_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # One process, one endpoint, one frozen protocol — AGENT_SURFACE only
+    # changes whose tools load and what the degrade names (ADR-56).
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("AGENT_SURFACE", "registry")
+    transport = httpx.ASGITransport(app=create_app())
+    client = httpx.AsyncClient(transport=transport, base_url="http://agent")
+
+    health = await client.get("/healthz")
+    assert health.json()["surface"] == "registry"
+
+    r = await client.post("/agent/chat", json={"message": "hello"})
+    events = _events(r.text)
+    assert events[0]["type"] == "unavailable"
+    # The degrade speaks for this surface: diagnostics, not the studio's linter.
+    assert "diagnostics" in events[0]["message"]
+    # The studio's warehouse query path does not ride along on this surface.
+    assert (await client.post("/query/run", json={})).status_code == 404

@@ -43,10 +43,13 @@ def error(message: str) -> Event:
     return {"type": "error", "message": message}
 
 
-def unavailable() -> Event:
+def unavailable(message: str | None = None) -> Event:
+    # The default is the studio's wording; a surface may say what *its* readers
+    # keep without a model (ADR-56). The event shape itself stays frozen.
     return {
         "type": "unavailable",
-        "message": (
+        "message": message
+        or (
             "No model is configured (ANTHROPIC_API_KEY is not set). The rest of the "
             "studio works without me — the linter and data critic are deterministic."
         ),

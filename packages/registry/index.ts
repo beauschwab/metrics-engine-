@@ -13,6 +13,7 @@
 
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
+import { chatFrames } from './agent';
 import { handle, type ApiRequest } from './api';
 import { migrate, openMssql, openSqlite, type Db } from './db';
 import { dialectFor, type DialectName } from './dialect';
@@ -137,6 +138,25 @@ export async function main(): Promise<void> {
       const message = err instanceof Error ? err.message : String(err);
       res.writeHead(413, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: message }));
+      return;
+    }
+
+    // The definition agent streams SSE — a transport the pure handle()
+    // contract doesn't model, so it gets its own route here, exactly as the
+    // studio's API does for its chat (ADR-56). Everything else stays JSON
+    // through handle().
+    if (method === 'POST' && url.pathname === '/api/chat') {
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      });
+      const abort = new AbortController();
+      req.on('close', () => abort.abort());
+      for await (const chunk of chatFrames(body, abort.signal)) {
+        res.write(chunk);
+      }
+      res.end();
       return;
     }
 

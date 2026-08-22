@@ -1176,3 +1176,68 @@ from `spec.context`; dated bylined annotations are a change to
 `annotation@1`'s governed contract, which has a proposals flow; and
 row-level data has no representation in the query response types
 (`product.md` §7) — a boundary, not a backlog item.
+
+## ADR-56 — the agent extends to the metrics-engine surface; an agent identity never writes
+
+The design-studio agent concept, applied to the registry's authoring
+surface. One agent service, one frozen protocol, one loop — and per surface,
+the things that actually differ: which MCP server supplies the tools, what
+identity that subprocess asserts, which tool names may never appear in the
+roster, and the system prompt that encodes the surface's journey.
+
+**The prerequisite came first: the write gate became an identity, not a
+flag.** registry-mcp gated `save_artifact`, `promote` and `create_release`
+behind `KEEL_MCP_WRITE=1` — an env flag, which is exactly "a permission that
+could be granted later", the thing the maker-checker seam (P6, ADR-24)
+forbids for a model session. Now an `agent:`-prefixed identity — chartroom's
+convention: `agent:*` is an agent to the server whatever it calls itself
+after the colon — is refused permanently: the server does not register the
+three write tools for that identity at all, the policy forces `canWrite`
+off whatever the flag says, and the tool layer refuses with a message that
+names the loop to use instead. Absent beats present-but-refused: a tool
+that exists is a permission waiting for a flag. The tool-layer refusal
+stays as defense in depth for a server assembled by hand.
+
+**The service is a surface parameter, not a fork.** `AGENT_SURFACE` picks
+chartroom (the default — byte-for-byte the ADR-36 service) or registry:
+registry-mcp over stdio under `KEEL_MCP_IDENTITY=agent:lg-registry`, a
+banned-name guard covering the write tools so a drifting roster fails
+loudly at startup, a registry system prompt, and the same `/agent/chat`
+endpoint speaking the same frozen events. The studio's warehouse query
+executor does not ride along on the registry surface. The registry server
+grew the one route the pure `handle()` contract cannot model — `POST
+/api/chat` streams the agent service's SSE frames through untouched, with
+the same honest `unavailable` degrade the studio's proxy has (ADR-35) —
+default agent port :8790, so both surfaces can run at once.
+
+**The registry surface's journey is propose → prove → hand over.** The
+system prompt encodes it: read `get_lineage` before touching anything
+(`usedBy` is the list of things a change breaks), draft the full document
+body, prove it with `validate`, `test_rules`, `preview_report` and always
+`assess_change` — a `needsReview: true` is something the human hears from
+the agent, not discovers — and hand over the body in a fenced block. The
+rail renders that fence as a code block with a copy button, and that button
+is the entire hand-over mechanism: the author carries the body into the
+editor and saves under their own name, where the same diagnostics hold
+them. A "save" or "apply" button on the rail was considered and declined —
+it would collapse the seam the identity refusal exists to hold open.
+
+**The rail is the ADR-55 rail with the registry's vocabulary in every
+slot.** Phases intake → draft → prove → hand over (orientation only; the
+spine gates nothing). `/` completes the six propose-and-prove commands; `@`
+completes from the lineage's documents and the open view's measures — a
+mention offered is a thing that exists. The pointer is the signature
+interaction re-grounded: on the analyst surface a pointer is a widget; here
+it is a *diagnostic* — `✳ ask` on a problems-strip row attaches the code,
+the line and the message as a resolved reference, asking again detaches
+(die where born), and asking with the rail closed opens it. The `[viewing]`
+block carries document, kind, test-data fixture and active measure.
+
+**Deliberately different from ADR-55: closed by default.** The analyst
+surface opens on the conversation because intake is the landing experience
+for a reader deciding what a board should decide. An author opens this
+surface with a document and intent; the rail is an instrument reached for
+— the toggle in the editor's toolbar, the choice persisted like the
+editing-mode choice — not chrome that arrives uninvited. If use teaches
+otherwise, flipping the default is a one-line change and a new sentence
+here, not a redesign.

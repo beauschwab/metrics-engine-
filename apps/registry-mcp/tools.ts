@@ -63,20 +63,54 @@ export class ToolError extends Error {}
  * from a tool argument. An author field the caller can set to any string is not
  * an attribution, and under SR 11-7 the name against a rule change is part of
  * the control rather than a label.
+ *
+ * `agent` marks an `agent:`-prefixed identity, and it is not another flag: an
+ * agent connection can NEVER save, cut or promote, whatever `KEEL_MCP_WRITE`
+ * says (ADR-56). A permission an env variable could grant later is exactly the
+ * thing the maker-checker seam forbids — the model session's half of the seam
+ * is proposing and proving, and the write stays a human act. The convention is
+ * chartroom's: `agent:*` is an agent to this server whatever it calls itself
+ * after the colon.
  */
 export interface McpPolicy {
   canWrite: boolean;
   identity: string;
+  agent: boolean;
   fixture: FixtureName;
 }
 
 export function policyFromEnv(env: Record<string, string | undefined>): McpPolicy {
   const fixture = (env.KEEL_MCP_FIXTURE || 'nominal') as FixtureName;
+  const identity = env.KEEL_MCP_IDENTITY || 'mcp-agent';
+  const agent = identity.startsWith('agent:');
   return {
-    canWrite: env.KEEL_MCP_WRITE === '1',
-    identity: env.KEEL_MCP_IDENTITY || 'mcp-agent',
+    // An agent identity forces read-only regardless of the write flag — the
+    // refusal in each write tool is the enforcement, this makes the roster and
+    // descriptions tell the truth up front.
+    canWrite: env.KEEL_MCP_WRITE === '1' && !agent,
+    identity,
+    agent,
     fixture: TABLES[fixture] ? fixture : 'nominal',
   };
+}
+
+/**
+ * The permanent half of the write gate.
+ *
+ * Checked before `canWrite` so the refusal an agent reads is about identity,
+ * not configuration: there is no flag to set, no permission to be granted
+ * later. Defense in depth — an agent policy never registers the write tools in
+ * the first place (see `server.ts`), so reaching this means a server was
+ * assembled by hand with the wrong roster.
+ */
+function refuseAgentWrite(policy: McpPolicy, verb: string): void {
+  if (policy.agent) {
+    throw new ToolError(
+      `an agent identity (${policy.identity}) can never ${verb} — propose the change with `
+      + 'validate, test_rules and assess_change, and hand the body to a human who saves '
+      + 'it under their own name (ADR-56)',
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -575,6 +609,7 @@ export async function createRelease(
   policy: McpPolicy,
   input: { name?: string; message: string },
 ) {
+  refuseAgentWrite(policy, 'cut a release');
   if (!policy.canWrite) {
     throw new ToolError(
       'this registry connection is read-only — set KEEL_MCP_WRITE=1 to cut releases',
@@ -634,6 +669,7 @@ export async function promote(
     acknowledgeReview?: boolean;
   },
 ) {
+  refuseAgentWrite(policy, 'promote a release');
   if (!policy.canWrite) {
     throw new ToolError(
       'this registry connection is read-only — set KEEL_MCP_WRITE=1 to deploy',
@@ -686,6 +722,7 @@ export async function saveArtifact(
     acknowledgeReview?: boolean;
   },
 ): Promise<SaveOutcome> {
+  refuseAgentWrite(policy, 'save an artifact');
   if (!policy.canWrite) {
     throw new ToolError(
       'this registry connection is read-only — set KEEL_MCP_WRITE=1 to allow saves',
