@@ -1,6 +1,6 @@
 # Closing ADR-57–62 — the hardening plan
 
-Status: proposed, not started · Owner: platform ·
+Status: Phase A shipped; B-E not started · Owner: platform ·
 Prereq reading: `ADRS.md` (the "Proposed" section, ADR-57–62), `product.md` §7,
 the exec pitch's "hard questions" appendix
 
@@ -36,7 +36,7 @@ blocked externally on a filing extract. D and E run inside the pilot window.
 
 ---
 
-## Phase A — the human seam (ADR-57) · pilot prerequisite
+## Phase A — the human seam (ADR-57) · pilot prerequisite — SHIPPED
 
 The agent↔human seam is structural; this phase makes the human↔human seam
 match it, enforced in the same layers the agent refusals live in — never the

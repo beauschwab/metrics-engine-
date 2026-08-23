@@ -201,3 +201,127 @@ describe('live routes without a warehouse', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// The human seam (ADR-57)
+// ---------------------------------------------------------------------------
+
+describe('the human seam (ADR-57)', () => {
+  const as = (identity: string | null, method: string, path: string, body?: unknown,
+    controls?: { requireIdentity?: boolean }) =>
+    handle(repo, {
+      method, path,
+      ...(body !== undefined ? { body } : {}),
+      ...(identity !== null ? { identity } : {}),
+    }, controls ? { controls } : {});
+
+  const body = async (name: string) => (await repo.latest(name))!.body;
+
+  it('refuses an agent identity on every write route, mode or no mode', async () => {
+    // The registry's tool surface never offers agents the write tools
+    // (ADR-56); the HTTP door holds the same line rather than being the way
+    // around it. No mode flag involved — this is identity, not configuration.
+    const doc = await body('liquidity_pit');
+    const writes: Array<[string, string, unknown]> = [
+      ['PUT', '/api/artifacts/liquidity_pit', { body: doc, message: 'x' }],
+      ['POST', '/api/releases', { message: 'x' }],
+      ['PUT', '/api/channels/production', { version: 1 }],
+      ['POST', '/api/artifacts/liquidity_pit/review', { revision: 1 }],
+      ['POST', '/api/releases/1/review', {}],
+    ];
+    for (const [method, path, payload] of writes) {
+      const res = await as('agent:lg-registry', method, path, payload);
+      expect(res.status, `${method} ${path}`).toBe(403);
+      expect((res.body as { error: string }).error).toMatch(/agent identity/);
+    }
+  });
+
+  it('with the mode on, refuses an identity-less write and names the control', async () => {
+    const doc = await body('liquidity_pit');
+    const res = await as(null, 'PUT', '/api/artifacts/liquidity_pit',
+      { body: doc, message: 'x' }, { requireIdentity: true });
+    expect(res.status).toBe(403);
+    expect((res.body as { error: string }).error).toMatch(/KEEL_REQUIRE_IDENTITY/);
+
+    // Reads are untouched — the mode governs writes, not the surface.
+    const read = await as(null, 'GET', '/api/artifacts', undefined, { requireIdentity: true });
+    expect(read.status).toBe(200);
+
+    // And an asserted identity goes through.
+    const ok = await as('alice', 'PUT', '/api/artifacts/liquidity_pit',
+      { body: `${doc}\n# note`, message: 'x' }, { requireIdentity: true });
+    expect(ok.status).toBe(200);
+  });
+
+  it('a second person clears an acknowledged weakening for release; the author cannot', async () => {
+    // alice saves an acknowledged weakening — the flag is the structural record.
+    const doc = await body('fr2052a_variance');
+    const saved = await as('alice', 'PUT', '/api/artifacts/fr2052a_variance', {
+      body: doc.replace('limit: 1000000', 'limit: 5000000'),
+      message: 'loosen', acknowledgeReview: true,
+    });
+    expect(saved.status).toBe(200);
+    const revision = (saved.body as { revision: number }).revision;
+
+    // The cut refuses, naming whose review is missing.
+    const refused = await as('alice', 'POST', '/api/releases', { message: 'ship' });
+    expect(refused.status).toBe(400);
+    expect((refused.body as { error: string }).error).toMatch(/second person/);
+    expect((refused.body as { error: string }).error).toContain('fr2052a_variance');
+
+    // A review is an attribution act: no identity, no review.
+    const anonymous = await as(null, 'POST', '/api/artifacts/fr2052a_variance/review', { revision });
+    expect(anonymous.status).toBe(403);
+
+    // The author's own second signature is refused — the second name is the control.
+    const self = await as('alice', 'POST', '/api/artifacts/fr2052a_variance/review', { revision });
+    expect(self.status).toBe(403);
+    expect((self.body as { error: string }).error).toMatch(/cannot\s+second-review/);
+
+    // bob's review clears it, and the cut goes through.
+    const review = await as('bob', 'POST', '/api/artifacts/fr2052a_variance/review',
+      { revision, note: 'checked the ALCO minute' });
+    expect(review.status).toBe(201);
+    const cut = await as('alice', 'POST', '/api/releases', { message: 'ship' });
+    expect(cut.status).toBe(201);
+  });
+
+  it('the cutter cannot be the only name on deploying a tier-1 release', async () => {
+    const cutRes = await as('alice', 'POST', '/api/releases', { message: 'first' });
+    expect(cutRes.status).toBe(201);
+    const version = (cutRes.body as { version: number }).version;
+
+    // alice cut it; alice alone may not deploy it — the workspace carries
+    // tier-1 artifacts.
+    const solo = await as('alice', 'PUT', `/api/channels/staging`, { version, message: 'go' });
+    expect(solo.status).toBe(400);
+    expect((solo.body as { error: string }).error).toMatch(/only name/);
+
+    // bob signing his own... no — bob is not the cutter, so bob promoting is
+    // itself the second name.
+    const byBob = await as('bob', 'PUT', `/api/channels/staging`, { version, message: 'go' });
+    expect(byBob.status).toBe(200);
+
+    // Alternatively: bob signs the release, after which alice may promote it.
+    const cut2 = await as('alice', 'POST', '/api/releases', { message: 'second' });
+    const v2 = (cut2.body as { version: number }).version;
+    const sign = await as('bob', 'POST', `/api/releases/${v2}/review`, { note: 'looks right' });
+    expect(sign.status).toBe(201);
+    const byAlice = await as('alice', 'PUT', `/api/channels/uat`,
+      { version: v2, message: 'go', acknowledgeReview: true });
+    expect(byAlice.status).toBe(200);
+
+    // And the cutter signing their own release changes nothing.
+    const selfSign = await as('alice', 'POST', `/api/releases/${v2}/review`, {});
+    expect(selfSign.status).toBe(403);
+  });
+
+  it('reviews name exactly what they reviewed', async () => {
+    const missing = await as('bob', 'POST', '/api/artifacts/liquidity_pit/review', { revision: 99 });
+    expect(missing.status).toBe(404);
+    const noRevision = await as('bob', 'POST', '/api/artifacts/liquidity_pit/review', {});
+    expect(noRevision.status).toBe(400);
+    const noRelease = await as('bob', 'POST', '/api/releases/99/review', {});
+    expect(noRelease.status).toBe(404);
+  });
+});

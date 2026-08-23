@@ -101,6 +101,17 @@ export async function main(): Promise<void> {
   // exactly which variable is missing.
   const dremio = dremioFromEnv(process.env as Record<string, string | undefined>);
 
+  // The identity controls (ADR-57): with KEEL_REQUIRE_IDENTITY=1, a write with
+  // no asserted identity is refused — pair it with KEEL_IDENTITY_HEADER so the
+  // front door has a header to assert through.
+  const controls = { requireIdentity: process.env.KEEL_REQUIRE_IDENTITY === '1' };
+  if (controls.requireIdentity && !process.env.KEEL_IDENTITY_HEADER) {
+    console.log(
+      'KEEL_REQUIRE_IDENTITY is on but KEEL_IDENTITY_HEADER is not set — every '
+      + 'write will be refused, because nothing can assert an identity',
+    );
+  }
+
   console.log(`keel registry on ${db.dialect.name}` + (seeded ? `, seeded ${seeded} artifacts` : ''));
   console.log(
     dremio
@@ -168,7 +179,7 @@ export async function main(): Promise<void> {
       body,
     };
 
-    const { status, body: out } = await handle(repo, request, { dremio });
+    const { status, body: out } = await handle(repo, request, { dremio, controls });
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify(out));
   });

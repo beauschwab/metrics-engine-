@@ -57,6 +57,38 @@ const graphOf = (body: string): Graph | null => {
 const docsOf = (rows: Revision[]): Record<string, string> =>
   Object.fromEntries(rows.map((r) => [r.name, r.body]));
 
+/**
+ * Whether any document in the set claims an SR 11-7 tier of 1 or higher.
+ *
+ * A textual scan rather than a full parse, on purpose: tier appears both on
+ * measures and in monitor governance blocks, the shapes differ, and this check
+ * exists to decide whether the *stricter* control applies. Over-matching (a
+ * tier mentioned in a comment) turns the control on where it wasn't needed —
+ * the safe direction — while a parse that missed one shape would turn it off
+ * where it was (ADR-57).
+ */
+const hasTier1 = (docs: Record<string, string>): boolean =>
+  Object.values(docs).some((body) => /sr_11_7_tier:\s*[1-9]/.test(body));
+
+/**
+ * The flagged current revisions no second person has signed (ADR-57).
+ *
+ * A revision is flagged when it was saved with an acknowledged weakening; the
+ * author's acknowledgement is intent, and the second name — different from the
+ * author's — is the control. A review by the author does not count, which is
+ * the entire point.
+ */
+async function unreviewedWeakenings(repo: Repository, workspace: Revision[]) {
+  const pending: Array<{ name: string; revision: number; author: string }> = [];
+  for (const artifact of workspace) {
+    if (!artifact.needsReview) continue;
+    const reviews = await repo.reviewsOf('revision', artifact.name, artifact.revision);
+    const second = reviews.some((r) => r.reviewer !== artifact.author);
+    if (!second) pending.push({ name: artifact.name, revision: artifact.revision, author: artifact.author });
+  }
+  return pending;
+}
+
 // ---------------------------------------------------------------------------
 // Cutting a release
 // ---------------------------------------------------------------------------
@@ -108,6 +140,24 @@ export async function cutRelease(
     );
   }
 
+  // The second-person gate (ADR-57): an acknowledged weakening is the author's
+  // intent; a release pins it as something production may serve, and that act
+  // needs a second name. The refusal says exactly whose review is missing and
+  // how to record it.
+  const pending = await unreviewedWeakenings(repo, workspace);
+  if (pending.length) {
+    const lines = pending.map(
+      (p) => `  · ${p.name} r${p.revision} — weakening acknowledged by ${p.author}, no second review`,
+    );
+    throw new RuntimeRefused(
+      'refusing to cut a release: acknowledged weakenings await a second person\'s '
+      + `review:\n${lines.join('\n')}\n`
+      + 'A reviewer other than the author records theirs with '
+      + 'POST /api/artifacts/<name>/review {revision} — the author\'s own '
+      + 'acknowledgement is intent, not review (ADR-57).',
+    );
+  }
+
   return repo.createRelease({ ...input, errors, warnings });
 }
 
@@ -136,6 +186,24 @@ export async function promoteRelease(
 ) {
   const candidate = await repo.releaseWorkspace(input.version);
   if (!candidate.length) throw new RuntimeNotFound(`no release r${input.version}`);
+
+  // Cutter ≠ sole promoter (ADR-57): for a release carrying tier-1 artifacts,
+  // the person who cut it may not also be the only name on its deployment. A
+  // second person either promotes it themselves or signs the release first.
+  const releaseRecord = await repo.release(input.version);
+  if (releaseRecord && releaseRecord.author === input.actor && hasTier1(docsOf(candidate))) {
+    const signatures = await repo.reviewsOf('release', '', input.version);
+    const second = signatures.some((r) => r.reviewer !== input.actor);
+    if (!second) {
+      throw new RuntimeRefused(
+        `refusing to promote r${input.version}: ${input.actor} cut this release and `
+        + 'cannot be the only name on deploying it — it carries tier-1 artifacts. '
+        + 'A second person promotes it, or records their sign-off first with '
+        + 'POST /api/releases/'
+        + `${input.version}/review (ADR-57).`,
+      );
+    }
+  }
 
   const current = await repo.channel(input.channel);
   const findings: Array<Finding & { artifact: string }> = [];

@@ -27,6 +27,12 @@ export interface Revision {
   author: string;
   message: string;
   createdAt: string;
+  /**
+   * True when this revision was saved with an acknowledged weakening (ADR-57):
+   * the author said "I intend this", and a second person's review — recorded
+   * separately, under their own name — is what clears it for release.
+   */
+  needsReview: boolean;
 }
 
 export interface HistoryEntry {
@@ -66,6 +72,7 @@ interface Row {
   author: string;
   message: string;
   created_at: string;
+  needs_review: number;
 }
 
 const toRevision = (r: Row): Revision => ({
@@ -77,6 +84,7 @@ const toRevision = (r: Row): Revision => ({
   author: r.author,
   message: r.message,
   createdAt: r.created_at,
+  needsReview: Number(r.needs_review) === 1,
 });
 
 export class Repository {
@@ -144,6 +152,12 @@ export class Repository {
     author: string;
     message: string;
     expectedRevision?: number;
+    /**
+     * Mark the revision as carrying an acknowledged weakening (ADR-57). Set by
+     * the caller that ran the impact assessment and saw the author acknowledge
+     * it — a second person's review then clears it for release.
+     */
+    needsReview?: boolean;
   }): Promise<SaveResult> {
     const { name, kind, body, author, message, expectedRevision } = input;
     const hash = contentHash(body);
@@ -171,7 +185,9 @@ export class Repository {
       }
 
       try {
-        await this.db.run(SQL.insertRevision, [body, hash, author, message, now(), name]);
+        await this.db.run(SQL.insertRevision, [
+          body, hash, author, message, now(), input.needsReview ? 1 : 0, name,
+        ]);
       } catch (err) {
         // Two writers computed the same next revision number. The constraint
         // caught it, which is the point of the constraint.
@@ -300,6 +316,51 @@ export class Repository {
       author: '',
       message: '',
       createdAt: '',
+      needsReview: false,
+    }));
+  }
+
+  // --- second-person review (ADR-57) ---------------------------------------
+
+  /**
+   * Record one person's sign-off on one thing: a revision of an artifact, or a
+   * release. Deliberately dumb, like `promote` — who may review what is the
+   * layer above's decision, made where the revision's author is known. The
+   * UNIQUE constraint turns "signed it twice" into a no-op rather than a
+   * duplicate row.
+   */
+  async addReview(input: {
+    target: 'revision' | 'release';
+    name: string;
+    version: number;
+    reviewer: string;
+    note: string;
+  }): Promise<Review> {
+    const at = now();
+    try {
+      await this.db.run(SQL.insertReview, [
+        input.target, input.name, input.version, input.reviewer, input.note, at,
+      ]);
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      // Signing the same thing twice changes nothing — the first signature is
+      // the record, and re-recording it would put a decision in the history
+      // that nobody made.
+    }
+    return { ...input, createdAt: at };
+  }
+
+  async reviewsOf(target: 'revision' | 'release', name: string, version: number): Promise<Review[]> {
+    const rows = await this.db.all<{
+      target: string; name: string; version: number; reviewer: string; note: string; created_at: string;
+    }>(SQL.reviewsOf, [target, name, version]);
+    return rows.map((r) => ({
+      target: r.target as 'revision' | 'release',
+      name: r.name,
+      version: Number(r.version),
+      reviewer: r.reviewer,
+      note: r.note,
+      createdAt: r.created_at,
     }));
   }
 
@@ -380,6 +441,17 @@ export interface Promotion {
   version: number;
   actor: string;
   message: string;
+  createdAt: string;
+}
+
+export interface Review {
+  target: 'revision' | 'release';
+  /** Artifact name for a revision review; '' for a release. */
+  name: string;
+  /** Revision number, or release version. */
+  version: number;
+  reviewer: string;
+  note: string;
   createdAt: string;
 }
 

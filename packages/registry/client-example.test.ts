@@ -127,10 +127,12 @@ const dir = mkdtempSync(join(tmpdir(), 'keel-client-'));
 let server: ChildProcess | null = null;
 let base = '';
 
-async function api(method: string, path: string, body?: unknown) {
+async function api(method: string, path: string, body?: unknown, identity = 'integrator') {
   const response = await fetch(`${base}${path}`, {
     method,
-    headers: { 'content-type': 'application/json' },
+    // The identity header the spawned server is told to read (ADR-57) — in
+    // production the SSO reverse proxy asserts it; here the test is the proxy.
+    headers: { 'content-type': 'application/json', 'x-keel-identity': identity },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   return { status: response.status, body: await response.json() };
@@ -146,6 +148,7 @@ beforeAll(async () => {
       ...process.env,
       KEEL_PORT: String(port),
       KEEL_SQLITE_FILE: join(dir, 'registry.db'),
+      KEEL_IDENTITY_HEADER: 'x-keel-identity',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -171,9 +174,11 @@ beforeAll(async () => {
   expect(saved.status).toBe(200);
   const release = await api('POST', '/api/releases', { message: 'first deployable' });
   expect(release.status).toBe(201);
+  // A second person deploys — the workspace carries tier-1 artifacts, so the
+  // cutter cannot be the only name on the promotion (ADR-57).
   const promoted = await api('PUT', '/api/channels/production', {
     version: (release.body as { version: number }).version, message: 'go live',
-  });
+  }, 'deployer');
   expect(promoted.status).toBe(200);
 }, 120_000);
 
@@ -257,9 +262,10 @@ c.execute(open(${JSON.stringify(seedPath)}).read())
       kind: 'source_binding', body: broken, message: 'drop SBB by mistake',
     });
     const release = await api('POST', '/api/releases', { message: 'oops' });
+    // A second person stages it — the cutter cannot be the only name (ADR-57).
     await api('PUT', '/api/channels/staging', {
       version: (release.body as { version: number }).version, message: 'stage it',
-    });
+    }, 'deployer');
 
     const res = await fetch(
       `${base}/api/runtime/staging/plan/fr2052a_submission?binding=murex_eu`,

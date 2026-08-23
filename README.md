@@ -331,7 +331,8 @@ npm run mcp                      # read-only
 KEEL_MCP_WRITE=1 npm run mcp     # writes allowed
 ```
 
-Eighteen tools over stdio — reads, dry-runs, and the release/deploy verbs. The
+Nineteen tools over stdio — reads, dry-runs, the release/deploy verbs, and
+the second-person review that clears an acknowledged weakening (ADR-57). The
 reads return **resolved semantics, not YAML** —
 `get_rules` gives every rule in evaluation order with its condition, emitted
 value, citation and share of the book, because first-match precedence means a

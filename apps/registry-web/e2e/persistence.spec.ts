@@ -88,6 +88,9 @@ test.beforeAll(async () => {
     // A scratch file per run. A registry that carried edits between runs would
     // make these tests pass or fail depending on what happened last time.
     KEEL_SQLITE_FILE: join(dir, 'registry.db'),
+    // So the deploy-state test can cut and promote as two different people —
+    // the cutter may not be the only name on a tier-1 deployment (ADR-57).
+    KEEL_IDENTITY_HEADER: 'x-keel-identity',
   });
   await waitFor(`${API}/api/health`);
 
@@ -205,13 +208,13 @@ test.describe('the registry', () => {
 
     const release = await fetch(`${API}/api/releases`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-keel-identity': 'release-manager' },
       body: JSON.stringify({ message: 'from the e2e suite' }),
     });
     const { version } = (await release.json()) as { version: number };
     await fetch(`${API}/api/channels/production`, {
       method: 'PUT',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-keel-identity': 'deployer' },
       body: JSON.stringify({ version, message: 'go live', acknowledgeReview: true }),
     });
 
