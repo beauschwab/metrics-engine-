@@ -55,6 +55,11 @@ jobs:
       # refresh cuts and promotes release 1 if the channel is empty — the same
       # two acts a human performs — and then asserts the committed snapshot
       # still matches what the channel serves.
+      #
+      # KEEL_IDENTITY_HEADER names the header the registry reads an identity
+      # from. The shipped workspace is tier-1, so without it both acts land as
+      # `unknown` and ADR-57 refuses the promotion: one name cannot both cut
+      # and deploy a tier-1 release. The script asserts two.
       - run: npm ci
         working-directory: .
       - run: |
@@ -65,7 +70,11 @@ jobs:
         working-directory: .
         env:
           KEEL_SQLITE_FILE: /tmp/keel-ci.db
+          KEEL_IDENTITY_HEADER: x-keel-identity
       - run: ./scripts/refresh_registry_snapshot.sh
+        env:
+          KEEL_SNAPSHOT_CUTTER: ci-release-manager
+          KEEL_SNAPSHOT_PROMOTER: ci-deployer
       # Manifest and artifact responses carry promotion/save timestamps, so a
       # fresh registry can never reproduce them byte-for-byte; the rules and
       # compiled plans are pure functions of the released documents and must
