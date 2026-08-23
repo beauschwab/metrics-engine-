@@ -1241,3 +1241,121 @@ surface with a document and intent; the rail is an instrument reached for
 editing-mode choice — not chrome that arrives uninvited. If use teaches
 otherwise, flipping the default is a one-line change and a new sentence
 here, not a redesign.
+
+---
+
+# Proposed — recorded gaps, not yet accepted
+
+The entries below are **stubs with status: proposed**. They record the
+conceptual gaps a hostile internal review would find first, and the intended
+shape of each answer, so the gap analysis lives in the same governed record
+as the decisions — not in a deck. Accepting one means fleshing it out in
+place and building it; rejecting one means recording why, here. Numbering is
+claimed now so later references stay stable.
+
+## ADR-57 (proposed) — human identity and segregation of duties
+
+**The gap.** The maker-checker seam between agent and human is enforced
+structurally; the seam between human and human is not. Identity is whatever
+a header asserts ("no identity provider yet" — `packages/registry/api.ts`),
+registry-web saves as a constant author string, and one person can author a
+tier-1 change, acknowledge their own `needsReview` finding, cut the release,
+and promote it. Attribution without authentication, and acknowledgement
+without a second name, is a one-hour audit finding against the product's
+central claim.
+
+**Intended shape.** SSO-asserted identity through the existing
+`KEEL_IDENTITY_HEADER` seam (the seam was built for this); a segregation
+rule in the write path: the author of a revision cannot be its
+acknowledger, and the cutter of a release cannot be its sole promoter for
+channels serving tier-1 artifacts. Enforced where the agent refusals are
+enforced — in the tool/API layer, not the client.
+
+**Acceptance requires.** An identity provider decision, and tests shaped
+like the agent-refusal tests: same person, both roles, refused with a
+message naming the control.
+
+## ADR-58 (proposed) — the ingestion control plane: lineage grows a left edge
+
+**The gap.** Lineage starts at `source_binding`; everything upstream is
+assumed. The first BCBS 239 question — did every source land, complete, on
+time, tied to the ledger — has no governed answer, so "every number proves
+itself" is true only rightward of the source table.
+
+**Intended shape.** An `ingestion_contract` document kind: expected
+sources, arrival windows, completeness checks (row/notional against
+control totals), and GL tie-out tolerances — each check a cited,
+effective-dated threshold whose breaches land on the same exception strip
+as every other monitor. The lineage graph gains left-edge nodes so
+`usedBy` can answer "which filings does this feed's failure touch".
+
+**Acceptance requires.** One real feed contract dogfooded against the
+fixture loader, and a decision on where control totals come from.
+
+## ADR-59 (proposed) — governance of the agent layer itself
+
+**The gap.** The platform governs what the agents touch, not what they
+are. Under current model-risk expectations the design and definition
+agents need their own evidence file: citation accuracy, proposal
+accept/reject rates, behavioral regression when the underlying model
+version changes. The audit trail pairs agent acts with principals; it does
+not yet measure the agent.
+
+**Intended shape.** An agent performance record built from data already
+flowing: sampled citation-verification of agent-proposed bodies (the
+regime skills define the check), accept/reject/edit rates derived from
+comparing proposals to what humans actually saved, and a pinned
+model-version field on every agent-attributed act so a vendor model change
+is a visible event with a regression gate, not ambient drift.
+
+**Acceptance requires.** A decision on sampling rate and reviewer, and a
+place for the evidence (a report kind is the natural fit).
+
+## ADR-60 (proposed) — the filing seam
+
+**The gap.** "One number everywhere" currently ends at this platform's own
+surfaces. The actual FR 2052a leaves through a vendor reg-reporting stack;
+platform-vs-filing-engine drift is new and unmonitored — the most
+expensive drift is the one the pitch is silent on.
+
+**Intended shape.** A reconciliation monitor class: the platform's
+computed submission rows against the filing platform's extracted values,
+at the filing's own grain, with governed tolerances — the same
+`variance_monitor` machinery pointed across the boundary. Not a
+replacement claim; a seam with a number on it.
+
+**Acceptance requires.** Access to one filing extract and a mapping
+document for its grain.
+
+## ADR-61 (proposed) — parallel-run as the adoption instrument
+
+**The gap.** The machinery for this exists and the framing does not: the
+pitch says "trust the pilot" when it could say "here is the divergence
+report". Shadow-running the platform beside the incumbent process, with
+governed thresholds on the deltas, converts the scale and trust objections
+into pilot metrics.
+
+**Intended shape.** No new engine concepts — a monitor whose two inputs
+are the platform's number and the incumbent's imported number, plus a
+dashboard pattern for divergence-over-time with sign-off when a measure's
+divergence stays inside tolerance for the agreed window. Pilot exit
+criteria become threshold ids.
+
+**Acceptance requires.** An import path for the incumbent's numbers
+(CSV-grade is enough) and agreement on tolerances per measure.
+
+## ADR-62 (proposed) — governed growth of the derivation vocabulary
+
+**The gap.** ADR-53's closed vocabulary is the right control, but its
+growth path is undemonstrated for engine ops, so it reads as a ceiling.
+The widget and pattern catalogs already show the shape: versioned entries,
+proposal → steward → publish.
+
+**Intended shape.** A documented op-addition process with the same
+standard the existing five ops met — semantics stated, all three backends,
+conformance-tested, refusal behavior for what it cannot do — plus a
+published expectation for lead time, so a treasury SME's "what if you
+don't have my op" has a process answer instead of a shrug.
+
+**Acceptance requires.** Writing the process down and proving it once, by
+adding one op a real 2052a derivation needs.
