@@ -57,6 +57,7 @@ const RELEASE = 'keel_release';
 const PIN = 'keel_release_pin';
 const CHANNEL = 'keel_channel';
 const PROMOTION = 'keel_promotion';
+const REVIEW = 'keel_review';
 
 /**
  * The one thing the schema is really about: revisions are append-only.
@@ -127,6 +128,33 @@ const SQLITE_SCHEMA = [
   message    TEXT NOT NULL,
   created_at TEXT NOT NULL
 )`,
+  // A second person's sign-off on a specific thing: one revision of one
+  // artifact, or one release (ADR-57). Append-only like everything else — a
+  // review is an act with a name on it, and the UNIQUE keeps a reviewer from
+  // signing the same thing twice while letting a second reviewer add theirs.
+  `CREATE TABLE IF NOT EXISTS ${REVIEW} (
+  target     TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  version    INTEGER NOT NULL,
+  reviewer   TEXT NOT NULL,
+  note       TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (target, name, version, reviewer)
+)`,
+];
+
+/**
+ * `needs_review` marks a revision saved with an acknowledged weakening
+ * (ADR-57): the author said "I intend this" and a second person has not yet.
+ * Additive, replayed tolerantly on every boot — see `Dialect.alters`.
+ */
+const SQLITE_ALTERS = [
+  `ALTER TABLE ${REVISION} ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0`,
+];
+
+const MSSQL_ALTERS = [
+  `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('${REVISION}') AND name = 'needs_review')
+ALTER TABLE ${REVISION} ADD needs_review INT NOT NULL DEFAULT 0`,
 ];
 
 /**
@@ -196,6 +224,16 @@ CREATE TABLE ${PROMOTION} (
   message    NVARCHAR(1000) NOT NULL,
   created_at NVARCHAR(30) NOT NULL
 )`,
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${REVIEW}')
+CREATE TABLE ${REVIEW} (
+  target     NVARCHAR(20) NOT NULL,
+  name       NVARCHAR(200) NOT NULL,
+  version    INT NOT NULL,
+  reviewer   NVARCHAR(200) NOT NULL,
+  note       NVARCHAR(1000) NOT NULL,
+  created_at NVARCHAR(30) NOT NULL,
+  CONSTRAINT uq_${REVIEW} UNIQUE (target, name, version, reviewer)
+)`,
 ];
 
 /**
@@ -236,12 +274,14 @@ export function toNamedParameters(sql: string, prefix = '@p'): string {
 export const SQLITE: Dialect = {
   name: 'sqlite',
   schema: () => SQLITE_SCHEMA.slice(),
+  alters: () => SQLITE_ALTERS.slice(),
   bind: (sql) => sql,
 };
 
 export const MSSQL: Dialect = {
   name: 'mssql',
   schema: () => MSSQL_SCHEMA.slice(),
+  alters: () => MSSQL_ALTERS.slice(),
   bind: (sql) => toNamedParameters(sql),
 };
 
@@ -275,17 +315,17 @@ export const SQL = {
    */
   insertRevision:
     `INSERT INTO ${REVISION}
-  (artifact_id, revision_no, body, content_hash, author, message, created_at)
+  (artifact_id, revision_no, body, content_hash, author, message, created_at, needs_review)
 SELECT
   a.artifact_id,
   COALESCE((SELECT MAX(r.revision_no) FROM ${REVISION} r WHERE r.artifact_id = a.artifact_id), 0) + 1,
-  ?, ?, ?, ?, ?
+  ?, ?, ?, ?, ?, ?
 FROM ${ARTIFACT} a
 WHERE a.name = ?`,
 
   /** The current workspace: every artifact at its newest revision. */
   latestAll:
-    `SELECT a.name, a.kind, r.revision_no, r.body, r.content_hash, r.author, r.message, r.created_at
+    `SELECT a.name, a.kind, r.revision_no, r.body, r.content_hash, r.author, r.message, r.created_at, r.needs_review
 FROM ${ARTIFACT} a
 JOIN ${REVISION} r ON r.artifact_id = a.artifact_id
 WHERE r.revision_no = (
@@ -294,7 +334,7 @@ WHERE r.revision_no = (
 ORDER BY a.name`,
 
   latestOne:
-    `SELECT a.name, a.kind, r.revision_no, r.body, r.content_hash, r.author, r.message, r.created_at
+    `SELECT a.name, a.kind, r.revision_no, r.body, r.content_hash, r.author, r.message, r.created_at, r.needs_review
 FROM ${ARTIFACT} a
 JOIN ${REVISION} r ON r.artifact_id = a.artifact_id
 WHERE a.name = ?
@@ -311,7 +351,7 @@ WHERE a.name = ?
    * both, and until now the second one lived only in git history.
    */
   asOfAll:
-    `SELECT a.name, a.kind, r.revision_no, r.body, r.content_hash, r.author, r.message, r.created_at
+    `SELECT a.name, a.kind, r.revision_no, r.body, r.content_hash, r.author, r.message, r.created_at, r.needs_review
 FROM ${ARTIFACT} a
 JOIN ${REVISION} r ON r.artifact_id = a.artifact_id
 WHERE r.created_at <= ?
@@ -329,10 +369,21 @@ WHERE a.name = ?
 ORDER BY r.revision_no DESC`,
 
   revision:
-    `SELECT r.revision_no, r.body, r.content_hash, r.author, r.message, r.created_at
+    `SELECT r.revision_no, r.body, r.content_hash, r.author, r.message, r.created_at, r.needs_review
 FROM ${ARTIFACT} a
 JOIN ${REVISION} r ON r.artifact_id = a.artifact_id
 WHERE a.name = ? AND r.revision_no = ?`,
+
+  // --- second-person review (ADR-57) ---------------------------------------
+
+  insertReview:
+    `INSERT INTO ${REVIEW} (target, name, version, reviewer, note, created_at)
+VALUES (?, ?, ?, ?, ?, ?)`,
+
+  reviewsOf:
+    `SELECT target, name, version, reviewer, note, created_at
+FROM ${REVIEW} WHERE target = ? AND name = ? AND version = ?
+ORDER BY created_at`,
 
   // --- releases and channels ----------------------------------------------
 

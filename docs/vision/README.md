@@ -32,19 +32,31 @@ no-model degrade path rather than depend on a key.
 
 ## The sequence
 
-The walkthrough is three acts against those processes:
+The walkthrough is three acts against those processes. It takes three names
+— an author, a reviewer, a deployer — because the workspace is tier-1 and one
+person cannot carry a weakened rule to production alone (ADR-57). Each is
+asserted with an `x-identity` header, exactly as the proxy would.
 
-1. **Baseline.** Cut release r1 and promote it to `production`, so the
-   workspace and the channel agree. Capture with `node docs/vision/capture.mjs
-   baseline`, then run the pipeline against the channel to record what it
-   files.
-2. **The change.** Edit `lcr_outflow_rates` so `O.W.2` moves `0.40 → 0.50`
-   (a `PUT /api/artifacts/lcr_outflow_rates` with `expectedRevision`, the same
-   write the surface makes). Capture with `… capture.mjs proposed`. Re-run the
-   pipeline and confirm it files the *same* numbers — it still reads r1.
-3. **Promotion.** Cut r2 and promote. The first attempt is refused; re-send
-   with `acknowledgeReview: true` and a reason. Re-run the pipeline and record
-   the new filed numbers.
+1. **Baseline.** Cut release r1 as `author` and promote it to `production` as
+   `deployer`, so the workspace and the channel agree. Capture with `node
+   docs/vision/capture.mjs baseline`, then run the pipeline against the
+   channel to record what it files.
+2. **The change.** As `author`, edit `lcr_outflow_rates` so `O.W.2` moves
+   `0.40 → 0.50` (a `PUT /api/artifacts/lcr_outflow_rates` with
+   `expectedRevision` and `acknowledgeReview: true`, the same write the
+   surface makes). Capture with `… capture.mjs proposed`. Re-run the pipeline
+   and confirm it files the *same* numbers — it still reads r1.
+3. **Promotion.** Three refusals to walk through, each naming its control:
+   - Cutting r2 as `author` is refused — the acknowledged weakening has no
+     second name yet. As `reviewer`, `POST
+     /api/artifacts/lcr_outflow_rates/review {"revision": 2}`, then the cut
+     goes through.
+   - Promoting r2 as `author` is refused — whoever cut a tier-1 release
+     cannot be the only name deploying it. Promote as `deployer`.
+   - That promotion is refused once more, for the change itself: re-send with
+     `acknowledgeReview: true` and a reason.
+
+   Re-run the pipeline and record the new filed numbers.
 
 The pipeline runs are `pipelines/liquidity` driven against the live registry:
 

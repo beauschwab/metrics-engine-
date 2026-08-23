@@ -25,6 +25,7 @@ const dir = mkdtempSync(join(tmpdir(), 'keel-mcp-server-'));
 
 let client: Client;
 let writable: Client;
+let reviewer: Client;
 let agent: Client;
 
 /** Start a server against its own database, so the two cases cannot interfere. */
@@ -57,11 +58,15 @@ beforeAll(async () => {
   // A model session's connection — the write flag is deliberately ON, because
   // the point is that it does not matter (ADR-56).
   agent = await connect({ TAG: 'agent', KEEL_MCP_WRITE: '1', KEEL_MCP_IDENTITY: 'agent:lg-registry' });
+  // The second person (ADR-57): same database as `writable`, different name —
+  // acknowledged weakenings and cutter-only deployments clear through them.
+  reviewer = await connect({ TAG: 'rw', KEEL_MCP_WRITE: '1', KEEL_MCP_IDENTITY: 'reviewer-two' });
 }, 180_000);
 
 afterAll(async () => {
   await client?.close();
   await writable?.close();
+  await reviewer?.close();
   await agent?.close();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -75,7 +80,7 @@ describe('the connection', () => {
       'assess_change', 'compile', 'create_release', 'get_artifact', 'get_history',
       'get_lineage', 'get_manifest', 'get_parameters', 'get_release', 'get_rules',
       'list_artifacts', 'list_channels', 'list_releases', 'preview_report', 'promote',
-      'save_artifact', 'test_rules', 'validate',
+      'record_review', 'save_artifact', 'test_rules', 'validate',
     ]);
   });
 
@@ -256,13 +261,42 @@ describe('releasing and deploying over the wire', () => {
   });
 
   it('cuts, deploys, and then serves a manifest a client can poll', async () => {
+    // The governance flow above left an acknowledged weakening on
+    // fr2052a_variance r2 — the cut refuses until a second person reviews it,
+    // and the refusal is itself part of what this proves (ADR-57).
+    const blocked = payload(await writable.callTool({
+      name: 'create_release', arguments: { message: 'first deployable' },
+    }));
+    expect(blocked.isError).toBe(true);
+    expect(blocked.text).toMatch(/second person/);
+
+    // Reviewing your own work is refused; the reviewer's goes through.
+    const selfReview = payload(await writable.callTool({
+      name: 'record_review',
+      arguments: { target: 'revision', name: 'fr2052a_variance', version: 2 },
+    }));
+    expect(selfReview.isError).toBe(true);
+    expect(selfReview.text).toMatch(/second name/);
+    json(await reviewer.callTool({
+      name: 'record_review',
+      arguments: { target: 'revision', name: 'fr2052a_variance', version: 2, note: 'checked' },
+    }));
+
     const release = json(await writable.callTool({
       name: 'create_release', arguments: { message: 'first deployable' },
     }));
     expect(release.version).toBeGreaterThan(0);
     expect(release.artifacts).toBe(VIEW_FILES.length);
 
-    const promoted = json(await writable.callTool({
+    // The cutter alone may not deploy a tier-1 release; the second person does.
+    const solo = payload(await writable.callTool({
+      name: 'promote',
+      arguments: { channel: 'production', version: release.version, message: 'go live' },
+    }));
+    expect(solo.isError).toBe(true);
+    expect(solo.text).toMatch(/only name/);
+
+    const promoted = json(await reviewer.callTool({
       name: 'promote',
       arguments: { channel: 'production', version: release.version, message: 'go live' },
     }));
@@ -289,7 +323,7 @@ describe('releasing and deploying over the wire', () => {
       const body = json(await writable.callTool({
         name: 'get_artifact', arguments: { name: 'fr2052a_variance' },
       })).body as string;
-      await writable.callTool({
+      const saved = json(await writable.callTool({
         name: 'save_artifact',
         arguments: {
           name: 'fr2052a_variance',
@@ -297,15 +331,25 @@ describe('releasing and deploying over the wire', () => {
           message: `limit ${limit}`,
           acknowledgeReview: true,
         },
-      });
+      }));
+      // An acknowledged weakening needs the second name before it can be
+      // released (ADR-57) — a tightening carries no flag and the review is a
+      // recorded no-op either way.
+      if (saved.changed) {
+        await reviewer.callTool({
+          name: 'record_review',
+          arguments: { target: 'revision', name: 'fr2052a_variance', version: saved.revision },
+        });
+      }
       return json(await writable.callTool({
         name: 'create_release', arguments: { message: `limit ${limit}` },
       })).version as number;
     };
 
-    // Baseline: the tight threshold, deployed.
+    // Baseline: the tight threshold, deployed — by the second person, since
+    // the cutter alone may not deploy a tier-1 release (ADR-57).
     const tight = await setLimit('1000000');
-    await writable.callTool({
+    await reviewer.callTool({
       name: 'promote',
       arguments: {
         channel: 'staging', version: tight, message: 'baseline', acknowledgeReview: true,
@@ -313,14 +357,14 @@ describe('releasing and deploying over the wire', () => {
     });
 
     const loosened = await setLimit('5000000');
-    const refused = payload(await writable.callTool({
+    const refused = payload(await reviewer.callTool({
       name: 'promote',
       arguments: { channel: 'staging', version: loosened, message: 'ship it' },
     }));
     expect(refused.isError).toBe(true);
     expect(refused.text).toMatch(/Silences 3 breaches/);
 
-    const accepted = json(await writable.callTool({
+    const accepted = json(await reviewer.callTool({
       name: 'promote',
       arguments: {
         channel: 'staging', version: loosened,

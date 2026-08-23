@@ -38,12 +38,15 @@ beforeEach(async () => {
   await repo.seed(shippedDocuments());
 });
 
-const call = (method: string, path: string, body?: unknown, query?: Record<string, string>) =>
+const call = (
+  method: string, path: string, body?: unknown, query?: Record<string, string>,
+  identity = 'release-manager',
+) =>
   handle(repo, {
     method, path,
     ...(body !== undefined ? { body } : {}),
     ...(query ? { query } : {}),
-    identity: 'release-manager',
+    identity,
   });
 
 const cut = async (message = 'cut') => {
@@ -52,8 +55,10 @@ const cut = async (message = 'cut') => {
   return (res.body as { version: number }).version;
 };
 
+// Promotion is done by a second person (ADR-57): the workspace carries tier-1
+// artifacts, so the cutter cannot also be the only name on the deployment.
 const promote = (channel: string, version: number, extra: Record<string, unknown> = {}) =>
-  call('PUT', `/api/channels/${channel}`, { version, message: 'deploy', ...extra });
+  call('PUT', `/api/channels/${channel}`, { version, message: 'deploy', ...extra }, undefined, 'deployer');
 
 const editThreshold = async (from: string, to: string) => {
   const doc = (await repo.latest('fr2052a_variance'))!;
@@ -241,7 +246,7 @@ describe('promotion is where the gate bites', () => {
     const history = (channel.body as { history: Array<{ message: string; actor: string }> }).history;
     expect(history[0].message).toMatch(/review acknowledged/);
     expect(history[0].message).toMatch(/Silences 3 breaches/);
-    expect(history[0].actor).toBe('release-manager');
+    expect(history[0].actor).toBe('deployer');
   });
 
   it('compares against the channel, not the previous release number', async () => {

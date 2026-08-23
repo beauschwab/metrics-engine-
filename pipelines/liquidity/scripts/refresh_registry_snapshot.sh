@@ -10,14 +10,27 @@
 #   ./scripts/refresh_registry_snapshot.sh [base-url] [channel]
 #
 # Defaults to http://localhost:8787 and production. Start the registry from
-# the repo root first (`npm run registry`). If the channel has no release yet
+# the repo root first (see the command below). If the channel has no release yet
 # (a fresh SQLite file), this cuts one from the seeded workspace and promotes
-# it, attributing both to $USER — the same two deliberate acts a human would
-# do in the surface.
+# it — the same two deliberate acts a human would do in the surface.
+#
+# The seeded workspace carries tier-1 artifacts, so ADR-57 applies: whoever
+# cuts a release cannot be the only name on deploying it. The two acts are
+# therefore asserted under two identities, through the identity header the
+# registry's front door reads. Start the registry with that header named:
+#
+#   KEEL_IDENTITY_HEADER=x-keel-identity npm run registry
+#
+# Without it the registry asserts nothing, both acts land as `unknown`, and
+# the promotion is refused — correctly. This branch only ever runs against a
+# fresh local registry; a real deployment has two people, not two variables.
 set -euo pipefail
 
 BASE="${1:-http://localhost:8787}"
 CHANNEL="${2:-production}"
+IDENTITY_HEADER="${KEEL_IDENTITY_HEADER:-x-keel-identity}"
+CUTTER="${KEEL_SNAPSHOT_CUTTER:-${USER:-pipeline}}"
+PROMOTER="${KEEL_SNAPSHOT_PROMOTER:-${USER:-pipeline}-deploy}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$HERE/registry_snapshot"
 
@@ -26,15 +39,27 @@ say() { echo "[snapshot] $*" >&2; }
 # --- make sure the channel serves something --------------------------------
 if ! curl -sf "$BASE/api/runtime/$CHANNEL" >/dev/null 2>&1; then
   say "channel $CHANNEL serves nothing yet — cutting and promoting a release"
+  if [ "$CUTTER" = "$PROMOTER" ]; then
+    say "KEEL_SNAPSHOT_CUTTER and KEEL_SNAPSHOT_PROMOTER are both '$CUTTER' —"
+    say "the promotion will be refused (ADR-57: the cutter is not the only name)"
+    exit 1
+  fi
   release=$(curl -sf -X POST "$BASE/api/releases" \
     -H 'content-type: application/json' \
-    -d "{\"message\": \"Initial release for the liquidity pipeline snapshot\", \"author\": \"${USER:-pipeline}\"}")
+    -H "$IDENTITY_HEADER: $CUTTER" \
+    -d "{\"message\": \"Initial release for the liquidity pipeline snapshot\"}")
   version=$(echo "$release" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
-  say "cut release r$version"
-  curl -sf -X PUT "$BASE/api/channels/$CHANNEL" \
+  say "cut release r$version as $CUTTER"
+  if ! curl -sf -X PUT "$BASE/api/channels/$CHANNEL" \
     -H 'content-type: application/json' \
-    -d "{\"version\": $version, \"message\": \"Promoted for the liquidity pipeline\"}" >/dev/null
-  say "promoted r$version to $CHANNEL"
+    -H "$IDENTITY_HEADER: $PROMOTER" \
+    -d "{\"version\": $version, \"message\": \"Promoted for the liquidity pipeline\"}" >/dev/null; then
+    say "promotion of r$version was refused — if the registry was started without"
+    say "KEEL_IDENTITY_HEADER it read no identity from either act, and ADR-57"
+    say "will not let one name both cut and deploy a tier-1 release"
+    exit 1
+  fi
+  say "promoted r$version to $CHANNEL as $PROMOTER"
 fi
 
 mkdir -p "$OUT/rules" "$OUT/plans" "$OUT/artifacts"

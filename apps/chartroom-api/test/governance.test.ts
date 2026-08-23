@@ -42,6 +42,10 @@ beforeAll(async () => {
       ...process.env,
       KEEL_PORT: String(KEEL_PORT),
       KEEL_SQLITE_FILE: join(dir, 'keel.db'),
+      // The registry reads identity from this header (ADR-57); the test is
+      // its own reverse proxy, and cut vs promote carry different names
+      // because the cutter may not be the only name on a tier-1 deployment.
+      KEEL_IDENTITY_HEADER: 'x-keel-identity',
     },
     stdio: 'ignore',
   });
@@ -246,11 +250,13 @@ describe('the promotion matrix (E3.2)', () => {
     // Cut and promote a release in the KEEL registry — the real governance
     // act GOV-02 is wired to.
     const release = await fetch(`${process.env.KEEL_API}/api/releases`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message: 'governance test release', author: HUMAN }),
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-keel-identity': HUMAN },
+      body: JSON.stringify({ message: 'governance test release' }),
     }).then((x) => x.json()) as { version: number };
     const promoted = await fetch(`${process.env.KEEL_API}/api/channels/production`, {
-      method: 'PUT', headers: { 'content-type': 'application/json' },
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', 'x-keel-identity': 'keel-deployer' },
       body: JSON.stringify({ version: release.version, message: 'go live', acknowledgeReview: true }),
     });
     expect(promoted.status).toBe(200);

@@ -597,6 +597,57 @@ function errorKey(d: { code: string; message: string }): string {
 // ---------------------------------------------------------------------------
 
 /**
+ * Record a second person's review (ADR-57).
+ *
+ * The release gate refuses to pin an acknowledged weakening whose only name is
+ * the author's, and refuses to let a release's cutter be the only name on its
+ * deployment. This is how the second person clears either — under their own
+ * connection identity, which is why the author/cutter is refused here: signing
+ * with the same name the gate is waiting to be different from would make the
+ * control a formality.
+ */
+export async function recordReview(
+  repo: Repository,
+  policy: McpPolicy,
+  input: { target: 'revision' | 'release'; name?: string; version: number; note?: string },
+) {
+  refuseAgentWrite(policy, 'record a review');
+  if (!policy.canWrite) {
+    throw new ToolError(
+      'this registry connection is read-only — set KEEL_MCP_WRITE=1 to record reviews',
+    );
+  }
+  if (input.target === 'revision') {
+    if (!input.name) throw new ToolError('name is required to review a revision');
+    const rev = await repo.revision(input.name, input.version);
+    if (!rev) throw new ToolError(`no revision r${input.version} of ${input.name}`);
+    if (rev.author === policy.identity) {
+      throw new ToolError(
+        `${policy.identity} authored r${input.version} of ${input.name} and cannot `
+        + 'second-review it — the second name is the control (ADR-57)',
+      );
+    }
+    return repo.addReview({
+      target: 'revision', name: input.name, version: input.version,
+      reviewer: policy.identity, note: input.note || 'Reviewed',
+    });
+  }
+  const release = await repo.release(input.version);
+  if (!release) throw new ToolError(`no release r${input.version}`);
+  if (release.author === policy.identity) {
+    throw new ToolError(
+      `${policy.identity} cut r${input.version} and cannot second-sign it — the sign-off `
+      + "must carry a name other than the cutter's (ADR-57)",
+    );
+  }
+  return repo.addReview({
+    target: 'release', name: '', version: input.version,
+    reviewer: policy.identity, note: input.note || 'Signed off',
+  });
+}
+
+
+/**
  * Cut a release — an immutable snapshot of every artifact at its current
  * revision.
  *
@@ -787,6 +838,10 @@ export async function saveArtifact(
       ...(input.expectedRevision !== undefined
         ? { expectedRevision: input.expectedRevision }
         : {}),
+      // The structural record of the acknowledged weakening (ADR-57): the
+      // release gate reads this flag, and a second person's review — under a
+      // name other than the author's — is what clears it.
+      ...(impact.needsReview ? { needsReview: true } : {}),
     });
       return {
       name: input.name,

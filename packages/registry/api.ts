@@ -56,6 +56,41 @@ function asString(v: unknown): string | null {
  */
 export interface ApiDeps {
   dremio?: DremioConfig | null;
+  /**
+   * The identity controls (ADR-57). `requireIdentity` refuses any write whose
+   * request carries no asserted identity — set from `KEEL_REQUIRE_IDENTITY=1`
+   * at the front door. Off by default so the zero-config prototype posture
+   * survives; a deployment that governs real rules turns it on.
+   */
+  controls?: { requireIdentity?: boolean };
+}
+
+/**
+ * The gate every write route passes first.
+ *
+ * Two refusals, both about who is asking rather than what is asked. An
+ * `agent:` identity is refused always — the registry's tool surface never
+ * offers agents the write tools (ADR-56), and the HTTP door holds the same
+ * line rather than being the way around it. A missing identity is refused
+ * only when the deployment demands attribution: under SR 11-7 the name
+ * against a rule change is part of the control, and `unknown` is not a name.
+ */
+function refuseWrite(req: ApiRequest, deps: ApiDeps): ApiResponse | null {
+  if (req.identity && req.identity.startsWith('agent:')) {
+    return json(403, {
+      error: `an agent identity (${req.identity}) can never write to the registry — `
+        + 'agents propose and prove; the save, the review, and the promotion are '
+        + 'human acts (ADR-56/57)',
+    });
+  }
+  if (deps.controls?.requireIdentity && !req.identity) {
+    return json(403, {
+      error: 'this registry requires an asserted identity for writes '
+        + '(KEEL_REQUIRE_IDENTITY is on) and the request carries none — the name '
+        + 'against a change is part of the control, and unattributed is not a name (ADR-57)',
+    });
+  }
+  return null;
 }
 
 export async function handle(
@@ -91,6 +126,8 @@ export async function handle(
       }
 
       if (method === 'PUT') {
+        const refused = refuseWrite(req, deps);
+        if (refused) return refused;
         const body = (req.body || {}) as Record<string, unknown>;
         const text = asString(body.body);
         if (text === null) return json(400, { error: 'body is required and must be a string' });
@@ -110,11 +147,79 @@ export async function handle(
           author,
           message,
           ...(typeof expected === 'number' ? { expectedRevision: expected } : {}),
+          // The caller that ran the impact assessment declares the acknowledged
+          // weakening; the flag is what the release gate reads (ADR-57).
+          ...(body.acknowledgeReview === true ? { needsReview: true } : {}),
         });
         // 200 rather than 201 even when a revision is created: the resource is
         // the artifact, and it already existed at this URL.
         return json(200, { name, ...result });
       }
+    }
+
+    // --- second-person review (ADR-57) --------------------------------------
+    // A review is an attribution act by definition, so it requires an asserted
+    // identity even when the deployment does not demand one for ordinary
+    // writes — an anonymous second signature would be theater.
+
+    const revReview = /^\/api\/artifacts\/([A-Za-z0-9_.-]+)\/review$/.exec(path);
+    if (revReview && method === 'POST') {
+      const refused = refuseWrite(req, deps);
+      if (refused) return refused;
+      if (!req.identity) {
+        return json(403, {
+          error: 'a review must carry an asserted identity — the second name is the control (ADR-57)',
+        });
+      }
+      const body = (req.body || {}) as Record<string, unknown>;
+      if (typeof body.revision !== 'number') {
+        return json(400, { error: 'revision is required — a review names exactly what it reviewed' });
+      }
+      const rev = await repo.revision(revReview[1], body.revision);
+      if (!rev) return json(404, { error: `no revision r${body.revision} of ${revReview[1]}` });
+      if (rev.author === req.identity) {
+        return json(403, {
+          error: `${req.identity} authored r${body.revision} of ${revReview[1]} and cannot `
+            + 'second-review it — the review must carry a name other than the author\'s (ADR-57)',
+        });
+      }
+      const review = await repo.addReview({
+        target: 'revision',
+        name: revReview[1],
+        version: body.revision,
+        reviewer: req.identity,
+        note: asString(body.note) || 'Reviewed',
+      });
+      return json(201, { review });
+    }
+
+    const relReview = /^\/api\/releases\/(\d+)\/review$/.exec(path);
+    if (relReview && method === 'POST') {
+      const refused = refuseWrite(req, deps);
+      if (refused) return refused;
+      if (!req.identity) {
+        return json(403, {
+          error: 'a review must carry an asserted identity — the second name is the control (ADR-57)',
+        });
+      }
+      const version = Number(relReview[1]);
+      const release = await repo.release(version);
+      if (!release) return json(404, { error: `no release r${version}` });
+      if (release.author === req.identity) {
+        return json(403, {
+          error: `${req.identity} cut r${version} and cannot second-sign it — the sign-off `
+            + 'must carry a name other than the cutter\'s (ADR-57)',
+        });
+      }
+      const body = (req.body || {}) as Record<string, unknown>;
+      const review = await repo.addReview({
+        target: 'release',
+        name: '',
+        version,
+        reviewer: req.identity,
+        note: asString(body.note) || 'Signed off',
+      });
+      return json(201, { review });
     }
 
     const hist = /^\/api\/artifacts\/([A-Za-z0-9_.-]+)\/history$/.exec(path);
@@ -132,6 +237,8 @@ export async function handle(
     }
 
     if (method === 'POST' && path === '/api/releases') {
+      const refused = refuseWrite(req, deps);
+      if (refused) return refused;
       const body = (req.body || {}) as Record<string, unknown>;
       const message = asString(body.message);
       if (!message) return json(400, { error: 'message is required — a release with no reason is not a record' });
@@ -162,6 +269,8 @@ export async function handle(
         return json(200, { ...channel, history: await repo.promotions(oneChannel[1]) });
       }
       if (method === 'PUT') {
+        const refused = refuseWrite(req, deps);
+        if (refused) return refused;
         const body = (req.body || {}) as Record<string, unknown>;
         if (typeof body.version !== 'number') {
           return json(400, { error: 'version is required — a promotion names the release it deploys' });

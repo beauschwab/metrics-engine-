@@ -1244,6 +1244,55 @@ here, not a redesign.
 
 ---
 
+## ADR-57 — human identity and segregation of duties
+
+Shipped. The maker-checker seam between agent and human was structural; this
+makes the seam between human and human match it, enforced in the same layers
+the agent refusals live in — never the client.
+
+**Identity: required by mode, asserted by the front door.**
+`KEEL_REQUIRE_IDENTITY=1` makes the registry refuse any write whose request
+carries no asserted identity, with a message naming the control. Identity
+still comes only from `KEEL_IDENTITY_HEADER` — the seam built for the SSO
+reverse proxy — never from the body; registry-web's dev/preview proxy stands
+in for that proxy via `KEEL_DEV_IDENTITY`. And an `agent:` identity is
+refused on every write route regardless of mode: the tool surface never
+offers agents the write tools (ADR-56), and the HTTP door is not the way
+around it.
+
+**The second name is the control.** A save carrying an acknowledged
+weakening is *flagged* (`needs_review` on the revision — written by the MCP
+save that ran the assessment, or declared by an API caller that did). The
+author's acknowledgement is intent; a release refuses to pin a flagged
+revision until a **different** identity records a review of it —
+`POST /api/artifacts/:name/review` or the MCP `record_review` tool, each
+refusing the author's own signature. Reviews are append-only rows naming
+exactly what they reviewed.
+
+**Cutter ≠ sole promoter.** A release carrying tier-1 artifacts cannot be
+promoted by the person who cut it unless a second identity has signed the
+release (`POST /api/releases/:version/review`) — or a second person simply
+promotes it themselves. Tier detection is a deliberate textual scan for
+`sr_11_7_tier: 1+` across the release's documents: tier lives both on
+measures and in governance blocks, and over-matching turns the stricter
+control on — the safe direction — where a parse that missed one shape would
+turn it off.
+
+**Enforcement placement.** Refusals live in `api.ts` (the identity gate and
+review routes), `runtime.ts` (the release and promotion gates), and
+registry-mcp's tool layer — the same three places the agent refusals sit.
+Tests take the agent-refusal shape: same person, both roles, refused with
+the control named; the browser surface degrades to "save failed" with the
+control in the tooltip rather than crashing.
+
+**Deliberately not done here.** No identity *provider* ships in this repo —
+authentication is the reverse proxy's job, and the registry's contract is
+"the header is the assertion". The review UI on registry-web (a queue of
+flagged revisions awaiting a second name) is follow-on surface work; the
+control does not wait for its chrome.
+
+---
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the
@@ -1252,28 +1301,6 @@ shape of each answer, so the gap analysis lives in the same governed record
 as the decisions — not in a deck. Accepting one means fleshing it out in
 place and building it; rejecting one means recording why, here. Numbering is
 claimed now so later references stay stable.
-
-## ADR-57 (proposed) — human identity and segregation of duties
-
-**The gap.** The maker-checker seam between agent and human is enforced
-structurally; the seam between human and human is not. Identity is whatever
-a header asserts ("no identity provider yet" — `packages/registry/api.ts`),
-registry-web saves as a constant author string, and one person can author a
-tier-1 change, acknowledge their own `needsReview` finding, cut the release,
-and promote it. Attribution without authentication, and acknowledgement
-without a second name, is a one-hour audit finding against the product's
-central claim.
-
-**Intended shape.** SSO-asserted identity through the existing
-`KEEL_IDENTITY_HEADER` seam (the seam was built for this); a segregation
-rule in the write path: the author of a revision cannot be its
-acknowledger, and the cutter of a release cannot be its sole promoter for
-channels serving tier-1 artifacts. Enforced where the agent refusals are
-enforced — in the tool/API layer, not the client.
-
-**Acceptance requires.** An identity provider decision, and tests shaped
-like the agent-refusal tests: same person, both roles, refused with a
-message naming the control.
 
 ## ADR-58 (proposed) — the ingestion control plane: lineage grows a left edge
 

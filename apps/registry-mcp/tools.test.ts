@@ -24,7 +24,7 @@ import { VIEW_FILES } from 'keel-engine/documents';
 import {
   ToolError, assessProposed, compile, createRelease, getArtifact, getHistory, getLineage,
   getLineageGraph, getParameters, getRules, listArtifacts, policyFromEnv, previewReport,
-  promote, saveArtifact, testRules, validate, type McpPolicy,
+  promote, recordReview, saveArtifact, testRules, validate, type McpPolicy,
 } from './tools';
 
 const dir = mkdtempSync(join(tmpdir(), 'keel-mcp-'));
@@ -337,6 +337,28 @@ describe('an agent identity can never write (ADR-56)', () => {
   it('refuses to promote', async () => {
     await expect(promote(repo, AGENT, { channel: 'production', version: 1, message: 'x' }))
       .rejects.toThrow(/can never promote a release/);
+  });
+
+  it('refuses to record a review — a signature is a human act too', async () => {
+    await expect(recordReview(repo, AGENT, { target: 'revision', name: 'liquidity_pit', version: 1 }))
+      .rejects.toThrow(/can never record a review/);
+  });
+});
+
+describe('the second name is the control (ADR-57)', () => {
+  it('refuses a review of your own revision, and accepts a second person\'s', async () => {
+    const me: McpPolicy = { ...WRITER, identity: 'alice' };
+    const other: McpPolicy = { ...WRITER, identity: 'bob' };
+    await saveArtifact(repo, me, {
+      name: 'liquidity_pit', body: `${await bodyOf('liquidity_pit')}\n# note`, message: 'x',
+    });
+    const rev = (await getArtifact(repo, 'liquidity_pit')).revision;
+    await expect(recordReview(repo, me, { target: 'revision', name: 'liquidity_pit', version: rev }))
+      .rejects.toThrow(/second name is the control/);
+    const review = await recordReview(repo, other, {
+      target: 'revision', name: 'liquidity_pit', version: rev, note: 'checked',
+    });
+    expect(review.reviewer).toBe('bob');
   });
 });
 

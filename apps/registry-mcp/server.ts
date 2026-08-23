@@ -26,7 +26,7 @@ import {
   ToolError, assessProposed, compile, createRelease, getArtifact, getHistory,
   getLineage, getLineageGraph, getManifest, getParameters, getRelease, getRules,
   listArtifacts, listChannels, listReleases, policyFromEnv, previewReport, promote,
-  saveArtifact, testRules, validate, type McpPolicy,
+  recordReview, saveArtifact, testRules, validate, type McpPolicy,
 } from './tools';
 
 const NAME = 'keel-registry';
@@ -299,6 +299,27 @@ export function register(server: McpServer, repo: Repository, policy: McpPolicy)
         .describe('Set only after reading the refusal and intending the weakening'),
     },
     (args) => attempt(() => promote(repo, policy, args)),
+  );
+
+  server.tool(
+    'record_review',
+    policy.canWrite
+      ? 'Record a second person\'s review (ADR-57): of a revision saved with an '
+        + 'acknowledged weakening, or of a release you did not cut. The release '
+        + 'gate refuses author-only acknowledgements and cutter-only deployments; '
+        + 'this — under a connection identity that is not the author\'s — is what '
+        + 'clears them. Reviewing your own work is refused.'
+      : 'Disabled: this registry connection is read-only. Set KEEL_MCP_WRITE=1 to '
+        + 'record reviews. Reviews are how a second person clears an acknowledged '
+        + 'weakening for release (ADR-57).',
+    {
+      target: z.enum(['revision', 'release']).describe('What is being reviewed'),
+      name: z.string().optional().describe('Artifact name — required for a revision review'),
+      version: z.number().int().positive()
+        .describe('Revision number, or release version'),
+      note: z.string().optional().describe('What the review concluded — it lands in the record'),
+    },
+    (args) => attempt(() => recordReview(repo, policy, args)),
   );
 
   server.tool(
