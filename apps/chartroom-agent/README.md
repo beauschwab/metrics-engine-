@@ -18,7 +18,7 @@ and `uv run ruff` work with no extra flag and no venv to remember to build —
 `uv run` creates it from the lock on demand. The gate is
 `npm run verify --workspace=chartroom-agent`.
 
-chartroom-server proxies `/api/chat` here (set `CHARTROOM_AGENT_URL` to move
+chartroom-api proxies `/api/chat` here (set `CHARTROOM_AGENT_URL` to move
 it); the studio pane is unchanged. Without a key — or with this service down —
 the pane gets the honest `unavailable` banner and the rest of the studio keeps
 working (ADR-35).
@@ -52,7 +52,7 @@ server-side threads); changes are not.
 ## The warehouse query executor (Phase 8, ADRs 39–41)
 
 The same service hosts `POST /query/run` — the warehouse backend behind
-chartroom-server's `CHARTROOM_BACKEND=duckdb|dremio`. It fetches the
+chartroom-api's `CHARTROOM_BACKEND=duckdb|dremio`. It fetches the
 workspace manifest from `${CHARTROOM_API}/api/warehouse/manifest` (the
 engine's own measure SQL + row-stage derivations + typed fixture tables),
 loads DuckDB per workspace hash, and compiles aggregate-only SQL in the
@@ -65,7 +65,7 @@ Dremio rides the same compiler over Flight SQL with a PAT (`DREMIO_URL` +
 `DREMIO_PAT`; pyarrow comes from the root `uv sync`). Its smoke test is env-gated and
 skips loudly in CI.
 
-Verify: `npm run verify:agent` from the repo root (ruff + mypy + pytest; the
+Verify: `npx turbo run verify --filter=chartroom-agent` from the repo root (ruff + mypy + pytest; the
 live-loop test is key-gated and skips loudly without `ANTHROPIC_API_KEY`).
 Dependency versions are pinned exactly — the step-zero spike validated these
 versions' APIs, so bumps re-run the spike (plan E7.1).

@@ -24,7 +24,7 @@ uv sync            # the Python side: only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run registry   # the registry API on :8787 (SQLite by default)
 npm run registry:mcp   # the MCP server on stdio (read-only by default)
-npm run verify     # typecheck, 603 unit tests, 89 browser checks
+npm run verify     # typecheck, 866 unit tests, 131 browser checks
 npm run build      # typecheck + production bundle
 ```
 
@@ -224,6 +224,17 @@ Two authors saving at once do not merge. The second gets a `409` naming who got
 there first, because silently picking a winner is how a reviewed rule change
 disappears into a stale browser tab.
 
+**Two names, not one** (ADR-57). Identity is asserted by the front door, never
+by the request body: `KEEL_IDENTITY_HEADER` names the header the reverse proxy
+sets, and `KEEL_REQUIRE_IDENTITY=1` makes a write with no asserted identity a
+`403` that names the control. An `agent:` identity is refused on every write
+route whatever the mode. On top of that, one person cannot take a weakened
+tier-1 rule all the way to production alone: a revision whose weakening the
+author acknowledged is flagged, a release cannot pin it until a second person
+records a review (`POST /api/artifacts/:name/review`), and whoever cut a
+tier-1 release cannot also be the only name promoting it. The author's
+acknowledgement is intent; the second name is the control.
+
 ## Pointing it at your own data
 
 Until now every number in the surface came from a 160-position generated book.
@@ -327,8 +338,8 @@ instead of being approximated into a dashboard that is confidently wrong.
 ## For agents: the MCP server
 
 ```
-npm run mcp                      # read-only
-KEEL_MCP_WRITE=1 npm run mcp     # writes allowed
+npm run registry:mcp             # read-only
+KEEL_MCP_WRITE=1 npm run registry:mcp   # writes allowed
 ```
 
 Nineteen tools over stdio — reads, dry-runs, the release/deploy verbs, and
@@ -530,9 +541,9 @@ against a real implementation of the protocol rather than against Dremio itself.
 
 ```
 npm run verify       # everything below, across all 14 workspaces
-npm run test         # 855 unit, conformance, server and MCP tests
+npm run test         # 866 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e          # 129 browser checks against the built bundles
+npm run e2e          # 131 browser checks against the built bundles
 npm run setup:agent  # build the Python agent's venv, once
 
 Turborepo runs these over the package graph and caches by input hash, so a

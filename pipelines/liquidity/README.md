@@ -126,10 +126,18 @@ No server is needed for either: the registry is consumed from the committed
 snapshot by default (below). To run against the live registry instead:
 
 ```bash
-npm run registry                         # repo root, port 8787
+# the header lets the two acts below carry two names (ADR-57)
+KEEL_IDENTITY_HEADER=x-keel-identity npm run registry   # repo root, port 8787
 ./scripts/refresh_registry_snapshot.sh   # cuts + promotes release 1 if fresh
 KEEL_BASE_URL=http://localhost:8787 uv run pytest
 ```
+
+The seeded workspace is tier-1, so the release the script cuts cannot be
+promoted by whoever cut it. It asserts two identities through that header —
+`KEEL_SNAPSHOT_CUTTER` and `KEEL_SNAPSHOT_PROMOTER`, defaulting to `$USER`
+and `$USER-deploy`. Two variables stand in for two people here because this
+only ever runs against a fresh local registry; the control is real everywhere
+it matters.
 
 Every stage runs on the engine `LIQ_TARGET` selects — `duckdb` (default) or
 `spark` — through two seams that switch together: `backend.for_target()` for

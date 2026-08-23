@@ -9,9 +9,9 @@ uv sync            # the Python side: only for the executed backends and Dremio
 npm run dev        # http://localhost:5173
 npm run registry   # the registry API on :8787 (SQLite by default)
 npm run registry:mcp   # the MCP server on stdio (read-only by default)
-npm run test       # 603 unit, conformance, server and MCP tests
+npm run test       # 866 unit, conformance, server and MCP tests
 npm run conformance  # just the executed backends (needs python3, polars, pyiceberg)
-npm run e2e        # 89 browser checks against the built bundle
+npm run e2e        # 131 browser checks against the built bundles
 npm run verify     # all of the above, every workspace, via Turborepo
 npm run build      # typecheck + production bundle
 ```
@@ -52,6 +52,7 @@ apps/                        what deploys or ships
     e2e/editor.spec.ts       pills, keyboard, completion, gutters
     e2e/persistence.spec.ts  edits survive a reload, against its own registry
     e2e/form.spec.ts         the round trip, the builders, inline validation
+    e2e/identity.spec.ts     the identity mode's refusal, from the author's chair
   registry-mcp/              the registry as tools an external agent can call
     tools.ts                 plain functions over a Repository — all the decisions
     server.ts                the MCP binding: schemas in, JSON out, no decisions
@@ -125,10 +126,15 @@ packages/                    what other workspaces import, by name
   chartroom-patterns/        the pattern catalog and its design-guide rationale
   chartroom-critics/         the LLM critics, with a degrade path that never blocks
   typescript-config/         the tsconfig bases every workspace extends
+pipelines/                   what a governed release looks like downstream
+  liquidity/                 the Airflow pipeline that consumes a pinned release
 docs/
   brand/final-marks.svg      the Atlas · Prism · Ballast marks and their usage rules
-  chartroom/ADRS.md          51 records; read these before changing a boundary
+  chartroom/ADRS.md          62 records; read these before changing a boundary
+  chartroom/PLAN-GAPS-57-62.md  the hardening plan behind ADR-57–62
   handoff/                   the design handoffs this was built from — provenance
+  vision/                    the product narrative and its walkthrough
+.claude/skills/              one skill per treasury reporting regime, for agents
 turbo.json                   the task graph: what depends on what, and what caches
 ```
 
@@ -162,13 +168,13 @@ promote  → a deployment   a channel now points at that release
 
 A client dereferences a **channel**, never a release. Rollback is repointing the
 channel — nothing is edited back, and the old release remains exactly what it
-was. `server/runtime.test.ts` asserts the property that makes the whole thing
+was. `packages/registry/runtime.test.ts` asserts the property that makes the whole thing
 work: after a release is promoted, editing the workspace changes nothing the
 runtime read path returns.
 
 ### One DELETE, and why it is not a hole
 
-`server/dialect.test.ts` asserts that no statement in the registry updates or
+`packages/registry/dialect.test.ts` asserts that no statement in the registry updates or
 deletes anything that is the audit trail. Adding channels required a `DELETE
 FROM keel_channel` — there is no portable upsert across SQLite and T-SQL — and
 the test caught it, correctly.
@@ -245,7 +251,7 @@ The naive fix is a compiled plan per system. That is N plans to keep conformant,
 and the entire point of the compiler is that there is one. So a binding does the
 opposite: it generates an **adapter view** presenting the client's table under
 the canonical names, and the canonical plan runs on top, byte-identical
-everywhere. `server/runtime.test.ts` asserts exactly that — the plan text with a
+everywhere. `packages/registry/runtime.test.ts` asserts exactly that — the plan text with a
 binding and without one is the same string.
 
 A binding is `kind: source_binding` — a governed artifact, revisioned and
@@ -288,7 +294,7 @@ the rules test segment = 'SMALL_BUSINESS', and no client value maps to it
 GETs, a zero-dependency Python client, and a worked example running the deployed
 plan on a client-shaped DuckDB.
 
-`server/client-example.test.ts` runs it — a real HTTP server on a real port, a
+`packages/registry/client-example.test.ts` runs it — a real HTTP server on a real port, a
 binding saved over the API, a release cut and promoted, the shipped script
 executed as documented — and asserts the numbers it files from a table with
 *none* of the canonical names in it equal the numbers the surface showed, to the
@@ -627,7 +633,7 @@ chains them: SQL cannot reference an alias declared beside it.
 ## The MCP server
 
 `mcp/` exposes the registry as tools an external agent can call. The split
-mirrors `server/api.ts`: `tools.ts` holds every decision as plain async functions
+mirrors `packages/registry/api.ts`: `tools.ts` holds every decision as plain async functions
 over a `Repository`, and `server.ts` is a schema binding with nothing in it —
 so the behaviour is tested without a subprocess, and the protocol is tested
 without re-testing the behaviour.
@@ -910,7 +916,7 @@ Until this layer existed there was no backend at all. The six documents were
 string constants in the bundle held in React state, so every edit died on
 reload — fine for a design prototype, not a registry.
 
-`server/` is a small HTTP API over one of two databases: **SQLite in
+`packages/registry/` is a small HTTP API over one of two databases: **SQLite in
 development, SQL Server in production**, chosen by `KEEL_DB` and defaulting to
 SQLite so a fresh clone works with no connection string and no network.
 
@@ -951,7 +957,7 @@ reviewed and approved rule change disappears into a stale browser tab.
 
 ### One dialect layer, one of which is untested
 
-Every difference between the two engines is in `server/dialect.ts`, because only
+Every difference between the two engines is in `packages/registry/dialect.ts`, because only
 one of them can be executed here — there is no SQL Server in this environment and
 no Docker daemon to start one. So the T-SQL side is held to the strongest checks
 available without a connection: the DDL and DML text is asserted verbatim, and
@@ -1086,11 +1092,11 @@ look.
 ### Testing a protocol without the product
 
 There is no Dremio here and no way to start one, so the alternative to mocking
-was to implement the protocol. `server/query/flight_sql_stub.py` is a real Flight
+was to implement the protocol. `packages/registry/query/flight_sql_stub.py` is a real Flight
 SQL server — handshake, `CreatePreparedStatement`, `GetFlightInfo`, `DoGet`,
 Arrow IPC over gRPC — backed by DuckDB, so the SQL it answers is real SQL.
 
-`server/live.test.ts` seeds it with the same 2052a fixture the browser evaluates
+`packages/registry/live.test.ts` seeds it with the same 2052a fixture the browser evaluates
 and asserts the filed table it returns equals `runReport`'s to the cent. That
 equality is the product claim in one assertion — *the number you verified in the
 surface is the number the warehouse computes* — and it now holds across the
@@ -1412,8 +1418,8 @@ A second application in the monorepo (`chartroom/`, seven npm workspaces plus
 a Python agent service:
 `spec`, `widgets`, `server`, `studio`) implementing Phase 1 of the
 agent-guided dashboard studio design handoff. The full tour is
-`chartroom/README.md`; every deviation from the handoff's pinned technology
-decisions is a numbered ADR in `chartroom/ADRS.md`. What belongs here is the
+`docs/chartroom/README.md`; every deviation from the handoff's pinned technology
+decisions is a numbered ADR in `docs/chartroom/ADRS.md`. What belongs here is the
 seam it needed from the engine and the shape of the trust chain.
 
 **The engine grew two optional constructor arguments and nothing else.**
@@ -1482,7 +1488,10 @@ agent session is then allowed through, with the audit trail naming both.
 
 ## Testing
 
-`npm run test` runs 603 tests — 379 in `src/engine/`, 168 in `server/`, 58 in `mcp/` — covering
+`npm run test` runs 866 tests across the workspaces — 396 in `packages/engine`,
+180 in `packages/registry`, 86 in `packages/spec`, 65 in `apps/registry-mcp`, and
+the rest across the chartroom API, its MCP server, the patterns, critics and
+widgets — covering
 the calibrated figures, the
 expression evaluator, the predicate compiler, number formatting, every
 diagnostic in the catalogue, every quick fix, the trace and blast radius

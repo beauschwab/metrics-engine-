@@ -1,14 +1,16 @@
 # Closing ADR-57–62 — the hardening plan
 
 Status: Phase A shipped; B-E not started · Owner: platform ·
-Prereq reading: `ADRS.md` (the "Proposed" section, ADR-57–62), `product.md` §7,
-the exec pitch's "hard questions" appendix
+Prereq reading: `ADRS.md` — ADR-57 (accepted, shipped) and the "Proposed"
+section, ADR-58–62 — plus `product.md` §7 and the exec pitch's "hard
+questions" appendix
 
 This plan sequences the six proposed ADRs into five phases, in the order the
 *pilot* needs them rather than the order they were found. Two are pilot
 prerequisites (the human seam, the ingestion left edge), one is the pilot's
 method (divergence machinery), two run during the pilot (the agent evidence
-file, vocabulary growth on demand). The stubs in `ADRS.md` are authoritative
+file, vocabulary growth on demand). Phase A has shipped; ADR-57 has moved out
+of the proposed section and is accepted. The stubs in `ADRS.md` are authoritative
 on intent; when a phase ships, its stub is fleshed out in place and loses the
 "proposed" mark — where this plan and the shipped ADR disagree, the ADR wins.
 

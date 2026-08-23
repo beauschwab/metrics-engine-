@@ -1,7 +1,8 @@
 # Chartroom Phases 7–11 — closing the PRD gaps
 
 Status: phases 7–10 shipped; phase 11 outstanding · Owner: platform ·
-Prereq reading: `chartroom-prd.md`, `ADRS.md` (1–49), `README.md`
+Prereq reading: `chartroom-prd.md` (a design upload, not in this repo — see
+`docs/handoff/`), `ADRS.md` (1–49), `README.md`
 
 The ADR numbers this plan predicts for phases 9 and 10 are not the ones that
 shipped — `ADRS.md` is authoritative where the two disagree.

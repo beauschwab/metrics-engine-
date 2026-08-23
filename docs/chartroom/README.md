@@ -19,7 +19,7 @@ Phase 7 moves the agent runtime to Python: `apps/chartroom-agent` is a LangGraph
 deepagents loop on FastAPI whose tools are `chartroom-mcp` — see
 [`apps/chartroom-agent/README.md`](../../apps/chartroom-agent/README.md) and `PLAN-PHASES-7-11.md`.
 Phase 8 makes the query backend a routing decision (ADRs 39–41):
-`CHARTROOM_BACKEND=fixtures|duckdb|dremio` on chartroom-server — fixtures
+`CHARTROOM_BACKEND=fixtures|duckdb|dremio` on chartroom-api — fixtures
 stay the default and the parity oracle; duckdb/dremio delegate to the agent
 service's `/query/run`, which compiles the engine's own SQL (measures + the
 row-stage derivations) into the semantic views' CTE shape.
@@ -77,14 +77,14 @@ definition agent proposes, proves with `test_rules` and `assess_change`, and
 hands the body to the human who saves it.
 
 ```
-npm run chartroom:server   # :8788 — contracts, queries, dashboards, governance, chat proxy
+npm run chartroom:api      # :8788 — contracts, queries, dashboards, governance, chat proxy
 npm run chartroom:studio   # :5174 — the studio (approvals + steward queue live here)
 npm run chartroom:mcp      # stdio — the agent's 28 tools
 # python agent (chat backend): see apps/chartroom-agent/README.md  → :8789
 npm run verify             # every workspace: typecheck, unit, browser, and the Python gate
 ```
 
-Run `npm run server` (the registry, :8787) alongside for live contracts;
+Run `npm run registry` (the registry, :8787) alongside for live contracts;
 without it the server falls back to the shipped documents and the studio
 header says so — `registry: shipped`, in amber, because demo documents should
 never impersonate a governed workspace.
@@ -97,7 +97,7 @@ never impersonate a governed workspace.
 | `chartroom-widgets` | The catalog of twelve: versioned contracts as data, presentation-only SVG renderers. Widgets receive numbers; they cannot fetch. |
 | `chartroom-patterns` | The six reviewed archetypes (limit-utilization-board, liquidity-monitor, metric-deep-dive, variance-walk, scenario-comparison, exec-summary) with slots, wireframes and when-*not*-to-use — plus the design guide's rationale for all 20 rules, tested to cover exactly the linter's roster. |
 | `chartroom-critics` | The LLM design critic: composition, hierarchy, decision-alignment against the brief. Zod-validated findings, one retry, then a WARN "critic unavailable" — the deterministic linter is the hard gate, so a model outage never blocks anyone. Evals run live with `ANTHROPIC_API_KEY`, skip loudly without. |
-| `chartroom-server` | Contracts *derived* from the registry (unit from format, dims from derived rows, governance status from the production channel), grouped queries through the engine's own `Evaluator`, versioned dashboard persistence, briefs with a human-only approval gate, metric proposals with engine-run evidence, the promotion gate matrix, exposure records, upgrade notices — and an audit trail pairing every agent action with its principal. |
+| `chartroom-api` | Contracts *derived* from the registry (unit from format, dims from derived rows, governance status from the production channel), grouped queries through the engine's own `Evaluator`, versioned dashboard persistence, briefs with a human-only approval gate, metric proposals with engine-run evidence, the promotion gate matrix, exposure records, upgrade notices — and an audit trail pairing every agent action with its principal. |
 | `chartroom-mcp` | Chartroom's 28 tools over stdio, thin by contract: validate → HTTP as `agent:mcp-<session>` → shape. The server's entitlements do the governing; there is deliberately **no approve, decide, or promote tool** — the governance tools file proposals and read the gate. The MCP instructions carry the intake protocol. |
 | `chartroom-studio` | The interpreter canvas, a contract-generated widget form, the spec source in CodeMirror, findings with one-click fixes, explicit versioned saves — the **Brief tab** (the intake slots as an approvable card), the **Govern tab** (the promotion checklist with sign-offs, the promote act, and version-pin notices), and `#/proposals`, the steward queue. `#/widgets` is the widget-states review harness. |
 

@@ -17,9 +17,9 @@
   `package.json` — chartroom-server imported chartroom-widgets for three phases
   without declaring it.
 - Every lint rule: one file in `spec/src/lint/rules/`, a `describe` block in
-  `spec/test/rules.test.ts` with the violation, the clean case, and — where a
+  `packages/chartroom-spec/test/rules.test.ts` with the violation, the clean case, and — where a
   fix exists — the round-trip (apply it, re-lint, the rule stops firing).
-  Shared contracts live in `spec/test/fixtures.ts`. Adding a rule also means
+  Shared contracts live in `packages/chartroom-spec/test/fixtures.ts`. Adding a rule also means
   a `RULE_GUIDE` entry in `chartroom-patterns`; the roster test requires the
   guide to cover exactly `RULE_IDS`, so the two move together.
 - Never let widgets fetch. Never let format overrides touch units (NUM-01).

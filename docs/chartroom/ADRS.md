@@ -1244,15 +1244,6 @@ here, not a redesign.
 
 ---
 
-# Proposed — recorded gaps, not yet accepted
-
-The entries below are **stubs with status: proposed**. They record the
-conceptual gaps a hostile internal review would find first, and the intended
-shape of each answer, so the gap analysis lives in the same governed record
-as the decisions — not in a deck. Accepting one means fleshing it out in
-place and building it; rejecting one means recording why, here. Numbering is
-claimed now so later references stay stable.
-
 ## ADR-57 — human identity and segregation of duties
 
 Shipped. The maker-checker seam between agent and human was structural; this
@@ -1299,6 +1290,17 @@ authentication is the reverse proxy's job, and the registry's contract is
 "the header is the assertion". The review UI on registry-web (a queue of
 flagged revisions awaiting a second name) is follow-on surface work; the
 control does not wait for its chrome.
+
+---
+
+# Proposed — recorded gaps, not yet accepted
+
+The entries below are **stubs with status: proposed**. They record the
+conceptual gaps a hostile internal review would find first, and the intended
+shape of each answer, so the gap analysis lives in the same governed record
+as the decisions — not in a deck. Accepting one means fleshing it out in
+place and building it; rejecting one means recording why, here. Numbering is
+claimed now so later references stay stable.
 
 ## ADR-58 (proposed) — the ingestion control plane: lineage grows a left edge
 

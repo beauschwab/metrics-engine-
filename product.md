@@ -93,6 +93,9 @@ approver. Approval, stewardship decisions, and promotion are refused to
 `agent:*` identities at the API — permanently, not by configuration — and the
 registry's tool surface holds the same line: an `agent:*` connection is never
 even offered the save, cut, or promote tools, whatever the write flag says.
+The same seam runs between humans: a weakened tier-1 rule needs a second
+person's review before a release can pin it, and whoever cuts that release
+cannot be the only name deploying it (ADR-57).
 
 **P7 — Refuse rather than guess.** Every layer would rather say what it cannot
 do than produce something plausible. The compiler refuses to emit SQL for
@@ -391,11 +394,12 @@ registry, seeded on first boot, and covered by a test that fails when a measure
 is renamed. `outflow-walk` is built on a shipped pattern rather than a "no
 pattern" justification.
 
-Verification is one command (`npm run verify`) and currently runs 855 unit,
-conformance, server and MCP tests across the TypeScript workspaces, 34 Python
-tests including the cross-backend parity harness, and 129 browser checks (93
-against the authoring surface, 36 against the studio).
+Verification is one command (`npm run verify`) and currently runs 866 unit,
+conformance, server and MCP tests across the TypeScript workspaces, 40 Python
+tests in the agent service including the cross-backend parity harness, and 131
+browser checks (95 against the authoring surface, 36 against the studio). The
+liquidity pipeline carries a further 41 Python tests under its own runner.
 
 Every architectural deviation from the pinned spec decisions is recorded in
-`docs/chartroom/ADRS.md` — 56 entries, including the ones that record a mistake and
-its correction.
+`docs/chartroom/ADRS.md` — 62 entries (57 accepted, five proposed), including the
+ones that record a mistake and its correction.
