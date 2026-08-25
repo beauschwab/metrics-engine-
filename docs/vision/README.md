@@ -1,5 +1,10 @@
 # Walkthrough screenshots
 
+[`executive-brief.html`](executive-brief.html) is the executive-facing read of this
+material — the product vision and value statement, with these screenshots as its
+evidence. Open it in a browser; it is a self-contained page next to the images it
+references, so regenerating the shots below updates the brief with them.
+
 The images in [`product.md` §7](../../product.md) are of the running system,
 not mockups. This is how to regenerate them.
 
