@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Executive brief: one governed definition behind both the regulatory filing and the committee dashboard, proved with screenshots of the running system.">
+<title>The Governed Number</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* ============================================================
+   The Governed Number — executive brief
+   Palette inherited from the Aperture Risk design system
+   (docs/handoff/project/_ds/.../tokens/colors.css): cool near-black
+   greys, one deep golden-yellow accent, finance-semantic up/down.
+   Light is primary here — a brief gets read and printed — with the
+   system's own dark terminal palette as the dark theme.
+   ============================================================ */
+
+/* ---- LIGHT (primary) ---- */
+:root {
+  --ground:        #F1F3F5;
+  --surface:       #FFFFFF;
+  --surface-sunk:  #F7F8F9;
+  --frame:         #17191D;   /* screenshot mounts: the app's own ground */
+
+  --ink:           #17191D;
+  --ink-2:         #474C54;
+  --ink-3:         #6B7079;
+
+  --line:          #DEE1E5;
+  --line-strong:   #C3C8CF;
+
+  --accent:        #F2B300;   /* graphic marks only — rules, ticks, fills */
+  --accent-ink:    #8A6400;   /* accent as text on this ground */
+  --accent-wash:   rgba(242, 179, 0, 0.13);
+  --accent-line:   #C99400;
+
+  --danger:        #B4262F;
+  --danger-wash:   rgba(180, 38, 47, 0.09);
+  --up:            #16794F;
+  --up-wash:       rgba(22, 121, 79, 0.10);
+
+  --shadow:        0 1px 2px rgba(23, 25, 29, .05), 0 8px 24px -12px rgba(23, 25, 29, .16);
+
+  --measure:       67ch;
+  --wide:          1120px;
+}
+
+/* ---- DARK (the design system's native terminal palette) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:       #131417;
+    --surface:      #1C1F23;
+    --surface-sunk: #17191D;
+    --frame:        #0E0F11;
+
+    --ink:          #E8EAED;
+    --ink-2:        #AFB4BC;
+    --ink-3:        #858B94;
+
+    --line:         #2A2D33;
+    --line-strong:  #3C4047;
+
+    --accent:       #F2B300;
+    --accent-ink:   #FFC629;
+    --accent-wash:  rgba(242, 179, 0, 0.11);
+    --accent-line:  #A87A00;
+
+    --danger:       #FF7480;
+    --danger-wash:  rgba(245, 69, 79, 0.12);
+    --up:           #2ED389;
+    --up-wash:      rgba(46, 211, 137, 0.12);
+
+    --shadow:       0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:       #131417;
+  --surface:      #1C1F23;
+  --surface-sunk: #17191D;
+  --frame:        #0E0F11;
+
+  --ink:          #E8EAED;
+  --ink-2:        #AFB4BC;
+  --ink-3:        #858B94;
+
+  --line:         #2A2D33;
+  --line-strong:  #3C4047;
+
+  --accent:       #F2B300;
+  --accent-ink:   #FFC629;
+  --accent-wash:  rgba(242, 179, 0, 0.11);
+  --accent-line:  #A87A00;
+
+  --danger:       #FF7480;
+  --danger-wash:  rgba(245, 69, 79, 0.12);
+  --up:           #2ED389;
+  --up-wash:      rgba(46, 211, 137, 0.12);
+
+  --shadow:       0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16.5px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 0;
+}
+
+/* ---------- layout ---------- */
+.page { max-width: var(--wide); margin: 0 auto; padding: 0 28px 96px; }
+
+section.sec {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 0 40px;
+  padding: 52px 0;
+  border-top: 1px solid var(--line);
+}
+.rail { position: sticky; top: 24px; align-self: start; }
+.rail .num {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px; letter-spacing: .1em;
+  color: var(--accent-ink);
+  display: block; padding-bottom: 8px;
+  border-bottom: 2px solid var(--accent);
+  width: max-content; min-width: 2.6em;
+}
+.rail .lbl {
+  display: block; margin-top: 10px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: .085em;
+  text-transform: uppercase; color: var(--ink-3);
+  max-width: 118px; line-height: 1.45;
+}
+.body { min-width: 0; display: flex; flex-direction: column; gap: 22px; }
+.body > * { margin: 0; }
+.body p, .body ul, .body ol, .body h3 + p { max-width: var(--measure); }
+
+/* ---------- type ---------- */
+h1, h2, h3 { font-family: Newsreader, Georgia, "Times New Roman", serif; text-wrap: balance; font-weight: 500; }
+h2 { font-size: clamp(28px, 3.4vw, 39px); line-height: 1.14; letter-spacing: -.012em; margin: 0; }
+h3 {
+  font-family: Inter, sans-serif; font-size: 13px; font-weight: 700;
+  letter-spacing: .085em; text-transform: uppercase; color: var(--ink-2);
+  margin-top: 10px;
+}
+p { margin: 0; }
+strong { font-weight: 600; color: var(--ink); }
+em { font-style: italic; }
+a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 2.5px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+code, .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace; font-size: .875em; }
+code { background: var(--accent-wash); padding: .1em .34em; border-radius: 3px; color: var(--ink); }
+
+/* ---------- masthead ---------- */
+header.mast { padding: 74px 0 46px; display: flex; flex-direction: column; gap: 26px; }
+.eyebrow {
+  font-family: "IBM Plex Mono", monospace; font-size: 11.5px;
+  letter-spacing: .17em; text-transform: uppercase; color: var(--ink-3);
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.eyebrow::before {
+  content: ""; width: 26px; height: 3px; background: var(--accent); flex: none;
+}
+h1 {
+  font-size: clamp(46px, 8vw, 88px); line-height: .98; letter-spacing: -.028em;
+  margin: 0; max-width: 14ch; font-weight: 500;
+}
+.standfirst {
+  font-family: Newsreader, Georgia, serif;
+  font-size: clamp(19px, 2.2vw, 24px); line-height: 1.48; color: var(--ink-2);
+  max-width: 54ch;
+}
+.mast-meta {
+  display: flex; flex-wrap: wrap; gap: 0 44px; row-gap: 16px;
+  padding-top: 22px; border-top: 1px solid var(--line);
+}
+.mast-meta div { display: flex; flex-direction: column; gap: 3px; }
+.mast-meta dt {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-3); margin: 0;
+}
+.mast-meta dd { margin: 0; font-size: 14.5px; color: var(--ink); }
+
+/* ---------- value statement ---------- */
+.statement {
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 3px; padding: 34px 38px;
+  display: flex; flex-direction: column; gap: 14px;
+  box-shadow: var(--shadow);
+}
+.statement .lead {
+  font-family: Newsreader, Georgia, serif; font-weight: 400;
+  font-size: clamp(21px, 2.5vw, 27px); line-height: 1.42; letter-spacing: -.008em;
+  max-width: 46ch;
+}
+.statement .sub { color: var(--ink-2); max-width: 62ch; font-size: 15.5px; }
+
+/* ---------- pull quote ---------- */
+.pull {
+  font-family: Newsreader, Georgia, serif; font-size: clamp(21px, 2.6vw, 27px);
+  line-height: 1.36; letter-spacing: -.008em; max-width: 24ch;
+  padding-left: 20px; border-left: 3px solid var(--accent); color: var(--ink);
+}
+
+/* ---------- cards ---------- */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.card { background: var(--surface); padding: 22px 22px 24px; display: flex; flex-direction: column; gap: 9px; }
+.card .cap { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--accent-ink); }
+.card h4 { margin: 0; font-family: Newsreader, Georgia, serif; font-weight: 500; font-size: 20px; line-height: 1.24; letter-spacing: -.005em; }
+.card p { font-size: 14.5px; line-height: 1.55; color: var(--ink-2); max-width: none; }
+
+/* ---------- tables ---------- */
+.tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; min-width: 460px; }
+caption {
+  text-align: left; padding: 14px 18px; font-size: 11.5px; font-weight: 600;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+}
+th, td { padding: 11px 18px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th {
+  font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-3); background: var(--surface-sunk);
+}
+tbody tr:last-child td { border-bottom: 0; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; font-family: "IBM Plex Mono", monospace; font-size: 13.5px; white-space: nowrap; }
+td.key { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--ink-2); }
+tr.total td { font-weight: 600; background: var(--accent-wash); }
+.delta-up { color: var(--danger); font-variant-numeric: tabular-nums; }
+.delta-dn { color: var(--up); font-variant-numeric: tabular-nums; }
+
+/* ---------- figures ---------- */
+figure { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.shot {
+  background: var(--frame); border: 1px solid var(--line-strong);
+  border-radius: 4px; padding: 7px; box-shadow: var(--shadow);
+}
+.shot img { display: block; width: 100%; height: auto; border-radius: 2px; }
+figcaption { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); max-width: 78ch; }
+figcaption b {
+  display: inline-block; font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px; letter-spacing: .11em; text-transform: uppercase;
+  color: var(--accent-ink); font-weight: 500; margin-right: 8px;
+}
+.pair { display: grid; grid-template-columns: 1fr; gap: 26px; }
+@media (min-width: 900px) { .pair { grid-template-columns: 1fr 1fr; gap: 22px; } }
+.pair figcaption { font-size: 13px; }
+
+/* ---------- diagram ---------- */
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 26px 24px 20px; }
+.diagram svg { display: block; width: 100%; max-width: 100%; height: auto; color: var(--ink-2); }
+
+/* ---------- terminal blocks ---------- */
+.term {
+  background: var(--surface-sunk); border: 1px solid var(--line);
+  border-left: 3px solid var(--danger); border-radius: 3px;
+  padding: 16px 18px; overflow-x: auto;
+}
+.term.ok { border-left-color: var(--accent); }
+.term pre { margin: 0; font-family: "IBM Plex Mono", monospace; font-size: 12.5px; line-height: 1.62; color: var(--ink-2); white-space: pre; }
+.term .hl { color: var(--ink); font-weight: 500; }
+
+/* ---------- diagnostic callout ---------- */
+.diag {
+  background: var(--danger-wash); border: 1px solid var(--line);
+  border-left: 3px solid var(--danger); border-radius: 3px; padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 6px; max-width: var(--measure);
+}
+.diag .id { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; letter-spacing: .09em; color: var(--danger); font-weight: 500; }
+.diag p { font-size: 14.5px; color: var(--ink); max-width: none; }
+
+/* ---------- lists ---------- */
+ul.ticks { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+ul.ticks li { padding-left: 26px; position: relative; font-size: 15.5px; line-height: 1.55; }
+ul.ticks li::before {
+  content: ""; position: absolute; left: 0; top: .58em;
+  width: 11px; height: 2px; background: var(--accent);
+}
+ul.refuse { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+ul.refuse li { padding-left: 26px; position: relative; font-size: 15.5px; line-height: 1.55; }
+ul.refuse li::before {
+  content: "×"; position: absolute; left: 2px; top: -.06em;
+  color: var(--danger); font-size: 17px; font-weight: 600;
+}
+
+/* ---------- stat row ---------- */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.stat { background: var(--surface); padding: 20px 20px 22px; display: flex; flex-direction: column; gap: 5px; }
+.stat .v { font-family: Newsreader, Georgia, serif; font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.stat .k { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
+
+/* ---------- footer ---------- */
+footer {
+  border-top: 1px solid var(--line); margin-top: 8px; padding: 40px 0 0;
+  display: flex; flex-direction: column; gap: 14px;
+}
+footer p { font-size: 13.5px; color: var(--ink-3); max-width: 76ch; }
+
+@media (max-width: 760px) {
+  section.sec { grid-template-columns: 1fr; gap: 20px; padding: 40px 0; }
+  .rail { position: static; display: flex; align-items: baseline; gap: 14px; }
+  .rail .lbl { margin-top: 0; max-width: none; }
+  .page { padding: 0 20px 64px; }
+  .statement { padding: 26px 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+<header class="mast">
+  <div class="eyebrow">Executive brief · Product vision &amp; value statement</div>
+  <h1>The Governed Number</h1>
+  <p class="standfirst">
+    A metrics platform for regulated finance, where the figure a regulator receives
+    and the figure a board approves are produced by the same definition — and cannot
+    quietly stop agreeing.
+  </p>
+  <dl class="mast-meta">
+    <div><dt>Surfaces</dt><dd>Metrics Definition Layer · Chartroom</dd></div>
+    <div><dt>First domain</dt><dd>Liquidity — LCR, FR 2052a</dd></div>
+    <div><dt>Status</dt><dd>Nine phases built, verified, merged</dd></div>
+    <div><dt>Evidence</dt><dd>Screenshots of the running system</dd></div>
+  </dl>
+</header>
+
+<section class="sec">
+  <div class="rail"><span class="num">00</span><span class="lbl">Value statement</span></div>
+  <div class="body">
+    <div class="statement">
+      <p class="lead">
+        Every regulated number is defined once, in a governed document with a citation,
+        a revision history and a named author — and every consumer of that number reads
+        the definition itself rather than a copy of it.
+      </p>
+      <p class="sub">
+        The filing and the dashboard hold no arithmetic of their own. There is nothing to
+        retype, so there is nothing to drift. When a rule changes, the change is reviewed
+        once, deployed once, and lands everywhere at the moment a named human decides it
+        should — not before, and not in some places and not others.
+      </p>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="v">1</span><span class="k">definition behind both the filed row and the committee widget</span></div>
+      <div class="stat"><span class="v">0</span><span class="k">lines of calculation logic in a dashboard or a pipeline</span></div>
+      <div class="stat"><span class="v">2</span><span class="k">named humans required to deploy a weakened tier-1 rule</span></div>
+      <div class="stat"><span class="v">1,078</span><span class="k">automated checks behind the claims in this brief</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="rail"><span class="num">01</span><span class="lbl">The problem</span></div>
+  <div class="body">
+    <h2>Drift you cannot detect is worse than a wrong number you can</h2>
+    <p>
+      A regulated number has a long way to travel between the rule that defines it and the
+      slide a committee approves. Today it is retyped at every hop.
+    </p>
+    <p>
+      <code>lcr_pct</code> is defined once, under an SR 11-7 tier, with a citation and a
+      revision history. Then somebody writes <code>100.0 * [HQLA] / [Net Outflows]</code>
+      into a BI calculated field, and <em>that</em> is the number the committee sees. A
+      reporting job carries its own copy into the filing. The three drift — a rounding rule
+      here, a filter there — and the drift is undetectable, because nothing compares them.
+    </p>
+    <p class="pull">
+      A wrong number gets caught and fixed. Undetected drift gets defended.
+    </p>
+    <p>
+      Both sides are certain they are reading the governed figure, so the disagreement
+      surfaces as a supervisory question rather than as an internal control. The dashboard
+      half has its own version of the same failure: hand-built one-off dashboards, fast and
+      ungoverned, that cannot be reviewed or diffed, reach data through ad-hoc paths, embed
+      calculation logic that duplicates and then departs from the governed definition, and
+      have no route from <em>my thing</em> to <em>the team's thing</em> to
+      <em>the certified thing</em>.
+    </p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 900 366" role="img" aria-label="Two lanes. Above: one definition retyped into a BI calculated field and into report code, producing a committee number and a filed number that can disagree with nothing comparing them. Below: one registry definition compiled to both consumers, which hold no copy.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <polygon points="0,1 10,5 0,9" fill="currentColor"/>
+          </marker>
+          <marker id="arG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <polygon points="0,1 10,5 0,9" fill="var(--accent-line)"/>
+          </marker>
+          <marker id="arR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <polygon points="0,1 10,5 0,9" fill="var(--danger)"/>
+          </marker>
+        </defs>
+
+        <!-- lane A -->
+        <text x="0" y="14" font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1.4" fill="currentColor" opacity=".72">TODAY</text>
+
+        <rect x="0" y="34" width="150" height="52" rx="3" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".38"/>
+        <text x="75" y="58" text-anchor="middle" font-family="Inter, sans-serif" font-size="12.5" fill="currentColor">Governed</text>
+        <text x="75" y="74" text-anchor="middle" font-family="Inter, sans-serif" font-size="12.5" fill="currentColor">definition</text>
+
+        <line x1="150" y1="46" x2="330" y2="46" stroke="var(--danger)" stroke-width="1.5" marker-end="url(#arR)"/>
+        <text x="240" y="38" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--danger)">retyped</text>
+        <line x1="150" y1="76" x2="330" y2="106" stroke="var(--danger)" stroke-width="1.5" marker-end="url(#arR)"/>
+        <text x="228" y="110" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--danger)">retyped</text>
+
+        <rect x="330" y="24" width="176" height="44" rx="3" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".38"/>
+        <text x="418" y="51" text-anchor="middle" font-family="Inter, sans-serif" font-size="12.5" fill="currentColor">BI calculated field</text>
+
+        <rect x="330" y="86" width="176" height="44" rx="3" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".38"/>
+        <text x="418" y="113" text-anchor="middle" font-family="Inter, sans-serif" font-size="12.5" fill="currentColor">Report code</text>
+
+        <line x1="506" y1="46" x2="646" y2="46" stroke="currentColor" stroke-opacity=".5" stroke-width="1.5" marker-end="url(#ar)"/>
+        <line x1="506" y1="108" x2="646" y2="108" stroke="currentColor" stroke-opacity=".5" stroke-width="1.5" marker-end="url(#ar)"/>
+
+        <rect x="646" y="24" width="176" height="44" rx="3" fill="var(--danger-wash)" stroke="var(--danger)" stroke-opacity=".55"/>
+        <text x="734" y="51" text-anchor="middle" font-family="Inter, sans-serif" font-size="12.5" fill="currentColor">Committee number</text>
+
+        <rect x="646" y="86" width="176" height="44" rx="3" fill="var(--danger-wash)" stroke="var(--danger)" stroke-opacity=".55"/>
+        <text x="734" y="113" text-anchor="middle" font-family="Inter, sans-serif" font-size="12.5" fill="currentColor">Filed number</text>
+
+        <line x1="838" y1="46" x2="838" y2="108" stroke="var(--danger)" stroke-width="1.2" stroke-dasharray="3 3"/>
+        <text x="848" y="77" font-family="IBM Plex Mono, monospace" font-size="14" fill="var(--danger)">≠</text>
+        <text x="734" y="152" text-anchor="middle" font-family="Inter, sans-serif" font-size="11.5" font-style="italic" fill="var(--danger)">nothing compares them</text>
+
+        <line x1="0" y1="188" x2="900" y2="188" stroke="currentColor" stroke-opacity=".2"/>
+
+        <!-- lane B -->
+        <text x="0" y="220" font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1.4" fill="var(--accent-ink)">HERE</text>
+
+        <rect x="0" y="240" width="150" height="66" rx="3" fill="var(--accent-wash)" stroke="var(--accent-line)"/>
+        <text x="75" y="264" text-anchor="middle" font-family="Inter, sans-serif" font-size="12.5" fill="currentColor">Registry</text>
+        <text x="75" y="280" text-anchor="middle" font-family="Inter, sans-serif" font-size="12.5" fill="currentColor">definition</text>
+        <text x="75" y="296" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--accent-ink)">rev 2</text>
+
+        <line x1="150" y1="262" x2="646" y2="262" stroke="var(--accent-line)" stroke-width="1.5" marker-end="url(#arG)"/>
+        <text x="404" y="254" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--accent-ink)">compiled — SQL · Polars · PySpark</text>
+
+        <line x1="330" y1="262" x2="330" y2="312" stroke="var(--accent-line)" stroke-width="1.5"/>
+        <line x1="330" y1="312" x2="646" y2="312" stroke="var(--accent-line)" stroke-width="1.5" marker-end="url(#arG)"/>
+
+        <rect x="646" y="240" width="176" height="44" rx="3" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".38"/>
+        <text x="734" y="267" text-anchor="middle" font-family="Inter, sans-serif" font-size="12.5" fill="currentColor">Committee dashboard</text>
+
+        <rect x="646" y="290" width="176" height="44" rx="3" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-opacity=".38"/>
+        <text x="734" y="317" text-anchor="middle" font-family="Inter, sans-serif" font-size="12.5" fill="currentColor">Regulatory filing</text>
+
+        <text x="734" y="352" text-anchor="middle" font-family="Inter, sans-serif" font-size="11.5" font-style="italic" fill="var(--accent-ink)">neither holds a copy</text>
+      </svg>
+      <figcaption>
+        <b>Figure 1</b>
+        Drift enters at the retype. Remove the copies and the two numbers cannot separate:
+        the dashboard and the filing both dereference the definition, so they agree by
+        construction rather than by reconciliation.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="rail"><span class="num">02</span><span class="lbl">What it is</span></div>
+  <div class="body">
+    <h2>Two surfaces over one governed registry</h2>
+    <p>
+      <strong>The Metrics Definition Layer</strong> is where a definition is authored: a
+      liquidity analyst writes an FR 2052a rule, watches the number it produces, and reads
+      the plan the nightly pipeline will run. <strong>Chartroom</strong> is where a
+      definition is consumed: an agent-guided studio for dashboards whose every number
+      traces back to a registry function.
+    </p>
+    <p>
+      They are one product because they answer the same question at two ends of the same
+      pipe — <em>is this number right, and can I prove it?</em> — and because the second is
+      only credible if the first is real. A dashboard that cites a governed definition is
+      worth something only when that definition is itself authored, versioned and reviewed
+      somewhere you can point at.
+    </p>
+
+    <div class="cards">
+      <div class="card">
+        <span class="cap">Authoring</span>
+        <h4>The rule, with its authority attached</h4>
+        <p>Seven document kinds, each with its own answer to “is this right?” — the value and its derivation trace, the coverage of a rule set, the citation behind each rate, the rows that would actually be filed.</p>
+      </div>
+      <div class="card">
+        <span class="cap">Consumption</span>
+        <h4>Dashboards as reviewable artifacts</h4>
+        <p>The agent never writes dashboard code. It writes a declarative spec where every number is a registry reference and every visual comes from a reviewed catalog. The spec is the unit of review, versioning and promotion.</p>
+      </div>
+      <div class="card">
+        <span class="cap">Execution</span>
+        <h4>One compilation path to the warehouse</h4>
+        <p>A definition compiles once — to SQL, Polars and PySpark, and to the semantic views a BI tool points at. When the warehouse serves a query it runs the engine's own compiled SQL, not a reimplementation that agrees today.</p>
+      </div>
+    </div>
+
+    <h3>The operating principle</h3>
+    <p>
+      <strong>The agent proposes; named humans approve.</strong> This is the SR 11-7 posture:
+      the agent is a development tool, never an approver. Approval, stewardship decisions and
+      promotion are refused to agent identities at the API — permanently, not by
+      configuration — and the registry's tool surface holds the same line: an agent connection
+      is never even offered the save, cut or promote tools, whatever the write flag says.
+    </p>
+    <p>
+      The same seam runs between humans. A weakened tier-1 rule needs a second person's review
+      before a release can pin it, and whoever cuts that release cannot be the only name
+      deploying it.
+    </p>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="rail"><span class="num">03</span><span class="lbl">What it is worth</span></div>
+  <div class="body">
+    <h2>Four things that stop being projects</h2>
+    <p>
+      Each of these is a cost that regulated institutions currently pay in people and
+      elapsed weeks. The platform does not make them cheaper; it removes the conditions
+      that create them.
+    </p>
+
+    <div class="cards">
+      <div class="card">
+        <span class="cap">Provenance</span>
+        <h4>“Where did this number come from?”</h4>
+        <p>Every figure on every dashboard names its definition, the revision it was computed at, and the person behind that revision. Answering a supervisory question becomes a lookup instead of an investigation.</p>
+      </div>
+      <div class="card">
+        <span class="cap">Early control</span>
+        <h4>The objection arrives at authoring time</h4>
+        <p>The question a model-risk reviewer would raise in a quarterly review is raised while the author is still in the document — with the specific line, the old value and the new one.</p>
+      </div>
+      <div class="card">
+        <span class="cap">Safe exploration</span>
+        <h4>Analysis without exposure</h4>
+        <p>An analyst can run a proposed rule against live numbers with no path to a regulatory filing, and cannot mistake the exploration for the filed figure, because the board states which revision it is reading and whether it is certified.</p>
+      </div>
+      <div class="card">
+        <span class="cap">Accountable change</span>
+        <h4>A deployment is a decision with a name on it</h4>
+        <p>Weakening a governed assumption is refused by default. The override is recorded in the channel history beside the actor and the reason — the audit artifact, produced as a by-product of the act rather than reconstructed afterwards.</p>
+      </div>
+    </div>
+
+    <h3>The three promises underneath them</h3>
+    <ul class="ticks">
+      <li><strong>Control.</strong> Every calculation is a governed semantic function; every visual passes the design guide; every dashboard is a reviewable artifact with lineage and an audit trail naming the human behind each act.</li>
+      <li><strong>Performance against real data.</strong> One query compilation path, an aggregates-only boundary that is structural rather than policed, and pushdown to the warehouse. No client-side full-table hauls.</li>
+      <li><strong>A promotion pipeline.</strong> Draft → team → certified, with human approval gates, pinned registry revisions, and outward registration for discoverability and lineage.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="rail"><span class="num">04</span><span class="lbl">The proof</span></div>
+  <div class="body">
+    <h2>One rule change, followed to a filing and to a board</h2>
+    <p>
+      Everything above is a claim. What follows is the claim executed, in screenshots of the
+      running system — not mockups. One governed rate changes, and the change is followed
+      down <strong>both</strong> consumption paths: the nightly pipeline that files FR 2052a,
+      and the dashboards two liquidity desks read.
+    </p>
+    <p>
+      The change is deliberately small and entirely typical: <strong>the run-off rate on
+      non-operational wholesale funding (<code>O.W.2</code>) moves from 40% to 50%</strong>,
+      a supervisory reinterpretation. It is one line in one governed document.
+    </p>
+
+    <div class="tw">
+      <table>
+        <caption>The two liquidity use cases it lands in</caption>
+        <thead>
+          <tr><th style="width:1%">#</th><th>Use case</th><th>Reads</th><th>Path</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="key">1</td>
+            <td><strong>LCR coverage</strong><br>Is the buffer adequate today?</td>
+            <td class="key">lcr_pct, lcr_headroom, weighted_outflows_30d</td>
+            <td>Pipeline files <code>reg.lcr_daily</code>; desk reads <em>Liquidity Coverage Monitor</em></td>
+          </tr>
+          <tr>
+            <td class="key">2</td>
+            <td><strong>FR 2052a weighted outflows</strong><br>What are we filing, and what moved?</td>
+            <td class="key">weighted_outflows_30d by product × bucket</td>
+            <td>Pipeline files <code>reg.fr2052a_daily</code>; desk reads <em>Weighted Outflows — Variance Walk</em></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Before — the rate table as production serves it</h3>
+    <p>
+      <code>lcr_outflow_rates</code> is a governed parameter set: sixteen rates, each carrying
+      the paragraph it implements. The header reads <code>production r1 · live</code> — the
+      workspace and the deployed channel agree.
+    </p>
+
+    <figure>
+      <div class="shot">
+        <img src="baseline-authoring-rate-table.png" alt="The Metrics Definition Layer showing the governed LCR outflow rate table: sixteen rates with their regulatory citations, and a header marker reading production r1 · live.">
+      </div>
+      <figcaption>
+        <b>Exhibit A</b>
+        The authoring surface. Left: the registry tree. Centre: the governed document. Right:
+        the answer to “is this right?” — for a parameter set, that is the in-force window, the
+        keys, and the citation behind each rate. The header states the relationship between
+        what you are editing and what production serves.
+      </figcaption>
+    </figure>
+
+    <p>Both dashboards, at that release:</p>
+
+    <div class="pair">
+      <figure>
+        <div class="shot">
+          <img src="baseline-usecase1-lcr-monitor.png" alt="Liquidity Coverage Monitor dashboard before the change: LCR 118.4 percent, headroom 44,220,000 dollars, and weighted outflows broken out by maturity bucket.">
+        </div>
+        <figcaption><b>Use case 1 · before</b> LCR 118.4%, headroom $44,220,000, weighted outflows by maturity totalling $10.50mm inside the 30-day window.</figcaption>
+      </figure>
+      <figure>
+        <div class="shot">
+          <img src="baseline-usecase2-outflow-walk.png" alt="Weighted Outflows Variance Walk dashboard before the change, showing current weighted outflows of 10,502,587 dollars against a prior of 10,384,264 dollars.">
+        </div>
+        <figcaption><b>Use case 2 · before</b> The variance walk: prior $10,384,264 → current $10,502,587.</figcaption>
+      </figure>
+    </div>
+
+    <div class="tw">
+      <table>
+        <caption>And the nightly run against that same release files</caption>
+        <thead><tr><th>Output</th><th class="n">As filed at production r1</th></tr></thead>
+        <tbody>
+          <tr><td><code>reg.fr2052a_daily</code> · weighted outflows</td><td class="n">$44,410,173.36</td></tr>
+          <tr><td>of which <code>O.W.2</code></td><td class="n">$14,247,458.56</td></tr>
+          <tr><td><code>reg.lcr_daily</code> · consolidated LCR</td><td class="n">1456.7%</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>The change, and the control that fires immediately</h3>
+    <p>
+      The author edits one rate. Two things happen before anything is deployed. The header
+      changes to <code>production r1 · 1 ahead</code> — the workspace is one revision beyond
+      what the channel serves, stated rather than implied. And a diagnostic appears against
+      the line:
+    </p>
+
+    <div class="diag">
+      <span class="id">KEEL072</span>
+      <p><code>O.W.2</code> changed from 0.40 to 0.50 but still cites the same paragraph — a rate change usually means a new citation or a change ticket.</p>
+    </div>
+
+    <figure>
+      <div class="shot">
+        <img src="proposed-authoring-rate-table.png" alt="The rate table after the change: O.W.2 now at 50.0 percent, the header reading production r1 · 1 ahead, and diagnostic KEEL072 warning that the rate moved without its citation moving.">
+      </div>
+      <figcaption>
+        <b>Exhibit B</b>
+        The registry is not objecting to the number. It is objecting that a governed assumption
+        moved under an unchanged authority — exactly the case a model-risk reviewer will ask
+        about, raised while the author is still in the document rather than in a quarterly review.
+      </figcaption>
+    </figure>
+
+    <h3>The paths diverge — on purpose</h3>
+    <p>
+      This is the part worth reading twice, because the two consumers bind at
+      <strong>different moments</strong>, and the gap between them is the governance.
+    </p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 900 300" role="img" aria-label="A timeline with two events, author saves and steward promotes. Chartroom binds at save and shows the proposed number, on a board that is marked draft and uncertified throughout. The nightly pipeline binds at promotion and keeps filing the release-one number until the promotion happens.">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <polygon points="0,1 10,5 0,9" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <!-- governance window -->
+        <rect x="250" y="46" width="330" height="212" fill="var(--accent-wash)"/>
+        <text x="415" y="36" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" letter-spacing="1.1" fill="var(--accent-ink)">THE GOVERNANCE WINDOW</text>
+
+        <!-- event ticks -->
+        <line x1="250" y1="46" x2="250" y2="272" stroke="var(--accent-line)" stroke-width="1.5"/>
+        <line x1="580" y1="46" x2="580" y2="272" stroke="var(--accent-line)" stroke-width="1.5"/>
+        <text x="250" y="288" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="currentColor">author saves</text>
+        <text x="580" y="288" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="currentColor">steward promotes r2</text>
+
+        <!-- track 1: chartroom -->
+        <text x="0" y="86" font-family="Inter, sans-serif" font-size="12.5" font-weight="600" fill="currentColor">Chartroom</text>
+        <text x="0" y="102" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="currentColor" opacity=".7">reads the workspace</text>
+        <line x1="150" y1="126" x2="894" y2="126" stroke="currentColor" stroke-opacity=".45" stroke-width="1.5" marker-end="url(#ar2)"/>
+        <rect x="152" y="112" width="96" height="28" rx="3" fill="var(--surface)"/>
+        <rect x="152" y="112" width="96" height="28" rx="3" fill="currentColor" fill-opacity=".05"/>
+        <text x="200" y="130" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">$10,502,587</text>
+        <rect x="256" y="112" width="620" height="28" rx="3" fill="var(--surface)"/>
+        <rect x="256" y="112" width="620" height="28" rx="3" fill="var(--accent-wash)" stroke="var(--accent-line)" stroke-opacity=".6"/>
+        <text x="566" y="130" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">$11,477,004</text>
+        <text x="152" y="162" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing=".6" fill="var(--danger)">DRAFT · UNCERTIFIED METRICS PRESENT — throughout</text>
+
+        <!-- track 2: pipeline -->
+        <text x="0" y="196" font-family="Inter, sans-serif" font-size="12.5" font-weight="600" fill="currentColor">Nightly pipeline</text>
+        <text x="0" y="212" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="currentColor" opacity=".7">reads the channel</text>
+        <line x1="150" y1="236" x2="894" y2="236" stroke="currentColor" stroke-opacity=".45" stroke-width="1.5" marker-end="url(#ar2)"/>
+        <rect x="152" y="222" width="424" height="28" rx="3" fill="var(--surface)"/>
+        <rect x="152" y="222" width="424" height="28" rx="3" fill="currentColor" fill-opacity=".05"/>
+        <text x="364" y="240" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">files $44,410,173.36  ·  serving r1</text>
+        <rect x="584" y="222" width="292" height="28" rx="3" fill="var(--surface)"/>
+        <rect x="584" y="222" width="292" height="28" rx="3" fill="var(--accent-wash)" stroke="var(--accent-line)" stroke-opacity=".6"/>
+        <text x="730" y="240" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">files $47,972,038.05  ·  r2</text>
+      </svg>
+      <figcaption>
+        <b>Figure 2</b>
+        The studio binds at save; the pipeline binds at promotion. Inside the window the
+        analyst sees the proposed number, on a board marked draft and uncertified throughout,
+        while the filing is structurally incapable of moving — the pipeline can only read the
+        rate the channel serves.
+      </figcaption>
+    </figure>
+
+    <p>
+      <strong>Chartroom moves now.</strong> The studio reads the workspace, so the dashboards
+      show the proposed number the instant it is saved — on boards that state, continuously,
+      which definitions they are reading and whether those definitions are certified.
+    </p>
+
+    <div class="pair">
+      <figure>
+        <div class="shot">
+          <img src="proposed-usecase2-outflow-walk.png" alt="Weighted Outflows Variance Walk after the save: current weighted outflows 11,477,004 dollars, with a banner reading DRAFT · UNCERTIFIED METRICS PRESENT.">
+        </div>
+        <figcaption><b>Use case 2 · after the save</b> The walk moves to $11,477,004 the instant the edit is saved. The board carries <code>DRAFT · UNCERTIFIED METRICS PRESENT</code> — as it does before the change too: a board reading uncertified definitions says so continuously, not only when one of them moves.</figcaption>
+      </figure>
+      <figure>
+        <div class="shot">
+          <img src="proposed-usecase1-lcr-monitor.png" alt="Liquidity Coverage Monitor after the save, with the weighted outflow maturity buckets higher than in the baseline.">
+        </div>
+        <figcaption><b>Use case 1 · after the save</b> The coverage board moves the same way, in its outflow widgets — same definition, same instant, no separate change.</figcaption>
+      </figure>
+    </div>
+
+    <p>
+      <strong>The pipeline does not move.</strong> It dereferences the <code>production</code>
+      channel, which still serves r1. Re-running the nightly job with the edit saved files
+      <em>exactly</em> what it filed before.
+    </p>
+
+    <div class="tw">
+      <table>
+        <caption>The filing, with the edit saved but not promoted</caption>
+        <thead><tr><th>&nbsp;</th><th class="n">Before the edit</th><th class="n">After the edit, before promotion</th></tr></thead>
+        <tbody>
+          <tr><td>Channel release</td><td class="n">r1</td><td class="n">r1</td></tr>
+          <tr><td>Rate-table revision served</td><td class="n">1</td><td class="n">1</td></tr>
+          <tr class="total"><td>Filed weighted outflows</td><td class="n">$44,410,173.36</td><td class="n">$44,410,173.36</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Promotion is a separate act, refused by default</h3>
+    <p>Cutting release r2 and promoting it is refused:</p>
+
+    <div class="term">
+<pre>refusing to promote r2 to production without acknowledgement — versus what
+production currently serves, <span class="hl">this weakens something</span>:
+  · lcr_outflow_rates: Changes 1 governed rate
+    <span class="hl">O.W.2: 0.40 → 0.50</span>
+    1 rate moved without its citation moving. A governed assumption changing
+    under an unchanged authority is the case worth explaining.
+Re-send with acknowledgeReview: true if intended.</pre>
+    </div>
+
+    <p>
+      The same finding as KEEL072, now blocking deployment rather than advising. The steward
+      promotes with an explicit acknowledgement, and the reason is written into the channel
+      history beside the actor:
+    </p>
+
+    <div class="term ok">
+<pre><span class="hl">r2</span>  m.reyes  Supervisory reinterpretation of non-operational wholesale funding;
+             the paragraph is unchanged, the reading of it is not. Reviewed with
+             Liquidity Regulatory Reporting. [review acknowledged: Changes 1 governed rate]
+<span class="hl">r1</span>  m.reyes  Baseline: FR 2052a rules and LCR rates as filed</pre>
+    </div>
+
+    <p>
+      The edit itself carries its own author, at revision 2. Identity is asserted by the proxy
+      in front of the registry, never by the client, so the name against a rule change is part
+      of the control rather than a label.
+    </p>
+
+    <h3>After — the pipeline files the new number</h3>
+    <p>
+      With the channel repointed, the next nightly run picks the new rate up with no pipeline
+      change of any kind: no deploy, no DAG edit, no code review.
+    </p>
+
+    <div class="tw">
+      <table>
+        <caption>The filing, at r1 and at r2</caption>
+        <thead><tr><th>&nbsp;</th><th class="n">At production r1</th><th class="n">At production r2</th><th class="n">Change</th></tr></thead>
+        <tbody>
+          <tr><td>Channel release / rate revision</td><td class="n">r1 / 1</td><td class="n">r2 / 2</td><td class="n">promoted</td></tr>
+          <tr class="total"><td><code>reg.fr2052a_daily</code> · weighted outflows</td><td class="n">$44,410,173.36</td><td class="n">$47,972,038.05</td><td class="n delta-up">+$3,561,864.69</td></tr>
+          <tr><td>of which <code>O.W.2</code></td><td class="n">$14,247,458.56</td><td class="n">$17,809,323.25</td><td class="n delta-up">+$3,561,864.69</td></tr>
+          <tr><td><code>reg.lcr_daily</code> · consolidated LCR</td><td class="n">1456.7%</td><td class="n">1286.0%</td><td class="n delta-up">−170.7pp</td></tr>
+          <tr><td>Net outflows, 30d</td><td class="n">$26,836,526.70</td><td class="n">$30,398,391.34</td><td class="n delta-up">+$3,561,864.64</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      The whole movement sits in <code>O.W.2</code> — the product whose rate changed — and the
+      totals move by exactly that amount. That is the arithmetic a reviewer checks first, and
+      it holds because one definition produced both rows.
+    </p>
+
+    <h3>What the run looks like while it happens</h3>
+
+    <div class="pair">
+      <figure>
+        <div class="shot">
+          <img src="pipeline-dags.png" alt="The Airflow DAGs view showing daily_liquidity_conformance on a cron partition timetable and daily_liquidity_regulatory triggered by assets.">
+        </div>
+        <figcaption><b>The schedule</b> Two DAGs joined by partitioned assets: each source system conforms its own slice, and the regulatory run starts only once every slice for a date exists.</figcaption>
+      </figure>
+      <figure>
+        <div class="shot">
+          <img src="pipeline-assets.png" alt="The Airflow assets view listing eleven assets grouped as raw-feed, conformed-slice, conformed and regulatory.">
+        </div>
+        <figcaption><b>The topology</b> Three raw-feed landings, three conformed slices, the two conformed tables consumers subscribe to, and the three regulatory outputs the run files.</figcaption>
+      </figure>
+    </div>
+
+    <h3>The same rules, a different world</h3>
+    <p>
+      A scenario is an input, not a model. The pipeline can run the identical governed release
+      over a stressed book — deposits running harder than contract, inflows that do not arrive,
+      a haircut on the buffer — in its own warehouse, so the two runs share nothing except the
+      registry release.
+    </p>
+
+    <div class="tw">
+      <table>
+        <caption>Base versus stress, at the same release</caption>
+        <thead><tr><th>&nbsp;</th><th class="n">Base</th><th class="n">Stress</th></tr></thead>
+        <tbody>
+          <tr><td>HQLA</td><td class="n">$390,919,734.51</td><td class="n">$344,009,366.38</td></tr>
+          <tr><td>Filed weighted outflows</td><td class="n">$47,972,038.05</td><td class="n">$59,965,047.53</td></tr>
+          <tr class="total"><td>Consolidated LCR</td><td class="n">1286.0%</td><td class="n">721.7% <span class="delta-up">(−564.3pp)</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      A comparison whose two runs came from different releases is refused, because a
+      base-versus-stress figure computed across two rule versions is not a comparison. This is
+      the axis where drift is least visible and most consequential: in most institutions the
+      stressed LCR and the reported LCR are produced by different machinery, and no one can say
+      whether a difference is the scenario or the implementation.
+    </p>
+    <p>
+      <strong>It is not a forecast.</strong> Nothing here projects a balance sheet forward;
+      multi-period projection is a modelling capability this does not have.
+    </p>
+
+    <h3>What the walkthrough is evidence for</h3>
+    <ul class="ticks">
+      <li><strong>One definition, two consumers, no retyping.</strong> The filed row and the dashboard widget both trace to <code>lcr_outflow_rates</code> revision 2. Neither holds a copy of the rate.</li>
+      <li><strong>Drift is structurally unavailable</strong>, not merely discouraged: the pipeline cannot read a rate the channel does not serve, and the dashboard cannot show a number without stating which revision produced it.</li>
+      <li><strong>The gate is where the risk is.</strong> Saving is cheap and reversible; deploying is refused by default when it weakens a governed assumption, and the override is recorded with a name and a reason.</li>
+      <li><strong>Binding times differ deliberately</strong> — the studio at save, the pipeline at promotion — which is what lets an analyst explore a proposed rule against live numbers with no path to a filing.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="rail"><span class="num">05</span><span class="lbl">Who it serves</span></div>
+  <div class="body">
+    <h2>Where the value lands</h2>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Role</th><th>What they do here</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Definition author</strong><br><span style="color:var(--ink-3);font-size:13.5px">ALM / liquidity analyst</span></td><td>Writes rules, watches the number and its derivation trace, reads what a change would move</td></tr>
+          <tr><td><strong>Dashboard author</strong></td><td>Talks to the agent, approves the brief, iterates against live numbers</td></tr>
+          <tr><td><strong>Metric steward</strong></td><td>Decides proposals; approval <em>is</em> a registry write</td></tr>
+          <tr><td><strong>Design steward</strong></td><td>Owns the guide and the widget and pattern catalogs</td></tr>
+          <tr><td><strong>Reviewer / committee</strong></td><td>Reads a versioned artifact with its brief, lint report and commentary attached</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>For the people who sign</h3>
+    <p>
+      For the second and third lines, the change is that the audit artifact is produced by the
+      act rather than assembled after it. Who changed a governed assumption, when, under what
+      authority, with whose review, and what moved as a result are all recorded at the moment
+      of the change — and the same record is what the pipeline and the dashboards actually
+      dereference. There is no separate lineage system to keep in step, because the lineage is
+      the mechanism.
+    </p>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="rail"><span class="num">06</span><span class="lbl">State of play</span></div>
+  <div class="body">
+    <h2>What ships today</h2>
+    <p>Nine phases are built, verified and merged. The engine and both surfaces run.</p>
+    <ul class="ticks">
+      <li><strong>Authoring</strong> — seven document kinds, a real editor, compilation to SQL, Polars and PySpark plus semantic views and dbt models, a conformance suite that runs the compiled plans in real interpreters and requires them to agree, and a definition agent that drafts document bodies and proves them with the same diagnostics a person is held to. The save stays a human act, under the author's own name.</li>
+      <li><strong>Chartroom</strong> — the spec language and a 20-rule linter with golden tests and mechanical fixes; 12 widgets and 6 patterns; the agent loop over 28 governed tools; briefs with a human approval gate; the draft/team/certified promotion matrix with sign-offs and exposure records; version-pin upgrade notices carrying the diff; cross-filtering; PPTX committee packs; a shareable read-only view; and a read-first analyst mode whose exception strip runs the workspace's own variance monitors.</li>
+      <li><strong>Query execution</strong> — a routing decision across fixtures, DuckDB and Dremio. A parity harness runs every query shape against both engines over identical rows and requires agreement to 1e-6. Warehouse execution compiles the engine's own measure SQL, so there is one definition of every number.</li>
+      <li><strong>The nightly pipeline</strong> — a reference implementation of the run these definitions are authored for: positions sourced under Open Data Contracts, conformed by dbt into tables sub-partitioned by producing system, then the governed rules, the LCR and the FR 2052a submission taken from the registry's deployed channel at run time.</li>
+    </ul>
+    <h3>Not yet built</h3>
+    <p>
+      Outward integrations — catalog emission, git materialization at team level and above,
+      decommissioning, and third-party import. Streaming remains a deliberate deferral behind
+      an executor seam written to accept it.
+    </p>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="rail"><span class="num">07</span><span class="lbl">Boundaries</span></div>
+  <div class="body">
+    <h2>What we will not build</h2>
+    <p>
+      These are not backlog items awaiting priority. Each one, if allowed, would dissolve a
+      guarantee the rest of the product rests on — which is why they are worth stating to a
+      buyer rather than hiding in an architecture document.
+    </p>
+    <ul class="refuse">
+      <li><strong>No raw SQL in a dashboard spec.</strong> The moment one exists, the registry stops being the only data API and every guarantee above becomes advisory.</li>
+      <li><strong>No row-level export from a dashboard.</strong> The aggregates-only boundary is structural: row data has no representation in the query response types, so it cannot leak by accident. A sampled extract is a separate, server-flagged, allowlisted path — never a widget.</li>
+      <li><strong>No agent approvals.</strong> Not a permission to be granted later.</li>
+      <li><strong>No unit overrides in presentation.</strong> A basis-point metric renders as basis points on every dashboard, or the same number reads differently in two meetings.</li>
+    </ul>
+    <p class="pull">Every layer would rather say what it cannot do than produce something plausible.</p>
+    <p>
+      The compiler refuses to emit SQL for a function it cannot express, instead of
+      approximating it. A gauge with no declared limit direction draws the gap and declines to
+      call it a breach. A stacked area whose bands go negative renders a refusal instead of
+      clamping them and overstating the total. A model outage degrades to a banner, never a
+      block.
+    </p>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="rail"><span class="num">08</span><span class="lbl">Assurance</span></div>
+  <div class="body">
+    <h2>How we know it works</h2>
+    <p>
+      The dogfood boards are the acceptance test: hand-authored against the real registry,
+      seeded on first boot, and covered by a test that fails when a measure is renamed.
+      Verification is one command.
+    </p>
+    <div class="stats">
+      <div class="stat"><span class="v">866</span><span class="k">unit, conformance, server and tool-surface tests</span></div>
+      <div class="stat"><span class="v">131</span><span class="k">browser checks across both surfaces</span></div>
+      <div class="stat"><span class="v">81</span><span class="k">Python tests — agent service, parity harness, pipeline</span></div>
+      <div class="stat"><span class="v">62</span><span class="k">architecture decision records, including the mistakes</span></div>
+    </div>
+    <p>
+      Every architectural deviation from the pinned design decisions is recorded — 57 accepted
+      and five proposed — including the entries that record a mistake and its correction. The
+      figures in section 04 were produced by running the system; the screenshots are
+      regenerated from a documented recipe, not captured by hand.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <p>
+    <strong>Sources.</strong> This brief condenses <code>product.md</code> (the product
+    definition and the full walkthrough), <code>IMPLEMENTATION.md</code> (how it was built and
+    what broke on the way), <code>docs/chartroom/ADRS.md</code> (the architecture decision
+    record), and <code>docs/vision/README.md</code> (the recipe that regenerates every
+    screenshot above from the running system).
+  </p>
+  <p>
+    Written for an executive audience. Where a claim in this brief compresses a mechanism,
+    the mechanism is in <code>product.md</code>.
+  </p>
+</footer>
+
+</div>
+</body>
+</html>
