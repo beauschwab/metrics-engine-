@@ -14,7 +14,7 @@
 
 import type { WidgetProps } from './types';
 import { formatDate, formatTick } from './format';
-import { ticks, xPos, yExtent, yPos } from './scale';
+import { ticks, xPositions, yExtent, yPos } from './scale';
 
 const W = 600;
 const H = 240;
@@ -32,6 +32,9 @@ export function StackedArea({ data, status, error }: WidgetProps) {
 
   const dates = lines[0].points.map((p) => p.date);
   const n = dates.length;
+  // Time, not array index: a stack over a business-day series has weekend
+  // gaps, and spacing the columns evenly draws them away (ADR-63).
+  const xs = xPositions(dates, IW);
 
   // A stack is only meaningful over nonnegative bands. AREA-01 blocks the
   // bindings it can prove wrong from the contract, but its signed-measure
@@ -68,9 +71,9 @@ export function StackedArea({ data, status, error }: WidgetProps) {
   const bandPath = (i: number): string => {
     const upper = tops[i];
     const lower = i === 0 ? new Array<number>(n).fill(0) : tops[i - 1];
-    const fwd = upper.map((v, j) => `${xPos(j, n, IW).toFixed(2)},${yPos(v, e, IH).toFixed(2)}`);
+    const fwd = upper.map((v, j) => `${xs[j].toFixed(2)},${yPos(v, e, IH).toFixed(2)}`);
     const back = lower
-      .map((v, j) => `${xPos(j, n, IW).toFixed(2)},${yPos(v, e, IH).toFixed(2)}`)
+      .map((v, j) => `${xs[j].toFixed(2)},${yPos(v, e, IH).toFixed(2)}`)
       .reverse();
     return `M${fwd.join('L')}L${back.join('L')}Z`;
   };
@@ -79,7 +82,7 @@ export function StackedArea({ data, status, error }: WidgetProps) {
 
   return (
     <div className="cr-chart">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="stacked area">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="stacked area">
         <g transform={`translate(${PAD.l},${PAD.t})`}>
           {ticks(e).map((t) => (
             <g key={t}>
@@ -100,7 +103,7 @@ export function StackedArea({ data, status, error }: WidgetProps) {
           {/* The total, so the whole reads without summing the parts by eye. */}
           <path
             className="cr-area-total"
-            d={`M${totals.map((v, j) => `${xPos(j, n, IW).toFixed(2)},${yPos(v, e, IH).toFixed(2)}`).join('L')}`}
+            d={`M${totals.map((v, j) => `${xs[j].toFixed(2)},${yPos(v, e, IH).toFixed(2)}`).join('L')}`}
           />
           <text className="cr-axis-label" x={0} y={IH + 14}>{formatDate(dates[0])}</text>
           <text className="cr-axis-label" x={IW} y={IH + 14} textAnchor="end">

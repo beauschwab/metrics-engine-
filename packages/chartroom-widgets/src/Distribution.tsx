@@ -50,7 +50,7 @@ export function Distribution({ instance, data, status, error }: WidgetProps) {
 
   return (
     <div className="cr-chart">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="distribution">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="distribution">
         <g transform={`translate(${PAD.l},${PAD.t})`}>
           {counts.map((c, i) => {
             const h = (c / peak) * IH;

@@ -606,7 +606,9 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   border: 1px solid var(--cr-border); border-radius: var(--radius-md); padding: 5px 6px;
   background: var(--cr-panel-2);
 }
-.cr-multiple svg { width: 100%; height: 54px; display: block; }
+/* The panel keeps its viewBox's shape: the sparkline scales uniformly
+   under `meet` instead of being letterboxed inside a fixed height. */
+.cr-multiple svg { width: 100%; height: auto; aspect-ratio: 168 / 84; display: block; }
 .cr-multiple-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
 .cr-multiple-label {
   font-size: 10px; color: var(--cr-text-muted);

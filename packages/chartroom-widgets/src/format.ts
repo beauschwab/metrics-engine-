@@ -23,18 +23,43 @@ export function formatValue(v: number | null | undefined, format: string, decima
   return `${v < 0 ? '-$' : '$'}${Math.round(Math.abs(v)).toLocaleString('en-US')}`;
 }
 
-/** Compact axis labels: $1.2B, $840M, 98% — a tick is a landmark, not a figure. */
+/**
+ * The fewest decimals that still say the number exactly, capped so a float's
+ * last bit of noise does not become three digits of false precision.
+ */
+function decimalsFor(x: number, max = 3): number {
+  for (let d = 0; d < max; d++) if (Number(x.toFixed(d)) === x) return d;
+  return max;
+}
+
+/** The number at its own precision — no more digits, and no fewer. */
+function exact(x: number): string {
+  const d = decimalsFor(x);
+  return x.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
+/**
+ * Compact axis labels: $1.25B, $840M, 100% — a tick is a landmark, but a
+ * landmark has to be where it says it is.
+ *
+ * Precision is chosen per value rather than fixed, because a fixed one lies:
+ * `toFixed(0)` labelled a gridline drawn at 100.67% as "101%", and rounded a
+ * $1.25B tick to "$1.3B". A reader lining a series up against a gridline is
+ * measuring against the label, so the label is what has to be true. Ticks off
+ * a nice domain are round anyway, so this stays short in the case that
+ * matters and only grows digits when the value genuinely has them.
+ */
 export function formatTick(v: number, format: string): string {
-  if (format.startsWith('percent')) return `${v.toFixed(0)}%`;
+  if (format.startsWith('percent')) return `${exact(v)}%`;
   if (format.startsWith('currency')) {
     const a = Math.abs(v);
     const sign = v < 0 ? '-$' : '$';
-    if (a >= 1e9) return `${sign}${(a / 1e9).toFixed(1)}B`;
-    if (a >= 1e6) return `${sign}${(a / 1e6).toFixed(0)}M`;
-    if (a >= 1e3) return `${sign}${(a / 1e3).toFixed(0)}K`;
-    return `${sign}${a.toFixed(0)}`;
+    if (a >= 1e9) return `${sign}${exact(a / 1e9)}B`;
+    if (a >= 1e6) return `${sign}${exact(a / 1e6)}M`;
+    if (a >= 1e3) return `${sign}${exact(a / 1e3)}K`;
+    return `${sign}${exact(a)}`;
   }
-  return v.toLocaleString('en-US', { maximumFractionDigits: 1 });
+  return exact(v);
 }
 
 /** The day-over-day move, said the way the surface says it. */
