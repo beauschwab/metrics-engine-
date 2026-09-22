@@ -62,7 +62,7 @@ export function Waterfall({ instance, data, status, error }: WidgetProps) {
 
   return (
     <div className="cr-chart">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="waterfall">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="waterfall">
         <g transform={`translate(${PAD.l},${PAD.t})`}>
           <line className="cr-gridline" x1={0} x2={IW} y1={yPos(0, e, IH)} y2={yPos(0, e, IH)} />
           {steps.map((s, i) => {

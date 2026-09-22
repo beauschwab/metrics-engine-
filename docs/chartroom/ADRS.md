@@ -103,6 +103,11 @@ lines, bands, bars and cells; none needs ECharts' interaction machinery. The
 contract is the boundary: if a Phase-4 widget needs more, it swaps its renderer
 without touching a spec.
 
+**Amended by ADR-63:** the marks stay hand-rendered, but the *scale* behind
+them is d3-scale. Hand-rolled tick and time arithmetic put gridlines where
+their labels did not say, which is not a rendering choice — it is a wrong
+number.
+
 ## ADR-9 — `perspective-grid@1` is a native aggregate pivot in Phase 1
 
 **Pinned:** wraps `@finos/perspective-viewer`.
@@ -1292,6 +1297,76 @@ flagged revisions awaiting a second name) is follow-on surface work; the
 control does not wait for its chrome.
 
 ---
+
+---
+
+## ADR-63 — the scale is d3's; the marks are still ours (amends ADR-8)
+
+Shipped. ADR-8 rejected ECharts and hand-rendered the charts instead, and
+two-thirds of that decision has held: Phase-1 widgets never needed the
+interaction machinery, and when cross-filtering did land in Phase 4 it cost
+about six lines per widget — `onPick`, `role="button"`, `tabIndex`, an Enter
+handler — with better keyboard behaviour than a library's click model would
+have given us. That part stands unchanged.
+
+What did not hold is the half of ADR-8 nobody argued for. It reasoned about
+*rendering* and concluded about *geometry*, so the scale arithmetic got
+hand-rolled too, on the same "no dependency" grounds. Three defects came out
+of that, and all three are in the class this product exists to prevent —
+a number that is not what it claims to be:
+
+- **A gridline was not where its label said.** `ticks()` cut the extent into
+  four equal steps and `formatTick` rounded to a whole unit. On an LCR series
+  around the 100% minimum that drew a line at 100.671% labelled `101%`; at
+  the billion boundary it labelled a $1.134B tick `$1.1B`, a $34M error on a
+  landmark someone measures against. Worse, the extent's divisions landed
+  nowhere nameable, so **100% — the threshold the whole chart is read
+  against — never got a line at all.**
+- **The x axis was the array index.** `query.ts` returns the as-of dates that
+  exist, so a business-day series skips weekends; spacing points by position
+  drew a Friday-to-Monday move as though it happened overnight.
+- **The SVGs stretched.** `preserveAspectRatio="none"` on five widgets scaled
+  a 600×240 viewBox to whatever the card was, distorting type and stroke
+  weights by the cell's aspect ratio — under ADR-48, which self-hosts Inter
+  precisely so numeric columns hold their shape.
+
+**Decision:** `d3-scale` (with `d3-array`) supplies the y domain, its ticks
+and the time axis. `scaleLinear().nice()` gives bounds whose divisions are
+round, so ticks land on values a reader can name and the LCR chart gets its
+100% line; `scaleUtc` spaces points by elapsed time, UTC because an as-of
+date is a calendar day and a DST zone would shift some points and not
+others; `formatTick` now picks precision per value — the fewest decimals
+that still say the number exactly — so the label is true of the position by
+construction rather than by luck.
+
+This is not ADR-8 reversed. d3-scale is arithmetic: no React, no DOM, no
+CSS, no component model, nothing that renders. Every mark on every chart is
+still an SVG element this package writes itself, in the idiom ADR-8 chose,
+and the widget contracts are untouched — no spec changes, no version bumps,
+because none of this is visible through the catalog seam. That seam is what
+made the amendment cheap, which was ADR-8's own argument for having it.
+
+**Why not a chart library.** The occasion for this was a proposal to rebase
+the widget catalog on Evil Charts (Recharts + Apache ECharts behind
+shadcn/ui and Tailwind, installed as a copy-in registry). It would fix the
+two scale defects — by vendoring d3-scale, which is the part actually doing
+the work — and charge a Tailwind/shadcn substrate the studio does not have
+(ADR-34 declined the same trade for AI Elements), an ECharts provider that
+reverses ADR-8 by the back door, and 49 components carrying their own
+palette against COL-03's viz ordering. The governed half of the catalog —
+contracts as data, importable by the server without React, `family` as a
+claim about which rules apply (ADR-42) — has no counterpart there and would
+have had to be rebuilt on top. The escape hatch stays where ADR-8 put it: a
+widget that genuinely needs brushing, a synchronised crosshair or canvas at
+scale can take that dependency behind its own contract, on evidence, one
+widget at a time.
+
+**What now fails if this regresses.** `every gridline is where its own label
+says it is` sweeps ten series across the shipped formats, parses each label
+back with an inverse of `formatTick`, and asserts it equals the position the
+line is drawn at. The old code fails it five times over. The test that was
+there before — `ticks sit strictly inside the extent` — passed throughout:
+containment was true, and it was never the property that mattered.
 
 # Proposed — recorded gaps, not yet accepted
 

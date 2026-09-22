@@ -9,7 +9,7 @@
 
 import type { WidgetProps } from './types';
 import { formatTick } from './format';
-import { linePath, yExtent, yPos } from './scale';
+import { linePath, xPositions, yExtent, yPos } from './scale';
 
 const PW = 168;
 const PH = 84;
@@ -27,6 +27,10 @@ export function SmallMultiples({ data, status, error, onPick, picked }: WidgetPr
 
   // One extent for every panel — SM-01, as arithmetic rather than as a promise.
   const shared = yExtent(lines.flatMap((l) => l.points.map((p) => p.value)), data!.format);
+  // SM-01's other half: panels share an x span as well as a y extent, so a
+  // category with a shorter history reads as shorter rather than stretching
+  // to fill its panel and matching the others step for step.
+  const span = lines.flatMap((l) => l.points.map((p) => p.date));
   const isPicked = (key: Record<string, string>) =>
     !!picked && Object.entries(picked).every(([k, v]) => key[k] === v);
 
@@ -53,7 +57,7 @@ export function SmallMultiples({ data, status, error, onPick, picked }: WidgetPr
                 {last === undefined ? '—' : formatTick(last, data!.format)}
               </span>
             </div>
-            <svg viewBox={`0 0 ${PW} ${PH}`} preserveAspectRatio="none" role="img" aria-label={label}>
+            <svg viewBox={`0 0 ${PW} ${PH}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={label}>
               <g transform={`translate(${PAD.l},${PAD.t})`}>
                 <line
                   className="cr-gridline"
@@ -65,7 +69,10 @@ export function SmallMultiples({ data, status, error, onPick, picked }: WidgetPr
                 <path
                   className="cr-line"
                   style={{ stroke: `var(--cr-s${i % 8})` }}
-                  d={linePath(values, shared, IW, IH)}
+                  d={linePath(
+                    values, shared, IW, IH,
+                    xPositions(line.points.map((p) => p.date), IW, span),
+                  )}
                 />
               </g>
             </svg>

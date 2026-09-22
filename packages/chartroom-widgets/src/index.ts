@@ -23,7 +23,7 @@ import { Annotation } from './Annotation';
 
 export { CATALOG, CATALOG_BY_REF } from './contracts';
 export { formatDate, formatDelta, formatTick, formatValue } from './format';
-export { barOrder, linePath, ticks, xPos, yExtent, yPos } from './scale';
+export { barOrder, linePath, ticks, xPos, xPositions, yExtent, yPos } from './scale';
 export type { Extent } from './scale';
 export type {
   GroupRow, SeriesLine, SeriesPoint, WidgetData, WidgetProps, WidgetStatus,

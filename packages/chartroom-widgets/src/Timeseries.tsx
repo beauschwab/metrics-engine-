@@ -8,7 +8,7 @@
 import { parseMetricRef } from 'chartroom-spec';
 import type { SeriesLine, WidgetProps } from './types';
 import { formatDate, formatTick } from './format';
-import { linePath, ticks, yExtent, yPos } from './scale';
+import { linePath, ticks, xPositions, yExtent, yPos } from './scale';
 
 const W = 600;
 const H = 240;
@@ -35,11 +35,21 @@ export function Timeseries({ instance, data, status, error }: WidgetProps) {
     ...(data!.bands ?? []).flatMap((b) => b.points.map((p) => p.value)),
   ];
   const e = yExtent(all, data!.format);
-  const dates = lines[0].points.map((p) => p.date);
+
+  // One time axis for everything on the chart. Bands are evaluated over the
+  // same window as the lines they reference, but "same window" is a claim
+  // about the query, not a guarantee about the rows that came back — a band
+  // scaled to its own dates would sit beside the series it is meant to judge
+  // and quietly disagree with it.
+  const axis = [
+    ...lines.flatMap((l) => l.points.map((p) => p.date)),
+    ...(data!.bands ?? []).flatMap((b) => b.points.map((p) => p.date)),
+  ];
+  const span = [...axis].sort();
 
   return (
     <div className="cr-chart">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="time series">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="time series">
         <g transform={`translate(${PAD.l},${PAD.t})`}>
           {ticks(e).map((t) => (
             <g key={t}>
@@ -53,7 +63,10 @@ export function Timeseries({ instance, data, status, error }: WidgetProps) {
             <path
               key={`band-${i}`}
               className="cr-band"
-              d={linePath(band.points.map((p) => p.value), e, IW, IH)}
+              d={linePath(
+                band.points.map((p) => p.value), e, IW, IH,
+                xPositions(band.points.map((p) => p.date), IW, axis),
+              )}
             />
           ))}
           {lines.map((line, i) => (
@@ -61,12 +74,16 @@ export function Timeseries({ instance, data, status, error }: WidgetProps) {
               key={seriesLabel(line)}
               className="cr-line"
               style={{ stroke: `var(--cr-s${i % 8})` }}
-              d={linePath(line.points.map((p) => p.value), e, IW, IH)}
+              d={linePath(
+                line.points.map((p) => p.value), e, IW, IH,
+                xPositions(line.points.map((p) => p.date), IW, axis),
+              )}
             />
           ))}
-          <text className="cr-axis-label" x={0} y={IH + 14}>{formatDate(dates[0])}</text>
+          {/* The axis ends, which are the span's ends — not series zero's. */}
+          <text className="cr-axis-label" x={0} y={IH + 14}>{formatDate(span[0])}</text>
           <text className="cr-axis-label" x={IW} y={IH + 14} textAnchor="end">
-            {formatDate(dates[dates.length - 1])}
+            {formatDate(span[span.length - 1])}
           </text>
         </g>
       </svg>

@@ -12,8 +12,20 @@ import { RULE_IDS } from 'chartroom-spec';
 import { fmt } from 'keel-engine/format';
 import { CATALOG } from '../src/contracts';
 import { COMPONENTS } from '../src/index';
-import { formatDelta, formatValue } from '../src/format';
-import { barOrder, linePath, ticks, yExtent, yPos } from '../src/scale';
+import { formatDelta, formatTick, formatValue } from '../src/format';
+import { barOrder, linePath, ticks, xPositions, yExtent, yPos } from '../src/scale';
+
+/**
+ * The inverse of `formatTick`, so a label can be checked against the position
+ * it claims. Deliberately strict: a label this cannot parse is a label a
+ * reader cannot read either, and the test should fail on it.
+ */
+function parseTick(label: string): number {
+  const m = /^(-)?\$?(-)?([\d,]+(?:\.\d+)?)([KMB])?(%)?$/.exec(label);
+  if (!m) throw new Error(`unparseable tick label: ${label}`);
+  const unit = m[4] === 'B' ? 1e9 : m[4] === 'M' ? 1e6 : m[4] === 'K' ? 1e3 : 1;
+  return (m[1] || m[2] ? -1 : 1) * Number(m[3].replace(/,/g, '')) * unit;
+}
 
 describe('the catalog', () => {
   it('validates as data — a malformed entry fails CI, not a 6pm lint run', () => {
@@ -95,11 +107,76 @@ describe('geometry', () => {
     expect(d.match(/M/g)).toHaveLength(2);
   });
 
-  it('ticks sit strictly inside the extent', () => {
+  it('ticks lie within the extent', () => {
     for (const t of ticks({ min: 0, max: 100 })) {
-      expect(t).toBeGreaterThan(0);
-      expect(t).toBeLessThan(100);
+      expect(t).toBeGreaterThanOrEqual(0);
+      expect(t).toBeLessThanOrEqual(100);
     }
+  });
+
+  /**
+   * The test this package did not have. `ticks` cut the extent into equal
+   * steps and `formatTick` rounded the label to a whole unit, so a gridline
+   * drawn at 100.671% carried the label "101%" and a reader measuring a
+   * series against it was off by a third of a point. Containment — all the
+   * old test checked — was satisfied the whole time.
+   */
+  it('every gridline is where its own label says it is', () => {
+    const series: Array<[number[], string]> = [
+      [[103.2, 101.8, 100.4, 99.6, 102.1, 104.7], 'percent_1dp'],
+      [[98.34, 98.36, 98.31], 'percent_2dp'],
+      [[0.4, 0.62, 0.9], 'percent_1dp'],
+      [[100, 200], 'currency_usd'],
+      [[284_120_000, 291_400_000], 'currency_usd'],
+      [[1_250_000_000, 2_100_000_000], 'currency_usd'],
+      [[-41_222_870, 18_400_000], 'currency_usd'],
+      [[820, 1_240, 1_610], 'currency_usd'],
+      [[12, 48, 61], 'number'],
+      [[0.0123, 0.0410], 'bps'],
+    ];
+    for (const [values, format] of series) {
+      const e = yExtent(values, format);
+      for (const t of ticks(e)) {
+        const label = formatTick(t, format);
+        expect(parseTick(label), `${label} labels a gridline at ${t}`)
+          .toBeCloseTo(t, 9);
+      }
+    }
+  });
+
+  it('puts a gridline on the threshold a ratio is read against', () => {
+    // An LCR hovering either side of the 100% minimum: the reader's question
+    // is "are we above the line", so the line has to be drawn.
+    const e = yExtent([103.2, 101.8, 100.4, 99.6, 102.1, 104.7], 'percent_1dp');
+    expect(ticks(e)).toContain(100);
+  });
+
+  it('spaces points by elapsed time, not by array position', () => {
+    // Fri, Mon, Tue: the weekend is three days of the four, and drawing it as
+    // half the width says the Friday-to-Monday move happened overnight.
+    const xs = xPositions(['2026-01-02', '2026-01-05', '2026-01-06'], 100);
+    expect(xs[0]).toBe(0);
+    expect(xs[1]).toBeCloseTo(75, 9);
+    expect(xs[2]).toBe(100);
+  });
+
+  it('shares one x span across series, so a short history reads as short', () => {
+    const span = ['2026-01-01', '2026-01-05', '2026-01-09'];
+    const short = xPositions(['2026-01-01', '2026-01-05'], 100, span);
+    expect(short[0]).toBe(0);
+    expect(short[1]).toBeCloseTo(50, 9);
+  });
+
+  it('falls back to even spacing rather than emitting NaN', () => {
+    expect(xPositions(['not-a-date', 'nor-this'], 100)).toEqual([0, 100]);
+    expect(xPositions(['2026-01-01', '2026-01-01'], 100)).toEqual([0, 100]);
+    for (const x of xPositions(['2026-01-01'], 100)) expect(Number.isFinite(x)).toBe(true);
+  });
+
+  it('a time axis moves the line, not just the labels', () => {
+    const xs = xPositions(['2026-01-02', '2026-01-05', '2026-01-06'], 100);
+    const d = linePath([1, 2, 3], { min: 0, max: 4 }, 100, 100, xs);
+    expect(d).toContain('75.00');
   });
 
   it('barOrder sorts by value unless the dim is ordinal', () => {
