@@ -84,13 +84,17 @@ export function TreasuryGrid({
   const [children, setChildren] = useState<ReadonlyMap<string, Position[]>>(() => new Map());
   useEffect(() => {
     if (!about) return;
+    // Children fetched under the previous grouping are stale the moment a
+    // served slice changes — dropped now, not when the debounced answer
+    // lands, so a node expanded in the meantime keeps the children it just
+    // fetched under the new grouping (their paths are the same).
+    setChildren((prev) => (prev.size ? new Map() : prev));
     let live = true;
     const t = setTimeout(() => {
       void source.query(view).then((r) => {
         if (!live) return;
         setRows(r.rows);
         setApplied(r.applied.filter || r.applied.sort || r.applied.group ? r.applied : undefined);
-        setChildren(new Map());
       });
     }, rows === null ? 0 : 120);
     return () => { live = false; clearTimeout(t); };
