@@ -22,8 +22,15 @@
 @import 'keel-design-system/tokens/typography.css';
 @import 'keel-design-system/tokens/spacing.css';
 @import 'keel-design-system/tokens/radii.css';
-/* The grid's geometry; its chromatics are the aliases below (ADR-64). */
-@import 'chartroom-grid/grid.css';
+/* Tailwind, for the grid's shadcn components (ADR-65): the theme and the
+   utilities, in their own cascade layers so every unlayered rule in this
+   sheet keeps winning. Preflight is deliberately not imported — the base
+   styles below are the studio's, and a reset would rewrite them. The grid's
+   theme.css binds shadcn's variable names to the aliases that follow. */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme' layer(theme);
+@import 'tailwindcss/utilities' layer(utilities);
+@import 'chartroom-grid/theme.css';
 
 :root {
   /* ---- surfaces: Aperture's layered near-blacks ---- */
@@ -336,12 +343,6 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .cr-harness-state { font-size: 10px; color: var(--cr-text-faint); text-transform: uppercase; letter-spacing: 0.08em; }
 .cr-harness-cell .cr-frame { height: 230px; margin-top: 4px; }
 .cr-harness-cell .cr-frame-body { padding: 10px 12px; }
-
-/* ---- grid harness --------------------------------------------------- */
-
-.cr-grid-harness { display: flex; flex-direction: column; height: 100vh; }
-.cr-grid-harness-body { flex: 1; min-height: 0; padding: 12px 20px 20px; }
-.cr-grid-harness-body .cr-grid { border: 1px solid var(--cr-border); background: var(--cr-panel); }
 
 /* ---- the brief card (Phase 2) --------------------------------------- */
 

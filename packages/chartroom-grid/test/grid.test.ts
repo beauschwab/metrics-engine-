@@ -1,10 +1,13 @@
 /**
  * Phase 0's checkable claims: the format registry says what a number is, the
  * mock is deterministic on its seed, and meta travels through the table so a
- * cell renders from its own column's declaration and nothing else. Rendering
- * itself is verified in the studio's e2e against the real bundle.
+ * cell renders from its own column's declaration and nothing else; and the
+ * theme names no colour of its own (ADR-65). Rendering itself is verified in
+ * the studio's e2e against the real bundle.
  */
 
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { constructTable, tableFeatures, type ColumnDef } from '@tanstack/table-core';
 import { storeReactivityBindings } from '@tanstack/table-core/store-reactivity-bindings';
@@ -115,5 +118,37 @@ describe('column meta drives the table', () => {
       if (meta.kind === 'dimension') expect(meta.agg).toBeUndefined();
       if (meta.agg === 'wavg') expect(meta.weightBy).toBe('notional');
     }
+  });
+});
+
+describe('the theme is Aperture Risk by reference (ADR-48, ADR-65)', () => {
+  const SRC = join(__dirname, '..', 'src');
+  const walk = (dir: string): string[] =>
+    readdirSync(dir).flatMap((f) => {
+      const p = join(dir, f);
+      return statSync(p).isDirectory() ? walk(p) : /\.(tsx?|css)$/.test(f) ? [p] : [];
+    });
+
+  it('declares no colour of its own — every chromatic is a token by reference', () => {
+    const css = readFileSync(join(SRC, 'theme.css'), 'utf8');
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|\b(rgb|hsl|oklch|oklab)a?\(/i);
+  });
+
+  it('declares no bare variable — shadcn’s names are Aperture’s, and a `--accent` here turns the brand grey', () => {
+    const css = readFileSync(join(SRC, 'theme.css'), 'utf8');
+    const declared = [...css.matchAll(/^\s*(--[\w-]+)\s*:/gm)].map((m) => m[1]);
+    expect(declared.length).toBeGreaterThan(0);
+    expect(declared.filter((v) => !/^--(color|radius)-/.test(v))).toEqual([]);
+    expect(css).not.toMatch(/:root\s*\{/);
+  });
+
+  it('withdraws Tailwind’s default palette so a component cannot name a colour beside the system', () => {
+    const css = readFileSync(join(SRC, 'theme.css'), 'utf8');
+    expect(css).toMatch(/--color-\*:\s*initial/);
+    // With the palette withdrawn such a class compiles to nothing, so the
+    // cell would silently lose its colour; catch it at the source instead.
+    const palette = /\b(?:text|bg|border|ring|fill|stroke|from|to|via)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone|white|black)(?:-\d{2,3})?\b/;
+    const hits = walk(SRC).filter((f) => palette.test(readFileSync(f, 'utf8')));
+    expect(hits).toEqual([]);
   });
 });

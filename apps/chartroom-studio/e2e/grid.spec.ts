@@ -30,9 +30,9 @@ test.describe('the treasury grid harness', () => {
     await expect(first.locator('td[data-column="dv01"]')).toHaveAttribute('data-align', 'right');
     await expect(first.locator('td[data-column="desk"]')).toHaveAttribute('data-align', 'left');
 
-    // A negative MTM is flagged for the breach colour — the stylesheet's
-    // reading of `negativeRed`, not a hardcoded red.
-    const negative = grid.locator('td[data-column="mtm"] .cr-grid-value[data-negative]');
+    // A negative MTM is flagged for the breach colour — the theme's breach
+    // text token read through `negativeRed`, not a hardcoded red (ADR-65).
+    const negative = grid.locator('td[data-column="mtm"] [data-slot="value"][data-negative]');
     await expect(negative.first()).toBeVisible();
     await expect(negative.first()).toHaveText(/^-\$/);
   });

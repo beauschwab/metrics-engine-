@@ -455,6 +455,10 @@ PromptInput, Suggestions) on the studio's own design system rather than
 importing the library — the studio has no Tailwind/shadcn substrate, and the
 component contract, not the CSS, is what's worth replicating.
 
+*Amended by ADR-65:* the studio now carries that substrate, for the grid.
+The chat pane stands as built; the reasoning above still holds for six
+components and stopped holding at a grid's twenty.
+
 ## ADR-35 — chat unavailability is a banner, not a block
 
 **Decision:** ADR-20's posture, extended to the chat: with no
@@ -1390,14 +1394,11 @@ screen reaches the same instance through one hook. The version is pinned
 because the API moved between betas and the docs lag; the declarations and
 skills shipped in `node_modules/@tanstack/*` are the reference, not memory.
 
-*No Tailwind, no shadcn.* The plan as pasted specified both. ADR-34 declined
-that substrate for AI Elements and ADR-48 bound the studio to Aperture Risk
-by reference; a grid is not the occasion to reverse either. The grid ships
-one stylesheet of geometry (`grid.css`) that names no colour of its own —
-every chromatic is a `--cr-*` alias — and the Popover, Command, ContextMenu
-and Sheet the later phases want are built as the studio's own components in
-those libraries' vocabulary, as the chat pane was. The component contract
-is what the AG Grid demo is worth replicating; its CSS is not.
+*Tailwind and shadcn — declined here, reversed by ADR-65.* The plan as
+pasted specified both; Phase 0 shipped without either on ADR-34's reasoning
+and ADR-48's binding, with one stylesheet of geometry that named no colour
+of its own. The reversal, its terms, and how ADR-48 survives it are ADR-65's.
+The component contract is still what the AG Grid demo is worth replicating.
 
 *Column meta is the single source of behaviour.* Formatting, groupability,
 aggregation, conditional formatting and the export's number formats all
@@ -1445,6 +1446,94 @@ the studio's `grid.spec.ts` reads the harness at `#/grid` and checks the
 rendered units. The boundaries test fails on the grid importing a widget
 component, the server, the studio, or fetching from anywhere but its data
 seam.
+
+## ADR-65 — the grid renders on shadcn/ui and Tailwind; Aperture Risk is still the only palette
+
+**Pinned:** the treasury grid plan's stack — "TanStack Table v9 +
+shadcn/ui" — declined by ADR-64 at Phase 0 and reinstated here at the
+owner's direction. Supersedes ADR-64's third part and amends ADR-34's last
+sentence; leaves ADR-48 whole.
+
+**Decision.** The grid is built on shadcn/ui components over Tailwind v4,
+on four terms.
+
+*shadcn lands as source, not as a dependency.* Each component is copied
+into `chartroom-grid/src/components/ui` by the CLI (`components.json` is
+the package's), read, and kept — shadcn's own model, and the same
+arrangement ADR-63 made for scales: the library's arithmetic, our marks.
+This package is bundled by the studio's Vite and owns no `@/` alias, so a
+landed component's imports are rewritten relative on arrival. One upstream
+file carries one addition, `Table`'s `containerClassName`, because a sticky
+header sticks to the nearest scrolling ancestor and shadcn's container is
+that ancestor.
+
+*Tailwind is the studio's build, and it does not touch the studio.* The
+app's stylesheet imports Tailwind's `theme` and `utilities` layers and
+declares the layer order; it does not import `preflight`. The studio's base
+styles — Inter's feature settings, the focus ring, the header — are its own
+and stay unlayered, and an unlayered rule beats any layered utility, so
+nothing already on screen is rewritten. The grid's `theme.css` carries the
+`@source` for the package's own files; the studio does not need to know
+where the grid lives.
+
+*The theme is a bridge, and the default palette is withdrawn.* `theme.css`
+binds Tailwind's theme tokens in shadcn's vocabulary (`--color-background`,
+`--color-muted-foreground`, `--color-border`, …) to `--cr-*` aliases, and
+each of those is an Aperture token by reference (ADR-48). It declares
+`--color-*: initial` first, so Tailwind's palette does not exist in this
+build: a `text-red-500` compiles to nothing. ADR-48 made "no colour beside
+the system" structural for the stylesheet by aliasing; this makes it
+structural for utilities by subtraction. Beyond shadcn's vocabulary the
+theme names only the readings this surface has and shadcn does not — the
+subtle row rule, the faint label step, the breach text mix, up and warn.
+
+It declares no bare variable. shadcn's own `:root` layer (`--accent`,
+`--border`, `--radius`, …) is skipped, and not as a simplification: those
+are Aperture's token names. The first build declared shadcn's `--accent`
+— its grey hover highlight — at `:root`, and the studio's brand and links,
+which alias Aperture's `--accent` yellow, turned grey. Tailwind's
+`--color-*` namespace cannot collide with a design token; the bridge lives
+there and nowhere else, and the test below holds it to that.
+
+Where Tailwind's own theme layer and Aperture do share a name — the type
+scale (`--text-xs` is 11px here, not Tailwind's 0.75rem), tracking,
+leading, `--font-mono`, `--radius-*` — the system wins by construction:
+Tailwind emits its defaults inside `@layer theme`, Aperture's tokens are
+unlayered, and an unlayered declaration beats a layered one. A `text-xs`
+utility on a grid cell is therefore Aperture's type step. Aperture declares
+no `--spacing`, so Tailwind's spacing scale is the one the utilities use.
+
+*Scope.* shadcn and Tailwind classes belong to the grid package and to
+what frames it (the harness). The widget catalog and the rest of the
+studio keep their stylesheets and their rule: no hardcoded colour, which
+now also means no utility that names one (the test below reads both). The
+Phase 3 surface — Popover, Command, ContextMenu, Sheet, DropdownMenu — is
+the occasion this decision is for: those are the components a grid needs
+twenty of, and where a hand-built library costs the most for the least.
+
+**Why now, and why not before.** ADR-34's reasoning was that the
+component contract is the transferable part and the CSS is not, which held
+for a chat pane of six components written once. A grid's surface is a
+different order — menus, popovers, command palettes, sheets, each with
+focus management and keyboard behaviour that Radix gets right and a
+hand-rolled version gets right on the third attempt. The cost of the
+substrate is a second styling idiom in one app; the terms above keep it
+inside one package and one route, and keep its palette the system's.
+
+**What Phase 0 leaves honest.** The `@/` alias is not real: the CLI writes
+it, the landing rewrites it, and a component that reaches the bundle
+un-rewritten fails to resolve at build rather than at runtime. Dark is the
+only theme, as it is everywhere in the studio; shadcn's `.dark` variant is
+not declared and would be a no-op if it were.
+
+**What now fails if this regresses.** `the theme is Aperture Risk by
+reference` reads `theme.css` and rejects any hex, `rgb`, `hsl` or `oklch`
+literal, any declaration outside the `--color-*` and `--radius-*`
+namespaces or any `:root` block, and any theme that fails to withdraw the
+default palette; it walks the package's sources for a Tailwind palette
+class. The studio's
+`grid.spec.ts` still reads the rendered units and the breach colour on a
+negative MTM, now through shadcn's `data-slot` markup.
 
 # Proposed — recorded gaps, not yet accepted
 

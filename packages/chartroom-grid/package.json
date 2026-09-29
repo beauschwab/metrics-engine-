@@ -7,7 +7,7 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./grid.css": "./src/grid.css"
+    "./theme.css": "./src/theme.css"
   },
   "scripts": {
     "test": "vitest run",
@@ -16,6 +16,8 @@
   "dependencies": {
     "@tanstack/react-table": "9.2.4",
     "chartroom-widgets": "*",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.7.0",
     "zod": "^3.25.76"
   },
   "peerDependencies": {
