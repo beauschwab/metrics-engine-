@@ -47,7 +47,10 @@ export function useTreasuryTable({ data, view, onViewChange }: TreasuryTableOpti
     return {
       onGroupingChange: slice('grouping'),
       onColumnFiltersChange: slice('columnFilters'),
-      onGlobalFilterChange: slice('globalFilter'),
+      // v9's reset writes `undefined`; the contract says a string, and an
+      // input bound to it must never go uncontrolled.
+      onGlobalFilterChange: (updater: Updater<string | undefined>) =>
+        onViewChange((prev) => ({ ...prev, globalFilter: functionalUpdate(updater, prev.globalFilter) ?? '' })),
       onSortingChange: slice('sorting'),
       onExpandedChange: slice('expanded'),
       onColumnVisibilityChange: slice('columnVisibility'),

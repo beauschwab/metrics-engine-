@@ -101,7 +101,7 @@ export function RowContextMenu({
             <ContextMenuItem onSelect={() => table.toggleAllRowsExpanded(false)}><ChevronsDownUp /> Collapse all</ContextMenuItem>
           </>
         )}
-        <ContextMenuItem onSelect={() => { table.resetColumnFilters(true); table.resetGlobalFilter(true); }}>
+        <ContextMenuItem onSelect={() => { table.resetColumnFilters(true); table.setGlobalFilter(''); }}>
           <FunnelX /> Clear all filters
         </ContextMenuItem>
         {/* TODO(grid-deferred): "Chart selection" hands the selected leaf rows to a widget contract; range selection copies a block. */}

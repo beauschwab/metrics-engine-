@@ -54,7 +54,7 @@ export function GridToolbar({
         />
       </div>
       {filtering && (
-        <Button variant="ghost" size="xs" aria-label="Clear all filters" onClick={() => { table.resetColumnFilters(true); table.resetGlobalFilter(true); }}>
+        <Button variant="ghost" size="xs" aria-label="Clear all filters" onClick={() => { table.resetColumnFilters(true); table.setGlobalFilter(''); }}>
           <FunnelX /> Clear
         </Button>
       )}
