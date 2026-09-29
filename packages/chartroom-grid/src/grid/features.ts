@@ -26,12 +26,14 @@ import {
   createExpandedRowModel, createFacetedMinMaxValues, createFacetedRowModel,
   createFacetedUniqueValues, createFilteredRowModel, createGroupedRowModel,
   createSortedRowModel,
-  filterFn_arrIncludesSome, filterFn_between, filterFn_equals, filterFn_greaterThan,
-  filterFn_includesString, filterFn_lessThan, filterFn_weakEquals,
+  filterFn_arrHas, filterFn_arrIncludesSome, filterFn_between, filterFn_equals,
+  filterFn_greaterThan, filterFn_inNumberRange, filterFn_includesString,
+  filterFn_lessThan, filterFn_weakEquals,
   globalFilteringFeature, metaHelper, rowAggregationFeature, rowExpandingFeature,
   rowSortingFeature, sortFn_alphanumeric, sortFn_basic, sortFn_datetime,
   tableFeatures,
 } from '@tanstack/react-table';
+import { wavg } from './aggregations';
 import type { ColumnMeta } from './meta';
 
 export const features = tableFeatures({
@@ -47,6 +49,10 @@ export const features = tableFeatures({
     equals: filterFn_equals,
     weakEquals: filterFn_weakEquals,
     arrIncludesSome: filterFn_arrIncludesSome,
+    // The set filter: a scalar cell equal to one of the chosen values.
+    arrHas: filterFn_arrHas,
+    // The number filter: an inclusive range whose blank ends are open.
+    inNumberRange: filterFn_inNumberRange,
     greaterThan: filterFn_greaterThan,
     lessThan: filterFn_lessThan,
     between: filterFn_between,
@@ -72,13 +78,13 @@ export const features = tableFeatures({
   expandedRowModel: createExpandedRowModel(),
 
   rowAggregationFeature,
-  // `wavg` — decomposable Σ(x·w) / Σ(w) — joins this registry in Phase 2,
-  // behind its tests. TODO(grid-phase-2)
   aggregationFns: {
     sum: aggregationFn_sum,
     min: aggregationFn_min,
     max: aggregationFn_max,
     count: aggregationFn_count,
+    // Decomposable Σ(x·w) / Σ(w), weighted by the meta's column (ADR-67).
+    wavg,
   },
 
   columnVisibilityFeature,

@@ -57,6 +57,12 @@ export function useTreasuryTable({ data, view, onViewChange }: TreasuryTableOpti
     columns,
     data: data ?? NO_ROWS,
     getRowId: (row) => row.tradeId,
+    // Grouped columns move to the front, AG Grid's shape: the tree reads
+    // left to right, and a chip's order is the column order.
+    groupedColumnMode: 'reorder',
+    // The view owns expansion (ADR-66); the table must not rewrite it when
+    // the grouping or the data changes underneath.
+    autoResetExpanded: false,
     state: toTableState(view),
     ...handlers,
   });

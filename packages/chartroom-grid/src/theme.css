@@ -75,14 +75,36 @@
   --radius-xl: var(--radius-xs);
 }
 
-/* shadcn's base rule, scoped to its own components: a `border-b` with no
-   colour class takes the theme's border, not currentColor. Scoped to
-   `data-slot` so the studio's unlayered sheet is untouched. */
+/* The slice of Tailwind's preflight that shadcn components assume, scoped
+   to `data-slot` so the studio's unlayered sheet is untouched: a `border-b`
+   with no colour class takes the theme's border, not currentColor; a
+   button or an input inside a component starts from nothing rather than
+   from the user agent's grey box (the studio's own button reset stops at
+   this scope, ADR-65). */
 @layer base {
   [data-slot],
   [data-slot] *,
   [data-slot] ::before,
   [data-slot] ::after {
     border-color: var(--color-border);
+  }
+  [data-slot] button,
+  button[data-slot] {
+    background-color: transparent;
+    background-image: none;
+    border-width: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  [data-slot] :is(input, select, textarea),
+  [data-slot]:is(input, select, textarea) {
+    font: inherit;
+    color: inherit;
+    background-color: transparent;
+  }
+  [data-slot] svg {
+    display: block;
   }
 }

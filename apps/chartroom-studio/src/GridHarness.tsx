@@ -4,9 +4,10 @@
  * surface: each phase of the grid lands here first, and the e2e suite reads
  * it so a cell that stops formatting from its meta is a red build.
  *
- * Phase 1: fifty thousand positions behind an in-memory `DataSource`, a
- * virtualized body, and the count in the header read from `describe()` —
- * the harness knows nothing about the rows that the seam did not tell it.
+ * Fifty thousand positions behind an in-memory `DataSource`, a virtualized
+ * body, and the count in the header read from `describe()` — the harness
+ * knows nothing about the rows that the seam did not tell it. The columns
+ * panel opens by default here so the review surface shows the whole shell.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -24,7 +25,7 @@ export function GridHarness() {
       <header className="cr-header">
         <span className="cr-brand">Chartroom</span>
         <span className="cr-header-title" data-testid="grid-harness-title">
-          treasury grid — phase 1, {about ? `${about.rowCount.toLocaleString('en-US')} positions as of ${about.asOf}` : 'describing the source…'}
+          treasury grid — phase 2, {about ? `${about.rowCount.toLocaleString('en-US')} positions as of ${about.asOf}` : 'describing the source…'}
         </span>
         <span className="cr-header-spacer" />
         <a className="cr-link" href="#/widgets">widget states</a>
@@ -32,7 +33,7 @@ export function GridHarness() {
       </header>
       <div className="min-h-0 flex-1 px-5 pt-3 pb-5">
         <div className="h-full border border-border bg-card">
-          <TreasuryGrid source={source} />
+          <TreasuryGrid source={source} defaultSidebarOpen />
         </div>
       </div>
     </div>

@@ -14,6 +14,14 @@
 export { TreasuryGrid, ROW_HEIGHT, type TreasuryGridProps } from './components/TreasuryGrid';
 export { ValueCell } from './components/CellRenderers';
 export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption } from './components/ui/table';
+export { Button, buttonVariants } from './components/ui/button';
+export { Checkbox } from './components/ui/checkbox';
+export { Badge, badgeVariants } from './components/ui/badge';
+export { GridTable } from './components/GridTable';
+export { GroupByDropZone } from './components/GroupByDropZone';
+export { ColumnsSidebar } from './components/ColumnsSidebar';
+export { GroupCell, leafCount } from './components/GroupCell';
+export { wavg, Wavg, weightedAverage, aggregatedNumber, type WavgParts } from './grid/aggregations';
 export { cn } from './lib/utils';
 export { useTreasuryTable, type TreasuryTable, type TreasuryTableOptions, type ViewUpdate } from './grid/useTreasuryTable';
 export {

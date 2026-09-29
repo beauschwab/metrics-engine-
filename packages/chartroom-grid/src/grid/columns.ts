@@ -47,9 +47,17 @@ export const columns = helper.columns(
       meta,
       size: meta.width,
       enableGrouping: meta.kind === 'dimension' && !!meta.groupable,
-      // `wavg` is registered in Phase 2; until then a weighted column has no
-      // aggregation and a subtotal row leaves it blank — honest, per ADR-44.
-      aggregationFn: meta.agg && meta.agg !== 'wavg' ? meta.agg : undefined,
+      // Every aggregation the meta names is registered (`wavg` since Phase 2,
+      // ADR-67); a measure without one leaves a subtotal blank — ADR-44.
+      aggregationFn: meta.agg,
+      // A dimension filters as a set ("value is one of these"); a measure as
+      // an inclusive range with open ends. Both read the meta's kind, not a
+      // per-feature list — the set filter and the number filter (Phase 3)
+      // are the UI over these.
+      filterFn: meta.kind === 'dimension' ? 'arrHas' : 'inNumberRange',
+      // Measures sort numerically — a grouped row's aggregate is a Number
+      // object (ADR-67), which `basic` compares by value.
+      sortFn: meta.kind === 'measure' ? 'basic' : 'alphanumeric',
     });
   }),
 );

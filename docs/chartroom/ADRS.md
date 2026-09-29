@@ -1430,10 +1430,10 @@ hundred cells — it may still land under `perspective-grid@1` when the
 cross-filter loop gives it a job. Building the row models by hand is what
 ADR-8 did for scales, and ADR-63 records how that went.
 
-**What Phase 0 leaves honest.** `wavg` is declared in meta but not
-registered, so a weighted column shows blank on a subtotal row rather than
-an average of averages (ADR-44) until Phase 2 lands it behind its tests.
-Pagination is not registered at all: `getRowModel()` resolves to the last
+**What Phase 0 leaves honest.** `wavg` was declared in meta but not
+registered until Phase 2 landed it behind its tests (ADR-67); until then a
+weighted column showed blank on a subtotal row rather than an average of
+averages (ADR-44). Pagination is not registered at all: `getRowModel()` resolves to the last
 registered model, and a paged one would hand the Phase-1 virtualizer ten
 rows; it returns as `manualPagination` in Phase 5. Every deferred hook is a
 `TODO(grid-phase-N)` at the seam it plugs into.
@@ -1603,6 +1603,76 @@ one deeper than the grouping. The studio's `grid.spec.ts` reads a count
 that only `describe()` could have supplied, a window of rows in the DOM
 over a body fifty thousand rows tall, and the last trade after a scroll
 with the header still in view.
+
+## ADR-67 — a subtotal is decomposed, never averaged; grouping is a reading of meta
+
+**Pinned:** the grid plan's Phase 2 — group rows with subtotals, a grand
+total, a group-by drop zone and a columns sidebar, and "only `meta.groupable`
+dimensions group" — with its instruction that the aggregation tests come
+before the grouping UI.
+
+**Decision.**
+
+*`wavg` decomposes.* A weighted average carries Σ(x·w) and Σ(w) as its
+result; a parent group merges its children's pairs and never re-reads a
+leaf (`grid/aggregations.ts`, registered through v9's
+`constructAggregationFn({ aggregate, merge })`). The alternative — a mean of
+the sub-group means — is the number a spreadsheet gives when someone drags
+a formula down, and it is wrong the moment two sub-groups differ in size,
+which in a treasury book is always. The test asserts the decomposed number
+equals brute force at every level of a three-deep grouping *and* that the
+mean of means differs from it, so the guard cannot pass by accident. The
+weight column is read from meta (`weightBy`); a row without a finite value
+or weight contributes nothing, and a zero total weight renders the dash
+(ADR-44). The result is a `Number` subclass so a sort compares by value and
+the cell reads one number; the parts ride along for `merge`.
+
+*A cell renders what it is.* On a group row the grouped column renders the
+toggle, the value and the leaf count; an aggregated measure renders its
+aggregate through the same `formatValue` as a leaf; a dimension the row
+does not group by, or a grouped column on a leaf row, renders nothing. A
+leaf value on a group row is a wrong number with a confident face (ADR-44),
+and `data-cell` names each kind so a test can tell them apart. Grouped
+columns move to the front (`groupedColumnMode: 'reorder'`): the tree reads
+left to right and a chip's order is the column order.
+
+*The grand total is `column.getAggregationValue()`.* v9 aggregates
+independently of grouping over the pre-grouped (filtered, sorted) rows, so
+the footer's number is the same function the subtotals use, over the rows
+the filter left — the test holds the total to the sum of the top-level
+subtotals and a filter's subtotals to brute force over the remaining rows.
+
+*Every gesture is a feature API.* A header or a sidebar item dropped on the
+zone is `column.toggleGrouping()`, refused unless `getCanGroup()` — the
+zone's highlight is not a promise, the meta is the rule; a chip reordered
+is `table.setGrouping()`; a sidebar item moved is `table.setColumnOrder()`;
+a checkbox is `column.toggleVisibility()`. All of them write the view
+through the hook (ADR-66), so a grouping made by drag is the same JSON a
+saved view or an agent would hand over. Each drag has a click path — the
+sidebar's group button, the chip's remove — so a keyboard reader can do
+what a mouse can.
+
+*The set filter and the number filter are v9's own.* A dimension filters
+by `arrHas` (a scalar equal to one of the chosen values) and a measure by
+`inNumberRange` (an inclusive range whose blank ends are open), both chosen
+from the meta's `kind` and both proven in the Phase 2 tests before Phase 3
+builds their UI.
+
+**Why dnd-kit and not HTML5 drag.** The native API cannot render a drag
+preview the design system controls, has no keyboard path, and fires
+nothing usable in a virtualized body. dnd-kit's pointer sensor with an
+activation distance leaves a header click free for Phase 3's sort.
+
+**What now fails if this regresses.** `the weighted average` asserts
+registration from meta, brute-force equality at every level with the mean
+of means excluded, decomposition of parent parts into children's parts,
+and the grand total; `subtotals and totals` asserts every subtotal is the
+sum of its children and of its leaves, and the grand total the sum of the
+top level; `filtering updates subtotals` asserts a set filter, a range
+filter with an open end and a quick filter each change the subtotals to
+the rows that remain. The studio's `grid.spec.ts` groups from the sidebar,
+expands a group, stacks a second grouping, ungroups from the chips, and
+drags a header onto the zone.
 
 # Proposed — recorded gaps, not yet accepted
 

@@ -1,38 +1,49 @@
 /**
- * The grid — Phase 1: the book behind the data seam, a windowed body.
+ * The grid — the shell around the table: the row-groups bar, the columns
+ * sidebar, the drag-and-drop context that joins them, and the seam to the
+ * data.
  *
  * The component owns nothing the contract does not: rows come from the
- * source, the view is the state, and the table is the hook's. Rendering is
- * shadcn's Table primitives (ADR-65) in the grid/flex geometry the
- * virtualizer needs — a `<tbody>` the height of fifty thousand rows, with
- * only the rows in the viewport in the DOM. Row height is fixed and never
- * measured: a treasury grid is a lattice, not a feed, and a measured row is
- * a scrollbar that jumps.
- *
- * The markup stays semantic (`<table>`, `<th scope>`) because the table is
- * the reader's instrument and a screen reader is a reader too.
+ * source, the view is the state, and the table is the hook's. A drop on the
+ * group zone is `column.toggleGrouping()`; a chip reordered is
+ * `table.setGrouping()`; a sidebar item moved is `table.setColumnOrder()` —
+ * every gesture is a feature API writing the view (ADR-66, ADR-67).
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, pointerWithin,
+  useSensor, useSensors, type CollisionDetection, type DragEndEvent, type DragStartEvent,
+} from '@dnd-kit/core';
+import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { Position } from '../data/mock';
 import type { DataSource } from '../data/source';
-import { alignOf } from '../grid/meta';
 import { useTreasuryTable, type ViewUpdate } from '../grid/useTreasuryTable';
 import { defaultView, type ViewState } from '../grid/viewState';
-import { ValueCell } from './CellRenderers';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { ColumnsSidebar, SIDE_PREFIX, orderedLeafColumns } from './ColumnsSidebar';
+import { GridTable, COLUMN_PREFIX } from './GridTable';
+import { GridToolbar } from './GridToolbar';
+import { GROUP_PREFIX, GROUP_ZONE_ID } from './GroupByDropZone';
+import { Badge } from './ui/badge';
 
-export const ROW_HEIGHT = 22;
+export { ROW_HEIGHT } from './GridTable';
 
 export interface TreasuryGridProps {
   source: DataSource<Position>;
   /** Control the view from outside (a saved view, the URL, an agent); omit and the grid keeps its own. */
   view?: ViewState;
   onViewChange?: (update: ViewUpdate) => void;
+  defaultSidebarOpen?: boolean;
 }
 
-export function TreasuryGrid({ source, view: controlled, onViewChange }: TreasuryGridProps) {
+const idOf = (dnd: string) => dnd.slice(dnd.indexOf(':') + 1);
+
+// A header dragged over the zone lands where the pointer is; chips and
+// sidebar items sort by the nearest centre.
+const collision: CollisionDetection = (args) =>
+  String(args.active.id).startsWith(COLUMN_PREFIX) ? pointerWithin(args) : closestCenter(args);
+
+export function TreasuryGrid({ source, view: controlled, onViewChange, defaultSidebarOpen = false }: TreasuryGridProps) {
   const [ownView, setOwnView] = useState<ViewState>(defaultView);
   const view = controlled ?? ownView;
   const change = onViewChange ?? setOwnView;
@@ -51,79 +62,63 @@ export function TreasuryGrid({ source, view: controlled, onViewChange }: Treasur
   }, [source]);
 
   const table = useTreasuryTable({ data: rows, view, onViewChange: change });
+  const [sidebarOpen, setSidebarOpen] = useState(defaultSidebarOpen);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const [dragLabel, setDragLabel] = useState<string | null>(null);
+  const onDragStart = useCallback((e: DragStartEvent) => {
+    const id = idOf(String(e.active.id));
+    setDragLabel(table.getColumn(id)?.columnDef.meta?.label ?? id);
+  }, [table]);
+  const onDragEnd = useCallback((e: DragEndEvent) => {
+    setDragLabel(null);
+    const active = String(e.active.id);
+    const over = e.over ? String(e.over.id) : null;
+    if (!over || active === over) return;
+    if (active.startsWith(GROUP_PREFIX) && over.startsWith(GROUP_PREFIX)) {
+      table.setGrouping((prev) => arrayMove(prev, prev.indexOf(idOf(active)), prev.indexOf(idOf(over))));
+    } else if (over === GROUP_ZONE_ID || over.startsWith(GROUP_PREFIX)) {
+      const column = table.getColumn(idOf(active));
+      // The drop is refused unless the meta says groupable — the zone's
+      // highlight is not a promise, `getCanGroup()` is the rule.
+      if (column?.getCanGroup() && !column.getIsGrouped()) column.toggleGrouping();
+    } else if (active.startsWith(SIDE_PREFIX) && over.startsWith(SIDE_PREFIX)) {
+      const ids = orderedLeafColumns(table, view.columnOrder).map((c) => c.id);
+      table.setColumnOrder(arrayMove(ids, ids.indexOf(idOf(active)), ids.indexOf(idOf(over))));
+    }
+  }, [table, view.columnOrder]);
+
   const model = table.getRowModel().rows;
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const virtualizer = useVirtualizer({
-    count: model.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 12,
-    getItemKey: (i) => model[i]!.id,
-  });
-
-  if (!rows) return <div className="h-full animate-pulse rounded-sm bg-muted" data-slot="skeleton" />;
-  if (!model.length) return <div className="py-2 text-xs text-faint">no positions match</div>;
-
   return (
-    <Table
-      ref={scrollRef}
-      containerClassName="h-full min-h-0 overflow-auto"
-      className="grid w-max min-w-full border-separate border-spacing-0 text-[11.5px] text-foreground"
-      data-testid="treasury-grid"
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collision}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={() => setDragLabel(null)}
     >
-      <TableHeader className="sticky top-0 z-10 grid bg-card">
-        {table.getHeaderGroups().map((group) => (
-          <TableRow key={group.id} className="flex w-full hover:bg-transparent">
-            {group.headers.map((header) => {
-              const meta = header.column.columnDef.meta;
-              return (
-                <TableHead
-                  key={header.id}
-                  scope="col"
-                  data-align={meta ? alignOf(meta) : 'left'}
-                  data-column={header.column.id}
-                  style={{ width: header.getSize() }}
-                  className="flex h-auto items-center border-b px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.06em] text-faint uppercase data-[align=right]:justify-end"
-                >
-                  {header.isPlaceholder ? null : <table.FlexRender header={header} />}
-                </TableHead>
-              );
-            })}
-          </TableRow>
-        ))}
-      </TableHeader>
-      <TableBody className="relative grid" style={{ height: virtualizer.getTotalSize() }}>
-        {virtualizer.getVirtualItems().map((item) => {
-          const row = model[item.index]!;
-          return (
-            <TableRow
-              key={row.id}
-              data-row={row.id}
-              data-index={item.index}
-              className="absolute flex w-full border-0"
-              style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
-            >
-              {row.getAllCells().map((cell) => {
-                const meta = cell.column.columnDef.meta;
-                return (
-                  <TableCell
-                    key={cell.id}
-                    data-align={meta ? alignOf(meta) : 'left'}
-                    data-column={cell.column.id}
-                    style={{ width: cell.column.getSize() }}
-                    className="flex items-center border-b border-border-subtle px-2.5 py-0 data-[align=right]:justify-end"
-                  >
-                    {meta
-                      ? <ValueCell value={cell.getValue()} meta={meta} />
-                      : <table.FlexRender cell={cell} />}
-                  </TableCell>
-                );
-              })}
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+      <div className="flex h-full min-h-0 flex-col" data-slot="treasury-grid" data-testid="treasury-grid-shell">
+        <GridToolbar table={table} grouping={view.grouping} sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((o) => !o)} />
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1">
+            {!rows ? (
+              <div className="h-full animate-pulse rounded-sm bg-muted" data-slot="skeleton" />
+            ) : !model.length ? (
+              <div className="p-3 text-xs text-faint">no positions match</div>
+            ) : (
+              <GridTable table={table} />
+            )}
+          </div>
+          {sidebarOpen && <ColumnsSidebar table={table} grouping={view.grouping} columnOrder={view.columnOrder} />}
+        </div>
+      </div>
+      <DragOverlay dropAnimation={null}>
+        {dragLabel ? <Badge variant="secondary" className="cursor-grabbing shadow-md">{dragLabel}</Badge> : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
