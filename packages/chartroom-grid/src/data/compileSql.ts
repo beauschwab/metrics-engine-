@@ -15,6 +15,7 @@
  */
 
 import { COLUMN_META, COLUMN_ORDER, effectiveAgg } from '../grid/columns';
+import { parseSearch } from '../grid/search';
 import type { ColumnMeta } from '../grid/meta';
 import type { ViewState } from '../grid/viewState';
 import type { Position } from './mock';
@@ -113,7 +114,8 @@ function where(view: ViewState, opts: CompileOptions, dialect: SqlDialect, param
     if (META[id]!.kind === 'dimension') {
       const values = Array.isArray(f.value) ? f.value : [f.value];
       const strings = values.filter((v): v is string | number => typeof v === 'string' || typeof v === 'number');
-      if (strings.length === 0) continue;
+      // An empty set is "none of these" (ADR-73): no row, not every row.
+      if (strings.length === 0) { clauses.push('1 = 0'); continue; }
       clauses.push(`${col} IN (${strings.map((v) => params.add(v)).join(', ')})`);
     } else {
       const [lo, hi] = Array.isArray(f.value) ? (f.value as [unknown, unknown]) : [f.value, f.value];
@@ -121,11 +123,28 @@ function where(view: ViewState, opts: CompileOptions, dialect: SqlDialect, param
       if (typeof hi === 'number') clauses.push(`${col} <= ${params.add(hi)}`);
     }
   }
-  if (view.globalFilter.trim() !== '') {
+  // The quick filter's tokens (ADR-73): each free word somewhere in the row,
+  // each column term on its column, and an unknown term keeps no row — the
+  // same reading `rowMatchesSearch` gives the client.
+  const search = parseSearch(view.globalFilter);
+  if (search.unknown.length > 0) clauses.push('1 = 0');
+  for (const word of search.text) {
+    if (word.value === '') continue;
     // One parameter per occurrence: a positional placeholder binds once, and
     // a needle reused across fifteen columns would leave fourteen of them null.
-    const needle = `%${view.globalFilter.trim()}%`;
+    const needle = `%${word.value}%`;
     clauses.push(`(${COLUMN_ORDER.map((id) => dialect.ilike(dialect.text(dialect.quote(id)), params.add(needle))).join(' OR ')})`);
+  }
+  for (const term of search.terms) {
+    const col = dialect.quote(term.column);
+    if (typeof term.value === 'string') {
+      const like = (needle: string) => dialect.ilike(dialect.text(col), params.add(needle));
+      if (term.op === ':') clauses.push(like(`%${term.value}%`));
+      else if (term.op === '=') clauses.push(like(term.value));
+      else clauses.push(`NOT ${like(term.value)}`);
+    } else {
+      clauses.push(`${col} ${term.op === '=' ? '=' : term.op === '!=' ? '<>' : term.op} ${params.add(term.value)}`);
+    }
   }
   const path = opts.groupPath ?? [];
   if (path.length > view.grouping.length) throw new RangeError(`compileSql: groupPath has ${path.length} values but the view groups by ${view.grouping.length} column(s)`);

@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ChevronsDownUp, ChevronsUpDown, Download, FunnelX, PanelRight, Rows2, Rows4, Search } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, Download, PanelRight, Rows2, Rows4, Search } from 'lucide-react';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import type { ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
@@ -40,7 +40,6 @@ export function GridToolbar({
   }, [quick, table]);
   useEffect(() => { setQuick(view.globalFilter); }, [view.globalFilter]);
 
-  const filtering = view.columnFilters.length > 0 || view.globalFilter !== '';
   const grouping = view.grouping.length > 0;
 
   return (
@@ -51,17 +50,13 @@ export function GridToolbar({
         <Input
           value={quick}
           onChange={(e) => setQuick(e.target.value)}
-          placeholder="Quick filter"
+          placeholder="Search · desk:Credit notional>1bn"
           aria-label="Quick filter"
+          title="Words match any column. desk:Credit, ccy=EUR, entity!=WF-US on a dimension; notional>1bn, yield<=3.5 on a measure; quotes keep spaces."
           data-slot="quick-filter"
-          className="h-7 w-44 pl-7 text-xs"
+          className="h-7 w-60 pl-7 text-xs"
         />
       </div>
-      {filtering && (
-        <Button variant="ghost" size="xs" aria-label="Clear all filters" onClick={() => { table.resetColumnFilters(true); table.setGlobalFilter(''); }}>
-          <FunnelX /> Clear
-        </Button>
-      )}
       {grouping && (
         <>
           <Button variant="ghost" size="icon-xs" aria-label="Expand all groups" onClick={() => table.toggleAllRowsExpanded(true)}><ChevronsUpDown /></Button>

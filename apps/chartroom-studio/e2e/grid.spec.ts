@@ -411,6 +411,75 @@ test.describe('the treasury grid harness', () => {
     expect(restored.columnAggs ?? {}).toEqual({});
   });
 
+  test('searches with column tokens, reads the filter bar, and works the set filter\'s none, invert, exclude and only', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    const status = page.getByTestId('status-bar').locator('[data-slot="status-rows"]');
+    const count = async () => Number((await status.textContent())!.match(/^([\d,]+)/)![1]!.replace(/,/g, ''));
+    await expect(grid.locator('tbody tr').first()).toBeVisible();
+    await expect(status).toHaveText(/^50,000 rows$/);
+
+    // Three tokens: a dimension contains, a dimension by its label, a measure compared with a suffix.
+    const quick = page.getByLabel('Quick filter');
+    await quick.fill('desk:Credit ccy:EUR notional>1bn');
+    const bar = page.locator('[data-slot="filter-bar"]');
+    await expect(bar.locator('[data-slot="search-chip"]')).toHaveCount(3);
+    await expect(bar.locator('[data-slot="search-chip"]').nth(2)).toHaveText(/Notional > 1000000000/);
+    await expect(status).toHaveText(/^[\d,]+ of 50,000 rows$/);
+    const three = await count();
+    expect(three).toBeGreaterThan(0);
+    const first = grid.locator('tbody tr').first();
+    await expect(first.locator('td[data-column="desk"]')).toHaveText('Credit');
+    await expect(first.locator('td[data-column="currency"]')).toHaveText('EUR');
+    await expect(first.locator('td[data-column="notional"]')).toHaveText(/^\$[1-9]\d{3}\.\dM$/);
+
+    // Removing one chip keeps the others, in the box as typed.
+    await bar.getByRole('button', { name: 'Remove ccy:EUR from the search' }).click();
+    await expect(quick).toHaveValue('desk:Credit notional>1bn');
+    await expect(bar.locator('[data-slot="search-chip"]')).toHaveCount(2);
+    expect(await count()).toBeGreaterThan(three);
+
+    // A measure given no number keeps nothing, and the chip says why.
+    await quick.fill('notional>abc');
+    await expect(status).toHaveText(/^0 of 50,000 rows$/);
+    await expect(bar.locator('[data-slot="search-chip"][data-kind="unknown"]')).toHaveCount(1);
+    await bar.getByRole('button', { name: 'Clear all filters' }).click();
+    await expect(status).toHaveText(/^50,000 rows$/);
+    await expect(bar).toHaveCount(0);
+    await expect(quick).toHaveValue('');
+
+    // The set filter: none keeps nothing; invert of none is everything; exclude one; only one.
+    await grid.locator('th[data-column="product"]').hover();
+    await page.getByRole('button', { name: 'Filter Product' }).click();
+    const popover = page.locator('[data-slot="filter-popover"][data-column="product"]');
+    await popover.getByRole('button', { name: 'None' }).click();
+    await expect(status).toHaveText(/^0 of 50,000 rows$/);
+    await expect(bar.locator('[data-slot="filter-chip"][data-column="product"]')).toHaveText(/Product: none/);
+    await popover.getByRole('button', { name: 'Invert' }).click();
+    await expect(status).toHaveText(/^50,000 rows$/);
+    await expect(bar).toHaveCount(0);
+    await popover.locator('[data-slot="set-filter-values"] li[data-value="Bond"]').hover();
+    await popover.getByRole('button', { name: 'Exclude Bond' }).click();
+    await expect(status).toHaveText(/^[\d,]+ of 50,000 rows$/);
+    const withoutBond = await count();
+    expect(withoutBond).toBeGreaterThan(40_000);
+    expect(withoutBond).toBeLessThan(43_000);
+    await expect(bar.locator('[data-slot="filter-chip"][data-column="product"]')).toHaveText(/Product: .* \+2$/);
+    await popover.locator('[data-slot="set-filter-values"] li[data-value="IRS"]').hover();
+    await popover.getByRole('button', { name: 'Only IRS' }).click();
+    await expect(bar.locator('[data-slot="filter-chip"][data-column="product"]')).toHaveText('Product: IRS');
+    await expect(grid.locator('tbody tr').first().locator('td[data-column="product"]')).toHaveText('IRS');
+    await page.keyboard.press('Escape');
+
+    // A column filter and a search token share the bar; the link carries both.
+    await quick.fill('desk=Rates');
+    await expect(bar.locator('[data-slot="filter-chip"], [data-slot="search-chip"]')).toHaveCount(2);
+    const hash = await page.evaluate(() => location.hash);
+    const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(decoded.globalFilter).toBe('desk=Rates');
+    expect(decoded.columnFilters).toEqual([{ id: 'product', value: ['IRS'] }]);
+  });
+
   test('serves the same book from DuckDB-WASM: filter, sort and grouping compiled to SQL, children fetched on expand', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/#/grid?s=duckdb');

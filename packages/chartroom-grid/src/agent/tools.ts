@@ -54,7 +54,7 @@ export const VIEW_CONTRACT: ViewContract = {
   slices: {
     grouping: 'string[] of groupable column ids, outermost first',
     columnFilters: '{ id, value }[] — a set filter takes value: string[] (keep rows whose value is one of these); a range filter takes value: [min|null, max|null], inclusive, null for an open end',
-    globalFilter: 'string — a quick filter matched case-insensitively against every column',
+    globalFilter: 'string — a quick filter of space-separated tokens, all of which must hold: a bare word is matched case-insensitively against every column; column:text (contains), column=text, column!=text on a dimension; column>n, >=, <, <=, =, != on a measure, n with k/m/bn suffixes; a column is named by id or label (ccy, entity); quotes keep spaces',
     sorting: '{ id, desc: boolean }[] — first entry sorts first; measures sort numerically',
     expanded: 'true to expand every group, or { [groupRowId]: true } where a group row id is "column:value" joined by ">" per level',
     pagination: '{ pageIndex, pageSize } — carried, not driven until the data layer serves it',

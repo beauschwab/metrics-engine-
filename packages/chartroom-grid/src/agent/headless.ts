@@ -25,6 +25,7 @@ export function headlessTable(rows: Position[], view: ViewState): HeadlessTable 
     columns: buildColumns(view.columnAggs) as unknown as ColumnDef<HeadlessFeatures, Position, unknown>[],
     data: rows,
     getRowId: (r) => r.tradeId,
+    globalFilterFn: 'search',
     state: toTableState(view),
   });
 }

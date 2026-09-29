@@ -170,7 +170,14 @@ export function GridTable({ table, pending = false, density, detailOpen, onToggl
           </TableRow>
         ))}
       </TableHeader>
-      <TableBody className={cn('relative grid transition-opacity', pending && 'opacity-50')} style={{ height: virtualizer.getTotalSize() }}>
+      <TableBody className={cn('relative grid transition-opacity', pending && 'opacity-50')} style={{ height: Math.max(virtualizer.getTotalSize(), items.length ? 0 : ROW_HEIGHTS[density]) }}>
+        {/* The header, its menus and its filters stay when nothing matches:
+            a reader who filtered to nothing needs the filter to undo it. */}
+        {items.length === 0 && (
+          <TableRow className="absolute flex w-full border-0 hover:bg-transparent" style={{ height: ROW_HEIGHTS[density] }}>
+            <TableCell className="flex items-center p-3 text-xs text-faint" data-slot="empty" colSpan={visible.length}>no positions match</TableCell>
+          </TableRow>
+        )}
         {virtualizer.getVirtualItems().map((item) => {
           const entry = items[item.index]!;
           const row = entry.row;

@@ -20,6 +20,7 @@ export { Badge, badgeVariants } from './components/ui/badge';
 export { GridTable, type ContextTarget } from './components/GridTable';
 export { HeaderMenu } from './components/HeaderMenu';
 export { FilterPopover } from './components/FilterPopover';
+export { FilterBar, describeColumnFilter } from './components/FilterBar';
 export { DetailPanel } from './components/DetailPanel';
 export { RowContextMenu } from './components/RowContextMenu';
 export { StatusBar } from './components/StatusBar';
@@ -40,6 +41,11 @@ export { Input } from './components/ui/input';
 export { Separator } from './components/ui/separator';
 export { heatIntensity, heatBackground, HEAT_MAX_PERCENT } from './grid/heat';
 export { rangesToTsv, selectedCellRanges, cellText, type CopyCell, type CopyOptions, type CopyTable } from './grid/copy';
+export {
+  parseSearch, tokenizeSearch, parseSearchNumber, resolveSearchColumn, rowMatchesSearch, termMatches, describeSearchToken,
+  withSearchToken, withoutSearchToken, searchFilterFn,
+  type SearchQuery, type SearchToken, type SearchTerm, type SearchText, type SearchUnknown, type SearchOp,
+} from './grid/search';
 export { excelFormat } from './export/formats';
 export { buildWorkbook, workbookBytes, type ExportOptions } from './export/xlsx';
 export { GroupByDropZone } from './components/GroupByDropZone';

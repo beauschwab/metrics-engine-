@@ -27,6 +27,7 @@ import {
   aggregationFn_count, aggregationFn_max, aggregationFn_mean, aggregationFn_median, aggregationFn_min,
   aggregationFn_sum, aggregationFn_uniqueCount,
   cellSelectionFeature,
+  constructFilterFn,
   columnFacetingFeature, columnFilteringFeature, columnGroupingFeature,
   columnOrderingFeature, columnPinningFeature, columnResizingFeature,
   columnSizingFeature, columnVisibilityFeature,
@@ -42,6 +43,7 @@ import {
 } from '@tanstack/table-core';
 import { wavg } from './aggregations';
 import type { ColumnMeta } from './meta';
+import { searchFilterFn } from './search';
 
 export const features = tableFeatures({
   // Column meta is typed per table through this phantom slot rather than by
@@ -56,8 +58,12 @@ export const features = tableFeatures({
     equals: filterFn_equals,
     weakEquals: filterFn_weakEquals,
     arrIncludesSome: filterFn_arrIncludesSome,
-    // The set filter: a scalar cell equal to one of the chosen values.
-    arrHas: filterFn_arrHas,
+    // The set filter: a scalar cell equal to one of the chosen values. The
+    // built-in drops an empty list as "no filter"; here an empty list is a
+    // reader's "none of these" and keeps no row (ADR-73).
+    arrHas: constructFilterFn({ ...filterFn_arrHas, autoRemove: (v: unknown) => !Array.isArray(v) }),
+    // The quick filter's grammar — free words and column terms (ADR-73).
+    search: searchFilterFn,
     // The number filter: an inclusive range whose blank ends are open.
     inNumberRange: filterFn_inNumberRange,
     greaterThan: filterFn_greaterThan,

@@ -107,6 +107,8 @@ export function useTreasuryTable({ data, view, onViewChange, applied }: Treasury
     // served remotely arrives as group nodes whose children load on expand:
     // the sub-rows are what the shell attached, and a node can expand
     // before its children have arrived.
+    // The quick filter reads as tokens (ADR-73); the same grammar the SQL compiles.
+    globalFilterFn: 'search',
     manualFiltering: applied?.filter ?? false,
     manualSorting: applied?.sort ?? false,
     manualGrouping: applied?.group ?? false,

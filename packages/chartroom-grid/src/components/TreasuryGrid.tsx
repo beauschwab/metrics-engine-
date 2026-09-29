@@ -28,6 +28,7 @@ import { defaultView, type ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
 import { ColumnsSidebar, SIDE_PREFIX, orderedLeafColumns } from './ColumnsSidebar';
 import { GridTable, COLUMN_PREFIX, type ContextTarget, type Density } from './GridTable';
+import { FilterBar } from './FilterBar';
 import { GridToolbar } from './GridToolbar';
 import { GROUP_PREFIX, GROUP_ZONE_ID } from './GroupByDropZone';
 import { RowContextMenu } from './RowContextMenu';
@@ -219,7 +220,6 @@ export function TreasuryGrid({
     }
   }, [table, view.columnOrder]);
 
-  const model = table.getRowModel().rows;
 
   return (
     <DndContext
@@ -242,13 +242,12 @@ export function TreasuryGrid({
           onExport={() => void onExport()}
           exporting={exporting}
         />
+        <FilterBar table={table} view={view} />
         <div className="flex min-h-0 flex-1">
           <RowContextMenu table={table} target={contextTarget} detailOpen={detailOpen} onToggleDetail={toggleDetail}>
             <div className="min-w-0 flex-1">
               {!rows ? (
                 <div className="h-full animate-pulse rounded-sm bg-muted" data-slot="skeleton" />
-              ) : !model.length ? (
-                <div className="p-3 text-xs text-faint" data-slot="empty">no positions match</div>
               ) : (
                 <GridTable
                   table={table}

@@ -1994,6 +1994,62 @@ reads the choices back from the contract. The studio's `grid.spec.ts`
 chooses a mean for Yield from the header menu and reads the footer, a
 group row and the link.
 
+## ADR-73 — the quick filter is a grammar, and every filter reads back as a chip
+
+**Pinned:** the owner's request after Phase 5 for a top-level search
+filter, richer set filters and a place to see what is applied.
+
+**Decision.** The view's `globalFilter` stays one string — no new slice,
+no version bump, every saved view and link still parses — but the string
+now reads as space-separated tokens, all of which must hold. A bare word
+matches any column, as before. `desk:Credit` is a dimension containing
+the text, `desk=Credit` equal to it, `desk!=Credit` anything else;
+`notional>1bn`, `yield<=3.5`, `mtm!=0` compare a measure to a number,
+with `k`, `m` and `bn` suffixes and a tolerated `%`; a column is named by
+its id or its label (`ccy`, `entity`); quotes keep spaces together. One
+parser (`parseSearch`) serves the client filter, the compiled SQL and the
+filter bar, so the three cannot disagree on what a token means; the
+SQL test proves the engine keeps the same rows as the client for each
+kind of token.
+
+*A word the grid does not know is a word.* `cpty:foo` names no column,
+so it stays free text and finds nothing rather than pretending to be a
+term. A known measure given something that is not a number, or a
+dimension given a comparison, is *unknown*: it keeps no row, the chip
+shows it struck through with the reason, and the SQL carries `1 = 0` —
+"notional > abc" has no honest answer, and an answer of "every row" would
+be the dishonest one.
+
+*The global filter answers for the row.* v9 asks the global filter once
+per globally filterable column and stops at the first yes, so a
+row-level grammar answers on the first ask and memoises the verdict for
+the other columns of that pass; the parse happens once per filter value,
+in `resolveFilterValue`, not per row.
+
+*The filter bar is a reading, not a state.* Under the toolbar, one chip
+per column filter — the set's values, the range's ends — and one per
+token, each removable on its own; removing a token rewrites the string
+without it, keeping the rest as typed. Nothing in the bar is stored:
+it is the view, read back. "Clear all" lives there, next to what it
+clears.
+
+*The set filter's empty list means none.* Excel's All / None / Invert,
+and a value's Only / Exclude, all write the same `arrHas` list. v9's
+built-in would drop an empty list as "no filter"; the registry's
+`arrHas` keeps it, so "none of these" keeps no row on the client and
+compiles to `1 = 0` for the engine, and a full list still collapses to
+no filter so the view stays clean. Exclude is an include list without the
+value, as Excel's is: the list is what the reader saw when they chose.
+
+**What now fails if this regresses.** `search.test.ts` parses each token
+kind, quotes, suffixes and the unknown cases, filters a headless book by
+a mixed query against a hand-written predicate, and keeps no row for an
+empty set; `sql.test.ts` compiles each token kind and runs four token
+queries through SQLite against the same predicate. The studio's
+`grid.spec.ts` types three tokens, reads three chips, removes one from
+the bar, sees an unknown term keep nothing, and works None, Invert,
+Exclude and Only on the product set.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

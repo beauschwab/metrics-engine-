@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { weightedAverage } from '../src/grid/aggregations';
+import { parseSearch, rowMatchesSearch } from '../src/grid/search';
 import { defaultView, parseView } from '../src/grid/viewState';
 import { compileSql, DREMIO, DUCKDB, SQLITE } from '../src/data/compileSql';
 import { inMemorySource } from '../src/data/inMemorySource';
@@ -42,6 +43,18 @@ describe('compileSql', () => {
     expect(c.params.slice(0, 3)).toEqual(['Bond', "O'Neil", 1e9]);
     expect(c.params.slice(3)).toEqual(Array(15).fill('%cp-01%'));
     expect(c.sql).not.toContain("O'Neil");
+  });
+
+  it('compiles the quick filter\'s tokens: a word across columns, a term on its column, an unknown term to no row (ADR-73)', () => {
+    const c = compileSql(parseView({ version: 2, globalFilter: 'Credit ccy:EUR desk=Rates desk!=FX notional>1bn yield<=3.5' }), { table: 'positions' });
+    const word = '(' + ['desk', 'legalEntity', 'currency', 'product', 'tenorBucket', 'counterparty', 'book', 'tradeId', 'asOf', 'notional', 'mtm', 'dv01', 'cs01', 'yield', 'wal']
+      .map((id) => `CAST("${id}" AS VARCHAR) ILIKE ?`).join(' OR ') + ')';
+    expect(c.sql).toContain(` WHERE ${word} AND CAST("currency" AS VARCHAR) ILIKE ? AND CAST("desk" AS VARCHAR) ILIKE ? AND NOT CAST("desk" AS VARCHAR) ILIKE ? AND "notional" > ? AND "yield" <= ?`);
+    expect(c.params.slice(15)).toEqual(['%EUR%', 'Rates', 'FX', 1e9, 3.5]);
+    const none = compileSql(parseView({ version: 2, globalFilter: 'notional>abc' }), { table: 'positions' });
+    expect(none.sql).toContain(' WHERE 1 = 0');
+    const empty = compileSql(parseView({ version: 2, columnFilters: [{ id: 'product', value: [] }] }), { table: 'positions' });
+    expect(empty.sql).toContain(' WHERE 1 = 0');
   });
 
   it('compiles the next grouping level with wavg decomposed, scoped by the group path', () => {
@@ -116,6 +129,19 @@ describe('a date column comes back as the ISO day whatever the engine returned',
 });
 
 describe('the SQL source answers as the in-memory path does', () => {
+  it('keeps the same rows for a token query as the client does', async () => {
+    for (const globalFilter of ['desk:Credit ccy:EUR notional>1bn', 'Bond desk=Rates yield>=3', 'entity!=WF-US mtm<0', 'notional>abc']) {
+      const view = parseView({ version: 2, globalFilter, sorting: [{ id: 'tradeId', desc: false }] });
+      const fromSql = await sql.query(view);
+      const client = BOOK.filter((b) => rowMatchesSearch(parseSearch(globalFilter), (id) => b[id])).map((b) => b.tradeId).sort();
+      expect(fromSql.rows.map((r) => r.tradeId).sort(), globalFilter).toEqual(client);
+      const viaMemory = await queryView(memory, view, { limit: 1000, display: false });
+      expect(viaMemory.total, globalFilter).toBe(client.length);
+    }
+    const none = await sql.query(parseView({ version: 2, columnFilters: [{ id: 'product', value: [] }] }));
+    expect(none.rows).toEqual([]);
+  });
+
   it('describes the book from the table', async () => {
     const about = await sql.describe();
     expect(about.rowCount).toBe(3000);

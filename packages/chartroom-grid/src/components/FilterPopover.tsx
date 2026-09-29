@@ -6,7 +6,9 @@
  * Phase 2 before this UI existed (ADR-67, ADR-68). The facet counts come
  * from `getFacetedUniqueValues()`, which honours every other filter and
  * ignores this column's own, so the list never hides the value a reader
- * just unticked.
+ * just unticked. The set filter's All / None / Invert, and a value's Only /
+ * Exclude, are Excel's hand on the list (ADR-73): each writes the same
+ * `arrHas` list, and an empty list means none.
  */
 
 import { useMemo, useState } from 'react';
@@ -57,14 +59,16 @@ function SetFilter({ column }: { column: GridColumn }) {
   const selected = column.getFilterValue() as string[] | undefined;
   const isOn = (v: string) => !selected || selected.includes(v);
   const shown = search ? values.filter((x) => x.value.toLowerCase().includes(search.toLowerCase())) : values;
+  const all = values.map((x) => x.value);
+  const current = selected ?? all;
 
-  const toggle = (v: string) => {
-    const all = values.map((x) => x.value);
-    const current = selected ?? all;
-    const next = current.includes(v) ? current.filter((x) => x !== v) : [...current, v];
-    // Everything chosen is no filter at all: the view stays clean.
-    column.setFilterValue(next.length === all.length ? undefined : next);
-  };
+  // Everything chosen is no filter at all: the view stays clean. Nothing
+  // chosen is a filter that keeps no row, and stays as the empty list.
+  const write = (next: string[]) => column.setFilterValue(next.length === all.length && all.every((v) => next.includes(v)) ? undefined : next);
+  const toggle = (v: string) => write(current.includes(v) ? current.filter((x) => x !== v) : [...current, v]);
+  const invert = () => write(all.filter((v) => !current.includes(v)));
+  const only = (v: string) => write([v]);
+  const exclude = (v: string) => write(current.filter((x) => x !== v));
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -76,21 +80,33 @@ function SetFilter({ column }: { column: GridColumn }) {
         className="h-7 text-xs"
       />
       <div className="flex items-center justify-between text-faint">
-        <span>{values.length.toLocaleString('en-US')} values</span>
-        <div className="flex gap-1">
-          <Button variant="ghost" size="xs" onClick={() => column.setFilterValue(undefined)} disabled={!selected}>
-            <FunnelX /> Clear
+        <span>{current.length === all.length ? `${values.length.toLocaleString('en-US')} values` : `${current.length.toLocaleString('en-US')} of ${values.length.toLocaleString('en-US')}`}</span>
+        <div className="flex gap-0.5" data-slot="set-filter-actions">
+          {/* Never disabled: a button that disables under the pointer drops
+              focus to the body, and the popover reads that as a dismissal. */}
+          <Button variant="ghost" size="xs" onClick={() => column.setFilterValue(undefined)} aria-pressed={!selected}>
+            <FunnelX /> All
           </Button>
-          <Button variant="ghost" size="xs" onClick={() => column.setFilterValue(shown.map((x) => x.value))}>
+          <Button variant="ghost" size="xs" onClick={() => write([])} aria-pressed={current.length === 0}>
+            None
+          </Button>
+          <Button variant="ghost" size="xs" onClick={invert}>
+            Invert
+          </Button>
+          <Button variant="ghost" size="xs" onClick={() => write(shown.map((x) => x.value))}>
             Only shown
           </Button>
         </div>
       </div>
       <ul className="max-h-56 overflow-auto" data-slot="set-filter-values">
         {shown.map(({ value, count }) => (
-          <li key={value} className="flex h-6 items-center gap-2 px-1">
+          <li key={value} className="group flex h-6 items-center gap-2 px-1" data-value={value}>
             <Checkbox id={`${column.id}-${value}`} checked={isOn(value)} onCheckedChange={() => toggle(value)} aria-label={value} />
             <label htmlFor={`${column.id}-${value}`} className="min-w-0 flex-1 truncate">{value}</label>
+            <span className="hidden gap-0.5 group-focus-within:flex group-hover:flex">
+              <button type="button" className="rounded-sm px-1 text-faint hover:bg-muted hover:text-foreground" aria-label={`Only ${value}`} onClick={() => only(value)}>only</button>
+              <button type="button" className="rounded-sm px-1 text-faint hover:bg-muted hover:text-foreground" aria-label={`Exclude ${value}`} onClick={() => exclude(value)}>exclude</button>
+            </span>
             <span className="tabular-nums text-faint">{count.toLocaleString('en-US')}</span>
           </li>
         ))}
