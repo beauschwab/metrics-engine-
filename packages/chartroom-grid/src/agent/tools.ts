@@ -11,8 +11,8 @@
  */
 
 import { aggregatedNumber } from '../grid/aggregations';
-import { COLUMN_META, COLUMN_ORDER, allowedAggs, effectiveAgg } from '../grid/columns';
-import { formatValue, type ColumnMeta } from '../grid/meta';
+import { COLUMN_META, COLUMN_ORDER, allowedAggs, allowedFormatKeys, effectiveAgg } from '../grid/columns';
+import { type ColumnFormat, formatValue, type ColumnMeta } from '../grid/meta';
 import { VIEW_VERSION, safeParseView, type ViewState } from '../grid/viewState';
 import type { DataSource, SourceDescription } from '../data/source';
 import type { Position } from '../data/mock';
@@ -31,6 +31,8 @@ export interface ContractColumn {
   aggs: ColumnMeta['agg'][];
   /** The filter shape this column takes in `columnFilters`. */
   filter: 'set' | 'range';
+  /** The keys `columnFormats` may set for this column (ADR-74): none for a dimension. */
+  formats: readonly (keyof ColumnFormat)[];
 }
 
 /** What an agent may write: the shape, in words an agent reads before it patches. */
@@ -49,6 +51,7 @@ export const VIEW_CONTRACT: ViewContract = {
       id, label: m.label, kind: m.kind, unit: m.unit, dp: m.dp,
       groupable: !!m.groupable, agg: m.agg, weightBy: m.weightBy, aggs: allowedAggs(id),
       filter: m.kind === 'dimension' ? 'set' : 'range',
+      formats: allowedFormatKeys(id),
     };
   }),
   slices: {
@@ -63,6 +66,7 @@ export const VIEW_CONTRACT: ViewContract = {
     columnPinning: '{ start: string[], end: string[] } — logical start/end, not left/right',
     columnSizing: '{ [columnId]: px }',
     columnAggs: '{ [measureId]: one of that column’s aggs } — overrides the meta’s aggregation for subtotals, totals and the SQL the source runs',
+    columnFormats: '{ [measureId]: { dp?: 0–4, scale?: units|k|m|bn (dollar columns only), negatives?: minus|parens, negativeRed?, heatmap? } } — how the measure reads, never its unit (NUM-01)',
   },
   notes: [
     'Column ids must be ones the contract lists; unknown ids are refused with an issue naming them.',

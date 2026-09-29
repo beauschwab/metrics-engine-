@@ -17,22 +17,24 @@
 import { z } from 'zod';
 import type { ColumnFiltersState, TableState } from '@tanstack/table-core';
 import type { Features } from './features';
-import { COLUMN_META, COLUMN_ORDER, allowedAggs } from './columns';
-import { AGGS, type Agg } from './meta';
+import { COLUMN_META, COLUMN_ORDER, allowedAggs, allowedFormatKeys } from './columns';
+import { AGGS, DECIMALS, NEGATIVES, SCALES, type Agg, type ColumnFormat, type Negatives, type Scale } from './meta';
 import type { Position } from '../data/mock';
 
 /**
- * Version 2 added `columnAggs` (ADR-72). A version-1 document is migrated
- * on read — the same JSON, one empty slice more — so every saved view and
- * every link written before it still parses.
+ * Version 2 added `columnAggs` (ADR-72); version 3 added `columnFormats`
+ * (ADR-74). An older document is migrated on read — the same JSON, one
+ * empty slice more per step — so every saved view and every link written
+ * before it still parses.
  */
-export const VIEW_VERSION = 2 as const;
+export const VIEW_VERSION = 3 as const;
 
 export function migrateView(input: unknown): unknown {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) return input;
-  const v = input as Record<string, unknown>;
-  if (v.version === 1) return { ...v, version: 2, columnAggs: v.columnAggs ?? {} };
-  return input;
+  let v = input as Record<string, unknown>;
+  if (v.version === 1) v = { ...v, version: 2, columnAggs: v.columnAggs ?? {} };
+  if (v.version === 2) v = { ...v, version: 3, columnFormats: v.columnFormats ?? {} };
+  return v;
 }
 
 const KNOWN = new Set<string>(COLUMN_ORDER);
@@ -76,6 +78,30 @@ export const ViewStateSchema = z
           if (!KNOWN.has(k)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `unknown column: ${k}`, path: [k] });
           else if (!allowedAggs(k as keyof Position).includes(agg)) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${agg} is not an aggregation ${k} can take`, path: [k] });
+          }
+        }
+      })
+      .default({}),
+    // A measure's reading, within its unit (ADR-74, NUM-01): decimals,
+    // the scale dollars are read at, accounting negatives, the colourings.
+    columnFormats: z
+      .record(z.string(), z
+        .object({
+          dp: z.number().int().refine((n) => DECIMALS.includes(n), 'decimals must be 0 to 4').optional(),
+          scale: z.enum(SCALES as [Scale, ...Scale[]]).optional(),
+          negatives: z.enum(NEGATIVES as [Negatives, ...Negatives[]]).optional(),
+          negativeRed: z.boolean().optional(),
+          heatmap: z.boolean().optional(),
+        })
+        .strict())
+      .superRefine((rec, ctx) => {
+        for (const [k, format] of Object.entries(rec)) {
+          if (!KNOWN.has(k)) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `unknown column: ${k}`, path: [k] }); continue; }
+          const allowed = allowedFormatKeys(k as keyof Position);
+          for (const key of Object.keys(format) as (keyof ColumnFormat)[]) {
+            if (format[key] === undefined) continue;
+            if (allowed.length === 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${k} is a dimension and has no format`, path: [k, key] });
+            else if (!allowed.includes(key)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${key} is not a format ${k} can take`, path: [k, key] });
           }
         }
       })

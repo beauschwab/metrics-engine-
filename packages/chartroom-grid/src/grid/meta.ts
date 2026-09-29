@@ -21,6 +21,31 @@
 import { formatValue as catalogFormat } from 'chartroom-widgets/format';
 
 export type Unit = 'ccy' | 'mm' | 'bps' | 'pct' | 'years' | 'date';
+/** How a dollar amount is scaled for reading; the stored value stays dollars (NUM-01). */
+export type Scale = 'units' | 'k' | 'm' | 'bn';
+export const SCALES: readonly Scale[] = ['units', 'k', 'm', 'bn'];
+export const SCALE_LABELS: Record<Scale, string> = { units: 'Dollars', k: 'Thousands', m: 'Millions', bn: 'Billions' };
+/** How a negative reads: a leading minus, or accounting parentheses. */
+export type Negatives = 'minus' | 'parens';
+export const NEGATIVES: readonly Negatives[] = ['minus', 'parens'];
+export const NEGATIVE_LABELS: Record<Negatives, string> = { minus: '-1,234', parens: '(1,234)' };
+/** Decimal places a reader may choose. */
+export const DECIMALS: readonly number[] = [0, 1, 2, 3, 4];
+
+/**
+ * A reader's formatting of one measure (ADR-74): the readings a unit
+ * allows, never the unit itself. A percent stays a percent, dollars stay
+ * dollars; what changes is decimals, the scale dollars are read at, how a
+ * negative is written, and the two colourings.
+ */
+export interface ColumnFormat {
+  dp?: number;
+  scale?: Scale;
+  negatives?: Negatives;
+  negativeRed?: boolean;
+  heatmap?: boolean;
+}
+export const FORMAT_KEYS: readonly (keyof ColumnFormat)[] = ['dp', 'scale', 'negatives', 'negativeRed', 'heatmap'];
 export type Agg = 'sum' | 'wavg' | 'mean' | 'median' | 'min' | 'max' | 'count' | 'uniqueCount';
 export const AGGS: readonly Agg[] = ['sum', 'wavg', 'mean', 'median', 'min', 'max', 'count', 'uniqueCount'];
 export const AGG_LABELS: Record<Agg, string> = {
@@ -43,6 +68,10 @@ export interface ColumnMeta {
   unit?: Unit;
   /** Decimal places, where the unit does not fix them. */
   dp?: number;
+  /** Dollar units only: the scale the amount is read at (`mm` reads at `m` by default). */
+  scale?: Scale;
+  /** How a negative is written; a leading minus by default. */
+  negatives?: Negatives;
   /** Dimensions only: may this column be a grouping level? */
   groupable?: boolean;
   /** Measures only: how the column rolls up under grouping. */
@@ -75,15 +104,23 @@ export function formatValue(value: unknown, meta: ColumnMeta): string {
   if (typeof value === 'string') return value;
   if (typeof value !== 'number' || Number.isNaN(value)) return MISSING;
 
+  // Accounting negatives wrap the whole reading, sign removed, so "($1.2M)"
+  // and "(3.46%)" read the same way a ledger does.
+  if (meta.negatives === 'parens' && value < 0) return `(${formatValue(-value, { ...meta, negatives: 'minus' })})`;
+
   switch (meta.unit) {
     case 'ccy':
-      return meta.dp === undefined || meta.dp === 0
-        ? catalogFormat(value, 'currency_usd')
-        : `${value < 0 ? '-$' : '$'}${fixed(Math.abs(value), meta.dp)}`;
-    case 'mm':
-      return meta.dp === undefined || meta.dp === 1
-        ? catalogFormat(value, 'currency_usd_mm')
-        : `${value < 0 ? '-$' : '$'}${fixed(Math.abs(value) / 1e6, meta.dp)}M`;
+    case 'mm': {
+      const scale = meta.scale ?? (meta.unit === 'mm' ? 'm' : 'units');
+      const dp = meta.dp ?? (scale === 'units' ? 0 : 1);
+      // The catalog's own readings where the reading is the catalog's
+      // (ADR-29); the same shape, scaled, where the reader chose otherwise.
+      if (scale === 'units' && dp === 0) return catalogFormat(value, 'currency_usd');
+      if (scale === 'm' && dp === 1) return catalogFormat(value, 'currency_usd_mm');
+      const div = scale === 'k' ? 1e3 : scale === 'm' ? 1e6 : scale === 'bn' ? 1e9 : 1;
+      const suffix = scale === 'k' ? 'K' : scale === 'm' ? 'M' : scale === 'bn' ? 'B' : '';
+      return `${value < 0 ? '-$' : '$'}${fixed(Math.abs(value) / div, dp)}${suffix}`;
+    }
     case 'pct':
       return catalogFormat(value, `percent_${meta.dp ?? 2}dp`);
     case 'bps':
@@ -94,6 +131,9 @@ export function formatValue(value: unknown, meta: ColumnMeta): string {
       return fixed(value, meta.dp ?? 0);
   }
 }
+
+/** Whether a measure's unit is read at a scale — dollars are, a percent is not. */
+export const isScalable = (meta: ColumnMeta): boolean => meta.unit === 'ccy' || meta.unit === 'mm';
 
 /** Measures sit right-aligned in tabular figures; dimensions read left. */
 export const alignOf = (meta: ColumnMeta): 'left' | 'right' =>

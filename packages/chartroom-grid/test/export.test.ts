@@ -42,6 +42,13 @@ describe('Excel formats from meta', () => {
     expect(excelFormat(COLUMN_META.desk)).toBeUndefined();
     expect(excelFormat(COLUMN_META.asOf)).toBeUndefined();
   });
+
+  it('a reader\'s scale is more commas, decimals more zeros, accounting negatives parentheses (ADR-74)', () => {
+    expect(excelFormat({ ...COLUMN_META.notional, scale: 'bn', dp: 2 })).toBe('"$"#,##0.00,,,"B";-"$"#,##0.00,,,"B"');
+    expect(excelFormat({ ...COLUMN_META.notional, scale: 'units' })).toBe('"$"#,##0;-"$"#,##0');
+    expect(excelFormat({ ...COLUMN_META.dv01, scale: 'k', negatives: 'parens' })).toBe('"$"#,##0.0,"K";[Red]("$"#,##0.0,"K")');
+    expect(excelFormat({ ...COLUMN_META.yield, dp: 3, negatives: 'parens' })).toBe('0.000"%";(0.000"%")');
+  });
 });
 
 describe('the workbook', () => {

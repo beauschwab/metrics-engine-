@@ -43,8 +43,31 @@ describe('the view state contract', () => {
     expect(v1.version).toBe(VIEW_VERSION);
     expect(v1.columnAggs).toEqual({});
     expect(v1.grouping).toEqual(['desk']);
-    expect(() => parseView({ version: 3 })).toThrow();
+    expect(() => parseView({ version: 4 })).toThrow();
     expect(() => parseView({ version: 0 })).toThrow();
+  });
+
+  it('migrates a version-2 view to 3 with an empty columnFormats, and 1 all the way', () => {
+    expect(parseView({ version: 2, grouping: ['desk'] })).toMatchObject({ version: 3, grouping: ['desk'], columnAggs: {}, columnFormats: {} });
+    expect(parseView({ version: 1 })).toMatchObject({ version: 3, columnAggs: {}, columnFormats: {} });
+    expect(safeParseView({ version: 2, columnFormats: { notional: { scale: 'bn' } } })).toMatchObject({ ok: true, view: { columnFormats: { notional: { scale: 'bn' } } } });
+  });
+
+  it('accepts a format within a measure\'s unit and refuses a unit change, a dimension, or a scale on a percent (ADR-74)', () => {
+    const ok = parseView({ version: 3, columnFormats: { notional: { dp: 2, scale: 'bn', negatives: 'parens' }, yield: { dp: 3, heatmap: true }, dv01: { negativeRed: false } } });
+    expect(ok.columnFormats.notional).toEqual({ dp: 2, scale: 'bn', negatives: 'parens' });
+    for (const [bad, why] of [
+      [{ desk: { dp: 2 } }, /dimension/],
+      [{ yield: { scale: 'm' } }, /scale is not a format yield can take/],
+      [{ yield: { unit: 'bps' } }, /unrecognized/i],
+      [{ notional: { dp: 7 } }, /decimals/],
+      [{ notional: { scale: 'trillions' } }, /invalid/i],
+      [{ pnl: { dp: 1 } }, /unknown column: pnl/],
+    ] as const) {
+      const r = safeParseView({ version: 3, columnFormats: bad });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.issues.join('\n')).toMatch(why);
+    }
   });
 
   it('accepts an aggregation a measure can take and refuses one it cannot', () => {

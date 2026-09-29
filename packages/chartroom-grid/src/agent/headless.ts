@@ -22,7 +22,7 @@ export type HeadlessTable = Table<HeadlessFeatures, Position>;
 export function headlessTable(rows: Position[], view: ViewState): HeadlessTable {
   return constructTable<HeadlessFeatures, Position>({
     features: headlessFeatures,
-    columns: buildColumns(view.columnAggs) as unknown as ColumnDef<HeadlessFeatures, Position, unknown>[],
+    columns: buildColumns(view.columnAggs, view.columnFormats) as unknown as ColumnDef<HeadlessFeatures, Position, unknown>[],
     data: rows,
     getRowId: (r) => r.tradeId,
     globalFilterFn: 'search',

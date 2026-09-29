@@ -30,7 +30,7 @@ import { SELECT_ID } from '../grid/columns';
 import { rangesToTsv, selectedCellRanges } from '../grid/copy';
 import { copyText } from './clipboard';
 import { heatBackground, heatIntensity } from '../grid/heat';
-import { alignOf, type Agg } from '../grid/meta';
+import { alignOf, type Agg, type ColumnFormat } from '../grid/meta';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { cn } from '../lib/utils';
 import { ValueCell } from './CellRenderers';
@@ -66,6 +66,8 @@ export interface GridTableProps {
   onExpandGroup: (row: GridRow) => void;
   /** A measure's aggregation chosen for the view (ADR-72). */
   onAggChange?: (columnId: string, agg: Agg | null) => void;
+  /** How a measure reads for the view (ADR-74). */
+  onFormatChange?: (columnId: string, patch: ColumnFormat | null) => void;
 }
 
 type GridColumn = Column<Features, Position, unknown>;
@@ -83,7 +85,9 @@ function pinnedStyle(column: GridColumn): CSSProperties {
   };
 }
 
-export function GridTable({ table, pending = false, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup, onAggChange }: GridTableProps) {
+export function GridTable({
+  table, pending = false, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup, onAggChange, onFormatChange,
+}: GridTableProps) {
   const rowHeight = ROW_HEIGHTS[density];
   const model = table.getRowModel().rows;
   const items = useMemo<DisplayItem[]>(() => {
@@ -165,7 +169,7 @@ export function GridTable({ table, pending = false, density, detailOpen, onToggl
         {table.getHeaderGroups().map((group) => (
           <TableRow key={group.id} className="flex w-full bg-card hover:bg-card">
             {group.headers.map((header) => (
-              <HeaderCell key={header.id} header={header} table={table} sortCount={sortCount} onAggChange={onAggChange} />
+              <HeaderCell key={header.id} header={header} table={table} sortCount={sortCount} onAggChange={onAggChange} onFormatChange={onFormatChange} />
             ))}
           </TableRow>
         ))}
@@ -260,8 +264,14 @@ export function GridTable({ table, pending = false, density, detailOpen, onToggl
 }
 
 function HeaderCell({
-  header, table, sortCount, onAggChange,
-}: { header: Header<Features, Position, unknown>; table: TreasuryTable; sortCount: number; onAggChange?: (columnId: string, agg: Agg | null) => void }) {
+  header, table, sortCount, onAggChange, onFormatChange,
+}: {
+  header: Header<Features, Position, unknown>;
+  table: TreasuryTable;
+  sortCount: number;
+  onAggChange?: (columnId: string, agg: Agg | null) => void;
+  onFormatChange?: (columnId: string, patch: ColumnFormat | null) => void;
+}) {
   const column = header.column;
   const meta = column.columnDef.meta;
   const isSelect = column.id === SELECT_ID;
@@ -341,6 +351,7 @@ function HeaderCell({
             <HeaderMenu
               column={column}
               onAggChange={onAggChange}
+              onFormatChange={onFormatChange}
               className="size-4 opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
             />
           </span>

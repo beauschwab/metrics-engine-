@@ -85,10 +85,11 @@ export function useTreasuryTable({ data, view, onViewChange, applied }: Treasury
 
   const base = toTableState(view);
   // The selection column first, then every data column with the view's
-  // aggregations (ADR-72) — one array per distinct choice, not per render.
-  const aggsKey = JSON.stringify(view.columnAggs);
+  // aggregations (ADR-72) and formats (ADR-74) — one array per distinct
+  // choice, not per render.
+  const columnsKey = JSON.stringify([view.columnAggs, view.columnFormats]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the serialized choice
-  const allColumns = useMemo(() => [selectColumn, ...buildColumns(view.columnAggs)], [aggsKey]);
+  const allColumns = useMemo(() => [selectColumn, ...buildColumns(view.columnAggs, view.columnFormats)], [columnsKey]);
   return useTable({
     features,
     columns: allColumns,

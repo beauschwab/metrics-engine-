@@ -65,8 +65,14 @@ export { sqlSource, isGroupNode, groupNodeId, type SqlExecutor, type GroupNode, 
 export { duckdbSource, createDuckDbExecutor, DUCKDB_TABLE, type DuckDbExecutor } from './data/duckdbSource';
 export { dremioSource, createDremioExecutor, type DremioOptions } from './data/dremioSource';
 export { features, type Features } from './grid/features';
-export { columns, buildColumns, effectiveAgg, allowedAggs, selectColumn, SELECT_ID, COLUMN_META, COLUMN_ORDER, type ColumnAggs } from './grid/columns';
-export { formatValue, alignOf, MISSING, AGGS, AGG_LABELS, type ColumnMeta, type Unit, type Agg } from './grid/meta';
+export {
+  columns, buildColumns, effectiveAgg, allowedAggs, effectiveMeta, allowedFormatKeys, selectColumn, SELECT_ID, COLUMN_META, COLUMN_ORDER,
+  type ColumnAggs, type ColumnFormats,
+} from './grid/columns';
+export {
+  formatValue, alignOf, isScalable, MISSING, AGGS, AGG_LABELS, SCALES, SCALE_LABELS, NEGATIVES, NEGATIVE_LABELS, DECIMALS, FORMAT_KEYS,
+  type ColumnMeta, type ColumnFormat, type Unit, type Agg, type Scale, type Negatives,
+} from './grid/meta';
 export {
   generatePositions, seeded, type Position,
   DESKS, ENTITIES, CURRENCIES, PRODUCTS, TENORS,

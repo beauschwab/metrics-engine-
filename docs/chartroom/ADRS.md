@@ -2050,6 +2050,53 @@ queries through SQLite against the same predicate. The studio's
 the bar, sees an unknown term keep nothing, and works None, Invert,
 Exclude and Only on the product set.
 
+## ADR-74 — a reader formats the reading, never the unit
+
+**Pinned:** the owner's request after Phase 5 to "expose better column
+formatting options", taken under NUM-01 ("never let format overrides
+touch units") because the owner did not say otherwise when asked.
+
+**Decision.** The view gains a `columnFormats` slice (view version 3; a
+version-2 view migrates, a version-1 view migrates twice): per measure,
+the decimals, the scale a dollar amount is read at (`units`, `k`, `m`,
+`bn`), how a negative is written (`minus` or accounting `parens`), and the
+two colourings the meta already knew (`negativeRed`, `heatmap`). The
+column carries the result: `buildColumns` lays the view's format over the
+declared meta (`effectiveMeta`), so a cell, a subtotal, the grand total,
+the status bar, a copied block and the xlsx column all read the same
+object and none asks who chose what.
+
+*What a column can take is the column's to say.* `allowedFormatKeys`
+lists a measure's keys, and `scale` only for a dollar unit; a dimension
+has none. A percent reads to more or fewer decimals but never in basis
+points, dollars never become a percent, and a view that says otherwise
+does not parse — the same refusal as an aggregation a column cannot bear
+(ADR-72). The header menu offers exactly these keys, marks the current
+reading, says "Format · custom" while a choice is in force, and "Restore
+default" drops the entry rather than writing the default back.
+
+*The catalog's reading stays the catalog's.* Where the chosen reading is
+one the widget catalog already renders (`currency_usd`, `currency_usd_mm`,
+`percent_Ndp`), `formatValue` still delegates to it (ADR-29); a reader's
+scale or decimals produce the same shape, scaled. Accounting negatives
+wrap the whole reading with the sign removed, so `($1.2M)` and `(3.46%)`
+read the way a ledger does.
+
+*Excel scales in the format, not the cell.* The export keeps the raw
+number and expresses the scale as commas in the number format — one per
+thousand — so a SUM in the sheet still adds dollars whatever the column
+reads in; parentheses and `[Red]` are the format's too.
+
+**What now fails if this regresses.** `format.test.ts` reads dollars at
+each scale and decimals, negatives in parentheses in every unit, a percent
+that stays a percent, and a grouped headless table whose cell, subtotal,
+grand total and copy all carry the chosen format; `viewState.test.ts`
+migrates versions 1 and 2 and refuses a unit change, a dimension, a scale
+on a percent and seven decimals; `export.test.ts` reads the scaled and
+parenthesised Excel formats. The studio's `grid.spec.ts` reads Notional in
+billions to two decimals from the header menu, sees the footer and the
+link follow, puts a negative MTM in parentheses and restores it.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

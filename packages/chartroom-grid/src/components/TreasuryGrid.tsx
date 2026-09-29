@@ -23,7 +23,7 @@ import type { DataSource, SourceDescription } from '../data/source';
 import { isGroupNode } from '../data/sqlSource';
 import { useTreasuryTable, type Applied, type GridRowData, type ViewUpdate } from '../grid/useTreasuryTable';
 import type { GridRow } from './GroupCell';
-import type { Agg } from '../grid/meta';
+import type { Agg, ColumnFormat } from '../grid/meta';
 import { defaultView, type ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
 import { ColumnsSidebar, SIDE_PREFIX, orderedLeafColumns } from './ColumnsSidebar';
@@ -146,6 +146,22 @@ export function TreasuryGrid({
     });
   }, [change]);
 
+  // A measure's reading for this view (ADR-74): a patch merges into the
+  // column's entry; null drops it; an entry with nothing left is dropped
+  // too, so a view carries only what the reader changed.
+  const onFormatChange = useCallback((columnId: string, patch: ColumnFormat | null) => {
+    change((prev) => {
+      const next = { ...prev.columnFormats } as Record<string, ColumnFormat>;
+      if (patch === null) delete next[columnId];
+      else {
+        const merged = { ...next[columnId], ...patch };
+        if (Object.values(merged).every((v) => v === undefined)) delete next[columnId];
+        else next[columnId] = merged;
+      }
+      return { ...prev, columnFormats: next };
+    });
+  }, [change]);
+
   // Lazy expansion: a node's children are asked for by its path, once.
   const onExpandGroup = useCallback((row: GridRow) => {
     const node = row.original;
@@ -257,6 +273,7 @@ export function TreasuryGrid({
                   onToggleDetail={toggleDetail}
                   onContextTarget={setContextTarget}
                   onExpandGroup={onExpandGroup}
+                  onFormatChange={onFormatChange}
                   onAggChange={onAggChange}
                 />
               )}

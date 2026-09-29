@@ -9,7 +9,7 @@
 
 import { createColumnHelper } from '@tanstack/table-core';
 import type { Features } from './features';
-import { AGGS, type Agg, type ColumnMeta } from './meta';
+import { AGGS, FORMAT_KEYS, isScalable, type Agg, type ColumnFormat, type ColumnMeta } from './meta';
 import type { Position } from '../data/mock';
 
 const helper = createColumnHelper<Features, Position>();
@@ -74,11 +74,36 @@ export function allowedAggs(id: keyof Position): Agg[] {
   return AGGS.filter((a) => a !== 'wavg' || !!meta.weightBy);
 }
 
-/** The column definitions for a view: the same columns, the view's aggregations. */
-export function buildColumns(aggs: ColumnAggs = {}) {
+export type ColumnFormats = Partial<Record<keyof Position, ColumnFormat>>;
+
+/** The format keys a column can take: a measure's readings, a dollar column's scale (ADR-74). */
+export function allowedFormatKeys(id: keyof Position): readonly (keyof ColumnFormat)[] {
+  const meta = COLUMN_META[id];
+  if (meta.kind !== 'measure') return [];
+  return FORMAT_KEYS.filter((k) => k !== 'scale' || isScalable(meta));
+}
+
+/**
+ * The meta a column carries for a view: the declared meta with the view's
+ * format on top, so every reader — cell, footer, copy, export — formats
+ * through the same object and never asks who chose what.
+ */
+export function effectiveMeta(id: keyof Position, formats?: ColumnFormats): ColumnMeta {
+  const meta = COLUMN_META[id];
+  const format = formats?.[id];
+  if (!format) return meta;
+  const keys = allowedFormatKeys(id).filter((k) => format[k] !== undefined);
+  if (keys.length === 0) return meta;
+  const out: ColumnMeta = { ...meta };
+  for (const k of keys) (out as unknown as Record<string, unknown>)[k] = format[k];
+  return out;
+}
+
+/** The column definitions for a view: the same columns, the view's aggregations and formats. */
+export function buildColumns(aggs: ColumnAggs = {}, formats: ColumnFormats = {}) {
   return helper.columns(
     COLUMN_ORDER.map((id) => {
-      const meta = COLUMN_META[id];
+      const meta = effectiveMeta(id, formats);
       return helper.accessor(id, {
         header: meta.label,
         meta,

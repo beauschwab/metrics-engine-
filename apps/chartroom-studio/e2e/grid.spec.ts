@@ -480,6 +480,56 @@ test.describe('the treasury grid harness', () => {
     expect(decoded.columnFilters).toEqual([{ id: 'product', value: ['IRS'] }]);
   });
 
+  test('formats a measure from the header menu — scale, decimals, accounting negatives — and the link carries it', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    const first = grid.locator('tbody tr').first();
+    await expect(first).toBeVisible();
+    await expect(first.locator('td[data-column="notional"]')).toHaveText(/^\$[\d,]+\.\dM$/);
+    const openFormat = async (label: string) => {
+      await grid.locator(`th[data-column="${label === 'Notional' ? 'notional' : 'mtm'}"]`).hover();
+      await page.getByRole('button', { name: `${label} column menu` }).click();
+      await page.locator('[data-slot="format-menu"]').hover();
+      return page.locator(`[data-slot="format-choices"][data-column="${label === 'Notional' ? 'notional' : 'mtm'}"]`);
+    };
+
+    // Notional read in billions, then to two decimals: cells and the grand total follow.
+    let choices = await openFormat('Notional');
+    await expect(choices.getByRole('menuitemradio', { name: 'Millions' })).toHaveAttribute('aria-checked', 'true');
+    await choices.getByRole('menuitemradio', { name: 'Billions' }).click();
+    await expect(first.locator('td[data-column="notional"]')).toHaveText(/^\$\d+\.\dB$/);
+    await expect(grid.locator('tfoot td[data-column="notional"]')).toHaveText(/^\$[\d,]+\.\dB$/);
+    choices = await openFormat('Notional');
+    await expect(page.locator('[data-slot="format-menu"]')).toHaveText(/Format · custom/);
+    await choices.getByRole('menuitemradio', { name: '2 decimals' }).click();
+    await expect(first.locator('td[data-column="notional"]')).toHaveText(/^\$\d+\.\d{2}B$/);
+    const hash = await page.evaluate(() => location.hash);
+    const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(decoded.columnFormats).toEqual({ notional: { scale: 'bn', dp: 2 } });
+
+    // A negative MTM in accounting parentheses; restoring the default brings the minus back.
+    await page.getByLabel('Quick filter').fill('mtm<0');
+    await expect(first.locator('td[data-column="mtm"]')).toHaveText(/^-\$[\d.]+M$/);
+    choices = await openFormat('MTM');
+    await choices.getByRole('menuitemradio', { name: '(1,234)' }).click();
+    await expect(first.locator('td[data-column="mtm"]')).toHaveText(/^\(\$[\d.]+M\)$/);
+    choices = await openFormat('MTM');
+    await choices.getByRole('menuitem', { name: 'Restore default' }).click();
+    await expect(first.locator('td[data-column="mtm"]')).toHaveText(/^-\$[\d.]+M$/);
+
+    // A dimension has no format, and a percent offers no scale.
+    await grid.locator('th[data-column="desk"]').hover();
+    await page.getByRole('button', { name: 'Desk column menu' }).click();
+    await expect(page.locator('[data-slot="format-menu"]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await grid.locator('th[data-column="yield"]').hover();
+    await page.getByRole('button', { name: 'Yield column menu' }).click();
+    await page.locator('[data-slot="format-menu"]').hover();
+    const pct = page.locator('[data-slot="format-choices"][data-column="yield"]');
+    await expect(pct.getByRole('menuitemradio', { name: '2 decimals' })).toHaveAttribute('aria-checked', 'true');
+    await expect(pct.getByRole('menuitemradio', { name: 'Billions' })).toHaveCount(0);
+  });
+
   test('serves the same book from DuckDB-WASM: filter, sort and grouping compiled to SQL, children fetched on expand', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/#/grid?s=duckdb');
