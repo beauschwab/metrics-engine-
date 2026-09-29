@@ -30,7 +30,7 @@ import { SELECT_ID } from '../grid/columns';
 import { rangesToTsv, selectedCellRanges } from '../grid/copy';
 import { copyText } from './clipboard';
 import { heatBackground, heatIntensity } from '../grid/heat';
-import { alignOf, type Agg, type ColumnFormat } from '../grid/meta';
+import { aggregateMeta, alignOf, type Agg, type ColumnFormat } from '../grid/meta';
 import { hasBands, headerBands } from '../grid/bands';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { cn } from '../lib/utils';
@@ -69,6 +69,10 @@ export interface GridTableProps {
   onAggChange?: (columnId: string, agg: Agg | null) => void;
   /** How a measure reads for the view (ADR-74). */
   onFormatChange?: (columnId: string, patch: ColumnFormat | null) => void;
+  /** Drop a calculated column from the view (ADR-79). */
+  onRemoveComputed?: (columnId: string) => void;
+  /** Pivot by a dimension, or stop (ADR-80). */
+  onPivot?: (columnId: string | null) => void;
 }
 
 type GridColumn = Column<Features, Position, unknown>;
@@ -125,7 +129,7 @@ function pinnedStyle(column: GridColumn): CSSProperties {
 }
 
 export function GridTable({
-  table, pending = false, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup, onAggChange, onFormatChange,
+  table, pending = false, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup, onAggChange, onFormatChange, onRemoveComputed, onPivot,
 }: GridTableProps) {
   const rowHeight = ROW_HEIGHTS[density];
   // The rows the body scrolls are the centre rows: a pinned row leaves the
@@ -213,7 +217,7 @@ export function GridTable({
         {table.getHeaderGroups().map((group) => (
           <TableRow key={group.id} className="flex w-full bg-card hover:bg-card">
             {group.headers.map((header) => (
-              <HeaderCell key={header.id} header={header} table={table} sortCount={sortCount} onAggChange={onAggChange} onFormatChange={onFormatChange} />
+              <HeaderCell key={header.id} header={header} table={table} sortCount={sortCount} onAggChange={onAggChange} onFormatChange={onFormatChange} onRemoveComputed={onRemoveComputed} onPivot={onPivot} />
             ))}
           </TableRow>
         ))}
@@ -286,7 +290,7 @@ export function GridTable({
                     Total · <span className="tabular-nums text-foreground">{filtered.toLocaleString('en-US')}</span> rows
                   </span>
                 ) : total !== undefined && meta ? (
-                  <ValueCell value={total} meta={meta} />
+                  <ValueCell value={total} meta={aggregateMeta(meta, column.columnDef.aggregationFn)} />
                 ) : null}
               </TableCell>
             );
@@ -349,13 +353,15 @@ function BodyRow({
 }
 
 function HeaderCell({
-  header, table, sortCount, onAggChange, onFormatChange,
+  header, table, sortCount, onAggChange, onFormatChange, onRemoveComputed, onPivot,
 }: {
   header: Header<Features, Position, unknown>;
   table: TreasuryTable;
   sortCount: number;
   onAggChange?: (columnId: string, agg: Agg | null) => void;
   onFormatChange?: (columnId: string, patch: ColumnFormat | null) => void;
+  onRemoveComputed?: (columnId: string) => void;
+  onPivot?: (columnId: string | null) => void;
 }) {
   const column = header.column;
   const meta = column.columnDef.meta;
@@ -372,6 +378,7 @@ function HeaderCell({
       data-grouped={column.getIsGrouped() || undefined}
       data-pinned={pinned || undefined}
       data-sorted={sorted || undefined}
+      data-computed={meta?.computed || undefined}
       aria-sort={sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : undefined}
       style={{ width: header.getSize(), ...pinnedStyle(column) }}
       className={cn(
@@ -407,6 +414,11 @@ function HeaderCell({
           >
             <table.FlexRender header={header} />
           </span>
+          {meta?.computed && (
+            <span data-slot="calc-badge" title="A calculated column: a draft the view defines, not a governed metric" className="shrink-0 rounded-sm border border-border px-1 text-[8px] leading-3 text-faint">
+              calc
+            </span>
+          )}
           {sorted && (
             <span data-slot="sort-indicator" className="inline-flex shrink-0 items-center text-primary">
               {sorted === 'asc' ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
@@ -440,6 +452,8 @@ function HeaderCell({
               column={column}
               onAggChange={onAggChange}
               onFormatChange={onFormatChange}
+              onRemoveComputed={onRemoveComputed}
+              onPivot={onPivot}
               className="size-4 opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
             />
           </span>
@@ -558,17 +572,20 @@ function BodyCell({
     const v = cell.getValue();
     if (meta?.kind === 'measure' && column.columnDef.aggregationFn && typeof v === 'number' && Number.isFinite(v)) {
       kind = 'aggregated';
-      content = <ValueCell value={v} meta={meta} />;
+      content = <ValueCell value={v} meta={aggregateMeta(meta, column.columnDef.aggregationFn)} />;
     } else {
       kind = 'placeholder';
     }
   } else if (cell.getIsAggregated()) {
     kind = 'aggregated';
     const n = aggregatedNumber(cell.getValue());
-    content = meta && n !== undefined ? <ValueCell value={n} meta={meta} /> : null;
+    content = meta && n !== undefined ? <ValueCell value={n} meta={aggregateMeta(meta, column.columnDef.aggregationFn)} /> : null;
   } else if (cell.getIsPlaceholder() || grouped) {
     // A grouped column on a leaf row, or a dimension on a group row: nothing
     // to say here, and saying a leaf value would be a wrong number (ADR-44).
+    kind = 'placeholder';
+  } else if (meta?.pivot && cell.getValue() === undefined) {
+    // A leaf row outside the bucket has nothing to say in it (ADR-80).
     kind = 'placeholder';
   } else {
     const value = cell.getValue();

@@ -11,6 +11,7 @@
 import { constructTable, tableFeatures, type ColumnDef, type Table } from '@tanstack/table-core';
 import { storeReactivityBindings } from '@tanstack/table-core/store-reactivity-bindings';
 import { buildColumns } from '../grid/columns';
+import { distinctValues } from '../grid/pivot';
 import { features } from '../grid/features';
 import { toTableState, type ViewState } from '../grid/viewState';
 import type { Position } from '../data/mock';
@@ -23,7 +24,7 @@ export type HeadlessTable = Table<HeadlessFeatures, Position>;
 export function headlessTable(rows: Position[], view: ViewState): HeadlessTable {
   return constructTable<HeadlessFeatures, Position>({
     features: headlessFeatures,
-    columns: buildColumns(view.columnAggs, view.columnFormats) as unknown as ColumnDef<HeadlessFeatures, Position, unknown>[],
+    columns: buildColumns(view.columnAggs, view.columnFormats, view.computedColumns, view.pivot.column ? { ...view.pivot, distinct: distinctValues(rows, view.pivot.column) } : undefined) as unknown as ColumnDef<HeadlessFeatures, Position, unknown>[],
     data: rows,
     getRowId: (r) => r.tradeId,
     globalFilterFn: 'search',

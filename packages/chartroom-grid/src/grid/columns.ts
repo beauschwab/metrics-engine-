@@ -10,6 +10,8 @@
 import { createColumnHelper } from '@tanstack/table-core';
 import type { Features } from './features';
 import { AGGS, FORMAT_KEYS, isScalable, type Agg, type ColumnFormat, type ColumnMeta } from './meta';
+import { computedAggregation, computedMeta, computedValue, isComputedId, type ComputedColumn } from './computed';
+import { pivotAggregation, pivotId, pivotMeta, pivotValue, type PivotState } from './pivot';
 import type { Position } from '../data/mock';
 
 const helper = createColumnHelper<Features, Position>();
@@ -62,25 +64,42 @@ export type ColumnAggs = Partial<Record<keyof Position, Agg>>;
 
 /** The aggregation a measure takes: the view's choice, else the meta's. */
 export function effectiveAgg(id: keyof Position, aggs?: ColumnAggs): Agg | undefined {
-  const meta = COLUMN_META[id];
-  if (meta.kind !== 'measure') return undefined;
+  const meta = COLUMN_META[id] as ColumnMeta | undefined;
+  if (!meta || meta.kind !== 'measure') return undefined;
   return aggs?.[id] ?? meta.agg;
 }
 
 /** The aggregations a measure may take: `wavg` only where the meta names a weight. */
 export function allowedAggs(id: keyof Position): Agg[] {
-  const meta = COLUMN_META[id];
-  if (meta.kind !== 'measure') return [];
+  const meta = COLUMN_META[id] as ColumnMeta | undefined;
+  if (!meta || meta.kind !== 'measure') return [];
   return AGGS.filter((a) => a !== 'wavg' || !!meta.weightBy);
 }
 
-export type ColumnFormats = Partial<Record<keyof Position, ColumnFormat>>;
+export type ColumnFormats = Partial<Record<string, ColumnFormat>>;
 
-/** The format keys a column can take: a measure's readings, a dollar column's scale (ADR-74). */
-export function allowedFormatKeys(id: keyof Position): readonly (keyof ColumnFormat)[] {
-  const meta = COLUMN_META[id];
-  if (meta.kind !== 'measure') return [];
+/** The registry's column ids, for the checks that must refuse anything else. */
+export const REGISTRY_IDS: ReadonlySet<string> = new Set<string>(COLUMN_ORDER);
+
+/**
+ * The declared meta of any column the view can name: a registry column's,
+ * or a calculated column's derived from its operands (ADR-79).
+ */
+export function metaFor(id: string, computed: readonly ComputedColumn[] = []): ColumnMeta | undefined {
+  if (!isComputedId(id)) return (COLUMN_META as Record<string, ColumnMeta>)[id];
+  const spec = computed.find((c) => c.id === id);
+  return spec ? computedMeta(spec, (op) => (COLUMN_META as Record<string, ColumnMeta>)[op]) : undefined;
+}
+
+/** The format keys a meta can take: a measure's readings, a dollar column's scale (ADR-74). */
+export function allowedFormatKeysFor(meta: ColumnMeta | undefined): readonly (keyof ColumnFormat)[] {
+  if (!meta || meta.kind !== 'measure') return [];
   return FORMAT_KEYS.filter((k) => k !== 'scale' || isScalable(meta));
+}
+
+/** The format keys a column can take, by id; a calculated column's need its definition. */
+export function allowedFormatKeys(id: string, computed: readonly ComputedColumn[] = []): readonly (keyof ColumnFormat)[] {
+  return allowedFormatKeysFor(metaFor(id, computed));
 }
 
 /**
@@ -88,22 +107,81 @@ export function allowedFormatKeys(id: keyof Position): readonly (keyof ColumnFor
  * format on top, so every reader — cell, footer, copy, export — formats
  * through the same object and never asks who chose what.
  */
-export function effectiveMeta(id: keyof Position, formats?: ColumnFormats): ColumnMeta {
-  const meta = COLUMN_META[id];
+export function effectiveMeta(id: string, formats?: ColumnFormats, computed: readonly ComputedColumn[] = []): ColumnMeta {
+  const meta = metaFor(id, computed);
+  if (!meta) throw new RangeError(`unknown column: ${id}`);
   const format = formats?.[id];
   if (!format) return meta;
-  const keys = allowedFormatKeys(id).filter((k) => format[k] !== undefined);
+  const keys = allowedFormatKeysFor(meta).filter((k) => format[k] !== undefined);
   if (keys.length === 0) return meta;
   const out: ColumnMeta = { ...meta };
   for (const k of keys) (out as unknown as Record<string, unknown>)[k] = format[k];
   return out;
 }
 
-/** The column definitions for a view: the same columns, the view's aggregations and formats. */
-export function buildColumns(aggs: ColumnAggs = {}, formats: ColumnFormats = {}) {
-  return helper.columns(
-    COLUMN_ORDER.map((id) => {
-      const meta = effectiveMeta(id, formats);
+/**
+ * The column definitions for a view: the same columns, the view's
+ * aggregations and formats, and the view's calculated columns after them
+ * (ADR-79) — each a real column with its own accessor, meta and roll-up.
+ */
+/** The pivot a table is built with: the view's slice plus the values the data holds (ADR-80). */
+export interface PivotBuild extends PivotState {
+  distinct: readonly string[];
+}
+
+/** The measures a pivot spreads: the named ones, else every measure. */
+export function pivotMeasures(pivot: PivotState | undefined): Array<keyof Position> {
+  if (!pivot?.column) return [];
+  const measures = COLUMN_ORDER.filter((id) => COLUMN_META[id].kind === 'measure');
+  return pivot.values.length ? measures.filter((id) => pivot.values.includes(id)) : measures;
+}
+
+export function buildColumns(aggs: ColumnAggs = {}, formats: ColumnFormats = {}, computed: readonly ComputedColumn[] = [], pivot?: PivotBuild) {
+  const pivoted = pivot?.column ? pivotMeasures(pivot) : [];
+  const pivotColumns = pivot?.column
+    ? pivot.distinct.flatMap((value) =>
+      pivoted.flatMap((m) => {
+        const meta = effectiveMeta(m, formats);
+        const agg = effectiveAgg(m, aggs);
+        if (!agg) return [];
+        return [
+          helper.accessor((row) => pivotValue(row, pivot.column!, m, value), {
+            id: pivotId(m, value),
+            header: meta.label,
+            meta: pivotMeta(meta, value),
+            size: meta.width,
+            enableGrouping: false,
+            enableColumnFilter: false,
+            aggregationFn: pivotAggregation(agg, m, meta.weightBy, pivot.column!, value),
+            sortFn: 'basic',
+            // Rows outside the bucket have no value: they sort last either way.
+            sortUndefined: 'last',
+          }),
+        ];
+      }))
+    : [];
+  const derived = computed.flatMap((spec) => {
+    const meta = metaFor(spec.id, computed);
+    if (!meta) return [];
+    return [
+      helper.accessor((row) => computedValue(spec, row as unknown as Record<string, unknown>), {
+        id: spec.id,
+        header: spec.label,
+        meta: effectiveMeta(spec.id, formats, computed),
+        size: meta.width,
+        enableGrouping: false,
+        aggregationFn: computedAggregation(spec),
+        filterFn: 'inNumberRange',
+        sortFn: 'basic',
+        sortUndefined: 'last',
+      }),
+    ];
+  });
+  // Pivoted measures follow the buckets under a Total band; the rest keep their place.
+  const base = pivot?.column ? COLUMN_ORDER.filter((id) => !pivoted.includes(id)) : COLUMN_ORDER;
+  const totals = pivot?.column ? pivoted : [];
+  const registry = (id: keyof Position, band?: string) => {
+      const meta = band ? { ...effectiveMeta(id, formats), band } : effectiveMeta(id, formats);
       return helper.accessor(id, {
         header: meta.label,
         meta,
@@ -122,8 +200,13 @@ export function buildColumns(aggs: ColumnAggs = {}, formats: ColumnFormats = {})
         // object (ADR-67), which `basic` compares by value.
         sortFn: meta.kind === 'measure' ? 'basic' : 'alphanumeric',
       });
-    }),
-  );
+  };
+  return helper.columns([
+    ...base.map((id) => registry(id)),
+    ...pivotColumns,
+    ...totals.map((id) => registry(id, 'Total')),
+    ...derived,
+  ]);
 }
 
 /** The columns with the meta's own aggregations. */

@@ -15,6 +15,9 @@
  */
 
 import { COLUMN_META, COLUMN_ORDER, effectiveAgg } from '../grid/columns';
+import { isComputedId, type ComputedColumn } from '../grid/computed';
+import { isPivotId, parsePivotId, pivotId } from '../grid/pivot';
+import { pivotMeasures } from '../grid/columns';
 import { parseSearch } from '../grid/search';
 import type { ColumnMeta } from '../grid/meta';
 import type { ViewState } from '../grid/viewState';
@@ -79,6 +82,8 @@ export interface CompileOptions {
   offset?: number;
   /** For a leaf query: count the matching rows instead of selecting them. */
   count?: boolean;
+  /** The pivot dimension's distinct values (ADR-80), for a grouping level's bucketed aggregates. */
+  pivotValues?: readonly string[];
 }
 
 const META = COLUMN_META as Record<string, ColumnMeta>;
@@ -86,6 +91,87 @@ const META = COLUMN_META as Record<string, ColumnMeta>;
 function columnId(id: string): keyof Position {
   if (!(id in META)) throw new RangeError(`compileSql: unknown column ${JSON.stringify(id)}`);
   return id as keyof Position;
+}
+
+/** A calculated column's definition in the view, or a refusal. */
+function computedSpec(id: string, view: ViewState): ComputedColumn {
+  const spec = view.computedColumns.find((c) => c.id === id);
+  if (!spec) throw new RangeError(`compileSql: unknown calculated column ${JSON.stringify(id)}`);
+  return spec;
+}
+
+/** The operation composed over two SQL expressions — the same arithmetic the client does (ADR-79). */
+function compose(spec: ComputedColumn, a: string, b: string | undefined, params: Params): string {
+  switch (spec.op) {
+    case 'ratio': return `((${a}) / NULLIF(${b}, 0)) * 100`;
+    case 'delta': return `((${a}) - (${b}))`;
+    case 'sum': return `((${a}) + (${b}))`;
+    case 'pct_change': return `(((${a}) - (${b})) / NULLIF(ABS(${b}), 0)) * 100`;
+    case 'scaled': return `((${a}) * ${params.add(spec.k ?? Number.NaN)})`;
+    default: throw new RangeError(`compileSql: unknown operation ${String(spec.op)}`);
+  }
+}
+
+/** A column's leaf-row expression: the quoted column, or a calculated column's arithmetic. */
+function leafExpr(id: string, dialect: SqlDialect, view: ViewState, params: Params): string {
+  if (!isComputedId(id)) return dialect.quote(columnId(id));
+  const spec = computedSpec(id, view);
+  const a = leafExpr(spec.of[0]!, dialect, view, params);
+  const b = spec.of[1] !== undefined ? leafExpr(spec.of[1], dialect, view, params) : undefined;
+  return compose(spec, a, b, params);
+}
+
+/**
+ * A measure's aggregate expressions within one pivot bucket (ADR-80): the
+ * same rule over `CASE WHEN dim = value THEN measure END`, so a bucket sums,
+ * averages or weights only its own rows; the wavg parts ride along.
+ */
+function pivotAggregate(id: string, dialect: SqlDialect, view: ViewState, params: Params): Aggregated[] {
+  const p = parsePivotId(id);
+  if (!p || !view.pivot.column) throw new RangeError(`compileSql: not a pivot column ${JSON.stringify(id)}`);
+  const measure = columnId(p.measure);
+  const dim = dialect.quote(columnId(view.pivot.column));
+  // One parameter per occurrence in the text: a placeholder binds once, so
+  // each bucket expression is built where it is written, never reused.
+  const bucket = (expr: string) => `CASE WHEN ${dim} = ${params.add(p.value)} THEN ${expr} END`;
+  const col = () => bucket(dialect.quote(measure));
+  const meta = META[measure]!;
+  switch (effectiveAgg(measure, view.columnAggs)) {
+    case 'sum': return [{ expr: `SUM(${col()})`, alias: id }];
+    case 'min': return [{ expr: `MIN(${col()})`, alias: id }];
+    case 'max': return [{ expr: `MAX(${col()})`, alias: id }];
+    case 'count': return [{ expr: `COUNT(${col()})`, alias: id }];
+    case 'mean': return [{ expr: `AVG(${col()})`, alias: id }];
+    case 'uniqueCount': return [{ expr: `COUNT(DISTINCT ${col()})`, alias: id }];
+    case 'median': {
+      if (!dialect.median) throw new RangeError(`compileSql: ${dialect.name} has no median; choose another aggregation for ${measure}`);
+      return [{ expr: dialect.median(col()), alias: id }];
+    }
+    case 'wavg': {
+      const w = () => bucket(dialect.quote(columnId(meta.weightBy ?? '')));
+      const xw = () => `SUM(${dialect.quote(measure)} * ${w()})`;
+      return [
+        { expr: `${xw()} / NULLIF(SUM(${w()}), 0)`, alias: id },
+        { expr: xw(), alias: `${id}__xw` },
+        { expr: `SUM(${w()})`, alias: `${id}__w` },
+      ];
+    }
+    default: return [];
+  }
+}
+
+/** A column's aggregate expression at a grouping level: the measure's own, a pivot bucket's, or a calculated column's over its operands'. */
+function aggExpr(id: string, dialect: SqlDialect, view: ViewState, params: Params): string | undefined {
+  if (isPivotId(id)) return pivotAggregate(id, dialect, view, params)[0]?.expr;
+  if (!isComputedId(id)) {
+    const parts = aggregate(columnId(id), dialect, view);
+    return parts[0]?.expr;
+  }
+  const spec = computedSpec(id, view);
+  const a = aggExpr(spec.of[0]!, dialect, view, params);
+  const b = spec.of[1] !== undefined ? aggExpr(spec.of[1], dialect, view, params) : undefined;
+  if (a === undefined || (spec.of[1] !== undefined && b === undefined)) return undefined;
+  return compose(spec, a, b, params);
 }
 
 function tableRef(dialect: SqlDialect, table: string): string {
@@ -109,6 +195,14 @@ class Params {
 function where(view: ViewState, opts: CompileOptions, dialect: SqlDialect, params: Params): string[] {
   const clauses: string[] = [];
   for (const f of view.columnFilters) {
+    if (isComputedId(f.id)) {
+      // A range on a calculated column filters leaf rows by its arithmetic (ADR-79).
+      const expr = leafExpr(f.id, dialect, view, params);
+      const [lo, hi] = Array.isArray(f.value) ? (f.value as [unknown, unknown]) : [f.value, f.value];
+      if (typeof lo === 'number') clauses.push(`${expr} >= ${params.add(lo)}`);
+      if (typeof hi === 'number') clauses.push(`${expr} <= ${params.add(hi)}`);
+      continue;
+    }
     const id = columnId(f.id);
     const col = dialect.quote(id);
     if (META[id]!.kind === 'dimension') {
@@ -154,27 +248,29 @@ function where(view: ViewState, opts: CompileOptions, dialect: SqlDialect, param
   return clauses;
 }
 
-function aggregate(id: keyof Position, dialect: SqlDialect, view: ViewState): string[] {
+interface Aggregated { expr: string; alias: string }
+
+/** A measure's aggregate expressions at a grouping level: the value first, then any parts a merge needs. */
+function aggregate(id: keyof Position, dialect: SqlDialect, view: ViewState): Aggregated[] {
   const meta = META[id]!;
   const col = dialect.quote(id);
-  const as = (expr: string, alias: string) => `${expr} AS ${dialect.quote(alias)}`;
   switch (effectiveAgg(id, view.columnAggs)) {
-    case 'sum': return [as(`SUM(${col})`, id)];
-    case 'min': return [as(`MIN(${col})`, id)];
-    case 'max': return [as(`MAX(${col})`, id)];
-    case 'count': return [as(`COUNT(${col})`, id)];
-    case 'mean': return [as(`AVG(${col})`, id)];
-    case 'uniqueCount': return [as(`COUNT(DISTINCT ${col})`, id)];
+    case 'sum': return [{ expr: `SUM(${col})`, alias: id }];
+    case 'min': return [{ expr: `MIN(${col})`, alias: id }];
+    case 'max': return [{ expr: `MAX(${col})`, alias: id }];
+    case 'count': return [{ expr: `COUNT(${col})`, alias: id }];
+    case 'mean': return [{ expr: `AVG(${col})`, alias: id }];
+    case 'uniqueCount': return [{ expr: `COUNT(DISTINCT ${col})`, alias: id }];
     case 'median': {
       if (!dialect.median) throw new RangeError(`compileSql: ${dialect.name} has no median; choose another aggregation for ${id}`);
-      return [as(dialect.median(col), id)];
+      return [{ expr: dialect.median(col), alias: id }];
     }
     case 'wavg': {
       const w = dialect.quote(columnId(meta.weightBy ?? ''));
       return [
-        as(`SUM(${col} * ${w}) / NULLIF(SUM(${w}), 0)`, id),
-        as(`SUM(${col} * ${w})`, `__${id}_xw`),
-        as(`SUM(${w})`, `__${id}_w`),
+        { expr: `SUM(${col} * ${w}) / NULLIF(SUM(${w}), 0)`, alias: id },
+        { expr: `SUM(${col} * ${w})`, alias: `__${id}_xw` },
+        { expr: `SUM(${w})`, alias: `__${id}_w` },
       ];
     }
     default: return [];
@@ -184,21 +280,33 @@ function aggregate(id: keyof Position, dialect: SqlDialect, view: ViewState): st
 export function compileSql(view: ViewState, opts: CompileOptions, dialect: SqlDialect = DUCKDB): CompiledSql {
   const params = new Params(dialect);
   const from = tableRef(dialect, opts.table);
-  const clauses = where(view, opts, dialect, params);
-  const whereSql = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
   const path = opts.groupPath ?? [];
   const nextGroup = view.grouping[path.length];
 
   if (nextGroup !== undefined) {
     const dim = columnId(nextGroup);
     const dimCol = dialect.quote(dim);
+    // The SELECT list is built before the WHERE clause: its placeholders
+    // come first in the text, so their parameters must come first too.
     const select = [
       `${dimCol}`,
       `COUNT(*) AS ${dialect.quote('__count')}`,
-      ...COLUMN_ORDER.filter((id) => META[id]!.kind === 'measure').flatMap((id) => aggregate(id, dialect, view)),
+      ...COLUMN_ORDER.filter((id) => META[id]!.kind === 'measure').flatMap((id) =>
+        aggregate(id, dialect, view).map((a) => `${a.expr} AS ${dialect.quote(a.alias)}`)),
+      // Pivot buckets (ADR-80): one aggregate per value per pivoted measure.
+      ...(view.pivot.column ? (opts.pivotValues ?? []).flatMap((value) =>
+        pivotMeasures(view.pivot).flatMap((m) => pivotAggregate(pivotId(m, value), dialect, view, params).map((a) => `${a.expr} AS ${dialect.quote(a.alias)}`))) : []),
     ];
+    const clauses = where(view, opts, dialect, params);
+    const whereSql = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
     const order: string[] = [];
     for (const s of view.sorting) {
+      if (isComputedId(s.id) || isPivotId(s.id)) {
+        // A calculated column sorts a grouping level by its arithmetic over the operands' aggregates; a pivot column by its bucket's.
+        const expr = aggExpr(s.id, dialect, view, params);
+        if (expr) order.push(`${expr} ${s.desc ? 'DESC' : 'ASC'}`);
+        continue;
+      }
       const id = columnId(s.id);
       if (id === dim || effectiveAgg(id, view.columnAggs)) order.push(`${dialect.quote(id)} ${s.desc ? 'DESC' : 'ASC'}`);
     }
@@ -207,11 +315,24 @@ export function compileSql(view: ViewState, opts: CompileOptions, dialect: SqlDi
     return { sql, params: params.values, shape: 'group', groupColumn: dim };
   }
 
+  const clauses = where(view, opts, dialect, params);
+  const whereSql = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
   if (opts.count) {
     return { sql: `SELECT COUNT(*) AS ${dialect.quote('__count')} FROM ${from}${whereSql}`, params: params.values, shape: 'leaf' };
   }
   const select = COLUMN_ORDER.map((id) => dialect.quote(id)).join(', ');
-  const order = view.sorting.map((s) => `${dialect.quote(columnId(s.id))} ${s.desc ? 'DESC' : 'ASC'}`);
+  const order = view.sorting.flatMap((s) => {
+    // A leaf row sorts by a pivot column as by its measure within the bucket: rows outside it last.
+    const p = parsePivotId(s.id);
+    if (p && view.pivot.column) {
+      const dim = dialect.quote(columnId(view.pivot.column));
+      return [
+        `CASE WHEN ${dim} = ${params.add(p.value)} THEN 0 ELSE 1 END ASC`,
+        `CASE WHEN ${dim} = ${params.add(p.value)} THEN ${dialect.quote(columnId(p.measure))} END ${s.desc ? 'DESC' : 'ASC'}`,
+      ];
+    }
+    return [`${leafExpr(s.id, dialect, view, params)} ${s.desc ? 'DESC' : 'ASC'}`];
+  });
   order.push(`${dialect.quote('tradeId')} ASC`);
   let sql = `SELECT ${select} FROM ${from}${whereSql} ORDER BY ${order.join(', ')}`;
   if (opts.limit !== undefined) sql += ` LIMIT ${Math.max(0, Math.floor(opts.limit))}`;

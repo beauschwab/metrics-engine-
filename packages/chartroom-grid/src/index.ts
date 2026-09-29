@@ -41,6 +41,11 @@ export { Input } from './components/ui/input';
 export { Separator } from './components/ui/separator';
 export { heatIntensity, heatBackground, HEAT_MAX_PERCENT } from './grid/heat';
 export { headerBands, hasBands, type HeaderBand, type BandColumn } from './grid/bands';
+export { chartFromRange, widgetFormat, describeChart, type ChartRequest, type ChartOutcome, type ChartSeries, type ChartData, type ChartRow } from './grid/chart';
+export {
+  PIVOT_PREFIX, isPivotId, pivotId, parsePivotId, distinctValues, pivotMeta, pivotValue, pivotAggregation, type PivotState,
+} from './grid/pivot';
+export { pivotMeasures, type PivotBuild } from './grid/columns';
 export { rangesToTsv, selectedCellRanges, cellText, type CopyCell, type CopyOptions, type CopyTable } from './grid/copy';
 export {
   parseSearch, tokenizeSearch, parseSearchNumber, resolveSearchColumn, rowMatchesSearch, termMatches, describeSearchToken,
@@ -67,9 +72,14 @@ export { duckdbSource, createDuckDbExecutor, DUCKDB_TABLE, type DuckDbExecutor }
 export { dremioSource, createDremioExecutor, type DremioOptions } from './data/dremioSource';
 export { features, type Features } from './grid/features';
 export {
-  columns, buildColumns, effectiveAgg, allowedAggs, effectiveMeta, allowedFormatKeys, selectColumn, SELECT_ID, COLUMN_META, COLUMN_ORDER,
+  columns, buildColumns, effectiveAgg, allowedAggs, effectiveMeta, allowedFormatKeys, allowedFormatKeysFor, metaFor, REGISTRY_IDS,
+  selectColumn, SELECT_ID, COLUMN_META, COLUMN_ORDER,
   type ColumnAggs, type ColumnFormats,
 } from './grid/columns';
+export {
+  COMPUTED_OPS, COMPUTED_OP_LABELS, COMPUTED_ARITY, COMPUTED_PREFIX, MAX_COMPUTED, isComputedId, computedIdFor, computedUnit, evaluateComputed,
+  computedMeta, computedIssues, computedValue, computedAggregation, type ComputedColumn, type ComputedOp,
+} from './grid/computed';
 export {
   formatValue, alignOf, isScalable, matchRule, MISSING, AGGS, AGG_LABELS, SCALES, SCALE_LABELS, NEGATIVES, NEGATIVE_LABELS, DECIMALS, FORMAT_KEYS,
   RULE_OPS, EMPHASES, EMPHASIS_LABELS, MAX_RULES,

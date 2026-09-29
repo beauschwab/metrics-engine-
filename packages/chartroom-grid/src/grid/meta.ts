@@ -116,6 +116,8 @@ export interface ColumnMeta {
   rules?: HighlightRule[];
   /** A calculated column (ADR-79): a draft the view defines, not a registry measure. */
   computed?: boolean;
+  /** A pivot column (ADR-80): a measure read within one value of the pivot dimension. */
+  pivot?: boolean;
   /** Dimensions only: may this column be a grouping level? */
   groupable?: boolean;
   /** Measures only: how the column rolls up under grouping. */
@@ -182,3 +184,17 @@ export const isScalable = (meta: ColumnMeta): boolean => meta.unit === 'ccy' || 
 /** Measures sit right-aligned in tabular figures; dimensions read left. */
 export const alignOf = (meta: ColumnMeta): 'left' | 'right' =>
   meta.kind === 'measure' ? 'right' : 'left';
+
+/**
+ * The meta an aggregate reads with. A subtotal, a grand total and a copied
+ * or exported aggregate format through the column's own meta — the same
+ * decimals, scale, negatives and rules as its leaf cells — with one
+ * exception: a count or a distinct count is a number of rows, not an
+ * amount in the column's unit, so it reads as a plain integer.
+ */
+export function aggregateMeta(meta: ColumnMeta, aggregation: unknown): ColumnMeta {
+  if (aggregation === 'count' || aggregation === 'uniqueCount') {
+    return { ...meta, unit: undefined, dp: 0, scale: undefined, negativeRed: false, rules: undefined };
+  }
+  return meta;
+}

@@ -7,22 +7,25 @@
  */
 
 import type { ReactNode } from 'react';
-import { ChevronsDownUp, ChevronsUpDown, Copy, EyeOff, Funnel, FunnelX, PanelLeft, Pin, PinOff, Rows3, Table2 } from 'lucide-react';
+import { BarChart3, ChevronsDownUp, ChevronsUpDown, Copy, EyeOff, Funnel, FunnelX, PanelLeft, Pin, PinOff, Rows3, Table2 } from 'lucide-react';
 import { formatValue } from '../grid/meta';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { SELECT_ID } from '../grid/columns';
 import { rangesToTsv, selectedCellRanges } from '../grid/copy';
+import { chartFromRange, type ChartOutcome } from '../grid/chart';
 import { copyText as copy } from './clipboard';
 import type { ContextTarget } from './GridTable';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger } from './ui/context-menu';
 
 export function RowContextMenu({
-  table, target, detailOpen, onToggleDetail, children,
+  table, target, detailOpen, onToggleDetail, onChart, children,
 }: {
   table: TreasuryTable;
   target: ContextTarget | null;
   detailOpen: ReadonlySet<string>;
   onToggleDetail: (rowId: string) => void;
+  /** The host draws a chart of the selected block (ADR-81); absent, the item is too. */
+  onChart?: (outcome: ChartOutcome) => void;
   children: ReactNode;
 }) {
   const row = target ? table.getRowModel().rows.find((r) => r.id === target.rowId) : undefined;
@@ -49,6 +52,11 @@ export function RowContextMenu({
             <ContextMenuItem onSelect={() => copy(rangesToTsv(selectedCellRanges(table), { headers: true }))}>
               <Copy /> Copy range with headers
             </ContextMenuItem>
+            {onChart && (
+              <ContextMenuItem onSelect={() => onChart(chartFromRange(table))} data-slot="chart-selection">
+                <BarChart3 /> Chart selection
+              </ContextMenuItem>
+            )}
             <ContextMenuItem onSelect={() => copy(rangesToTsv(selectedCellRanges(table), { formatted: false }))}>
               <Copy /> Copy range as raw values
             </ContextMenuItem>
@@ -126,7 +134,7 @@ export function RowContextMenu({
         {table.getTopRows().length > 0 && (
           <ContextMenuItem onSelect={() => table.resetRowPinning(true)}><PinOff /> Unpin all rows</ContextMenuItem>
         )}
-        {/* TODO(grid-deferred): "Chart selection" hands the selected leaf rows to a widget contract; range selection copies a block. */}
+
       </ContextMenuContent>
     </ContextMenu>
   );

@@ -48,4 +48,6 @@ export interface QueryResult<Row> {
 export interface DataSource<Row> {
   describe(): Promise<SourceDescription>;
   query(view: ViewState, options?: QueryOptions): Promise<QueryResult<Row>>;
+  /** The distinct values of a dimension over the whole source, in reading order — the pivot's columns (ADR-80). */
+  distinct?(column: string): Promise<string[]>;
 }

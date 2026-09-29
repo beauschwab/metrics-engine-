@@ -2302,6 +2302,102 @@ sidebar, reads its cells and its badge, groups by desk and checks the
 subtotal against the operands' subtotals, sees the link carry it, and
 removes it.
 
+## ADR-80 — a pivot is one dimension across the top, and every column it makes is a real column
+
+**Pinned:** the owner's request after Phase 6 for AG Grid's pivot mode.
+
+**Decision.** The view gains a `pivot` slice (view version 5; older views
+migrate): the groupable dimension across the top, or null, and the
+measures it spreads (empty meaning every measure). For each of the
+dimension's values and each spread measure the grid builds a column
+`p:<measure>:<value>`: an accessor that reads the measure only for rows
+in that value's bucket, a meta that is the measure's with the value as
+its band — so the header bands (ADR-75) draw the value row with no new
+header machinery — and an aggregation that is the measure's own rule
+over the bucket's rows, so a weighted average stays weighted and a count
+counts the bucket. The spread measures keep their own column after the
+buckets under a Total band, and the dimensions keep their place, so the
+row side reads as it did.
+
+*The columns are the source's values, not the filter's.* The values
+across the top are the dimension's distinct values over the whole source
+— `distinct()` on the seam, served by SQL for an engine and by a pass
+over the rows in memory — so a filter narrows the cells and never makes
+a column vanish under the reader's eye. A pivot id is accepted by shape
+in order, visibility, sizing and pinning, because the values are the
+data's and a link cannot know them; a stale one is simply absent.
+
+*What a pivot column is not.* It is not filtered (filter the measure or
+the dimension), not grouped, not given its own aggregation (it aggregates
+as its measure does) and not given its own format (format the measure,
+and every bucket follows): each refused by the parser with those words.
+
+*The engine serves the buckets.* At a grouping level the SQL compiler
+emits `CASE WHEN dim = value THEN measure END` inside each aggregate, one
+per value per spread measure, with a weighted average's parts alongside;
+the node carries them under the pivot ids and the client accessor reads
+them back, so a served subtotal and a client subtotal are the same
+number, which the SQLite test holds them to. A leaf query needs nothing
+new: the accessor buckets on the client, and an engine-served sort by a
+bucket sorts by the measure within it, rows outside it last.
+
+**What now fails if this regresses.** `pivot.test.ts` names and parses
+ids, reads distinct values in order, buckets a row, builds the columns in
+the right order with the right bands, and holds subtotals and the grand
+total — a sum, a weighted average, a count — to brute force per bucket;
+`viewState.test.ts` migrates version 4 and refuses a pivot on an
+ungroupable column, a dimension among the values, and a filter,
+aggregation or format on a pivot column; `sql.test.ts` reads the
+dimension's values from the engine, compiles the bucketed aggregates and
+their sort, and matches the served subtotals to the client's. The
+studio's `grid.spec.ts` pivots by currency from the header menu, reads
+the bands and the EUR bucket's columns, sees a leaf's notional only under
+its own currency, groups by desk and checks the bucket against the
+total, reads the link, and stops from the chip.
+
+## ADR-81 — a chart from a range is a widget the grid describes and the host draws
+
+**Pinned:** the owner's request after Phase 6 for AG Grid's integrated
+charts; the boundary rule (`spec ← grid ← studio`, the grid never imports
+the widgets' React components).
+
+**Decision.** The context menu's "Chart selection" turns the selected
+block into a chart request: the grid reads the range's cells through the
+same resolver the copier uses (ADR-71), takes the first dimension column
+in the block as the category and each measure column as a series, keeps
+the rows in the order the screen shows them, and hands the host a
+`ChartRequest` — the widget type (`bar@1`), the resolved `WidgetData`
+the widgets' contract expects (rows keyed by the category, the unit and
+the format the measure's meta maps to), and a title naming the columns.
+The grid draws nothing: the shell's `onChart` prop is the seam, and the
+studio, which may import the widgets, renders the request with the
+governed `Bar` renderer in a panel beside the grid. Without a host handler
+the menu item is absent.
+
+*Why the host draws.* The widgets are governed renderers: they format
+through the catalog's function (ADR-29), take colour from the theme, and
+refuse to fetch. A chart the grid drew itself would be a second renderer
+with its own formatting and its own colours, and the boundary test exists
+to stop exactly that. Handing over data in the widgets' own shape keeps
+one renderer for a number wherever it appears.
+
+*What a range can chart.* A block holds one category — the first
+dimension column in it, or the group column on grouped rows — and one or
+more measures in one unit; a block with two units, or with no dimension
+and no group rows, is refused with the reason in the panel rather than
+charted wrong (NUM-01: a bar chart has one axis). A grouped row's
+subtotal charts as the group's value; a placeholder cell charts as
+nothing. A calculated column (ADR-79) charts as the draft it is, with its
+label suffixed.
+
+**What now fails if this regresses.** `chart.test.ts` builds a request
+from a headless range: the category from the first dimension, one series
+per measure, rows in screen order, the unit and format from meta, group
+rows by their subtotal; and refuses two units and a block without a
+category. The studio's `grid.spec.ts` drags a block of desk and notional,
+opens the context menu, charts it, and reads the bars' labels and values
+against the cells.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

@@ -22,9 +22,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { RangeChart } from './RangeChart';
 import {
   TreasuryGrid, defaultView, duckdbSource, generatePositions, inMemorySource, localStorageViewStore,
-  readViewFromHash, writeViewToHash, type SourceDescription, type ViewState, type ViewUpdate,
+  readViewFromHash, writeViewToHash, type ChartOutcome, type SourceDescription, type ViewState, type ViewUpdate,
 } from 'chartroom-grid';
 
 const ROWS = 50_000;
@@ -59,6 +60,8 @@ export function GridHarness() {
   }, [source]);
 
   const [{ view, issues }, setState] = useState(initialView);
+  // A chart the grid described from a selected block (ADR-81), drawn here.
+  const [chart, setChart] = useState<ChartOutcome | null>(null);
   // A hash change that reaches this route with a different (or no) view is
   // a navigation, not an edit: `#/grid` after `#/grid?v=…` means the default
   // view. `replaceState` writes below fire no hashchange, so this never loops.
@@ -103,8 +106,11 @@ export function GridHarness() {
         </div>
       )}
       <div className="min-h-0 flex-1 px-5 pt-3 pb-5">
-        <div className="h-full border border-border bg-card">
-          <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={store} defaultSidebarOpen />
+        <div className="flex h-full border border-border bg-card">
+          <div className="min-w-0 flex-1">
+            <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={store} defaultSidebarOpen onChart={setChart} />
+          </div>
+          {chart && <RangeChart outcome={chart} onClose={() => setChart(null)} />}
         </div>
       </div>
     </div>

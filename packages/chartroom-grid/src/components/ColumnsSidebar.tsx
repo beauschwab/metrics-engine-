@@ -8,15 +8,20 @@
 
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Rows3 } from 'lucide-react';
+import { useState } from 'react';
+import { GripVertical, Plus, Rows3, X } from 'lucide-react';
 import type { Column } from '@tanstack/react-table';
 import { SELECT_ID } from '../grid/columns';
 import type { Features } from '../grid/features';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import type { Position } from '../data/mock';
 import { cn } from '../lib/utils';
+import type { ComputedColumn } from '../grid/computed';
+import { ComputedColumnEditor } from './ComputedColumnEditor';
+import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
 export const SIDE_PREFIX = 'side:';
 
@@ -35,29 +40,52 @@ export function ColumnsSidebar({
   table,
   grouping,
   columnOrder,
+  computed = [],
+  onAddComputed,
+  onRemoveComputed,
 }: {
+  /** The view's calculated columns (ADR-79), and the writes that add or drop one. */
+  computed?: readonly ComputedColumn[];
+  onAddComputed?: (spec: ComputedColumn) => void;
+  onRemoveComputed?: (id: string) => void;
   table: TreasuryTable;
   grouping: string[];
   columnOrder: string[];
 }) {
   const ordered = orderedLeafColumns(table, columnOrder);
+  const [adding, setAdding] = useState(false);
   return (
     <aside data-slot="columns-sidebar" data-testid="columns-sidebar" className="flex w-60 shrink-0 flex-col border-l border-border bg-card text-xs">
       <div className="px-3 py-2 text-[10px] font-semibold tracking-[0.06em] uppercase text-faint">Columns</div>
       <SortableContext items={ordered.map((c) => SIDE_PREFIX + c.id)} strategy={verticalListSortingStrategy}>
         <ul className="min-h-0 flex-1 overflow-auto px-1 pb-2">
           {ordered.map((col) => (
-            <SidebarItem key={col.id} column={col} grouped={grouping.includes(col.id)} />
+            <SidebarItem key={col.id} column={col} grouped={grouping.includes(col.id)} onRemoveComputed={onRemoveComputed} />
           ))}
         </ul>
       </SortableContext>
+      {onAddComputed && (
+        <div className="border-t border-border px-2 py-1.5">
+          <Popover open={adding} onOpenChange={setAdding}>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="xs" className="w-full justify-start" aria-label="Add calculated column">
+                <Plus /> Calculated column
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" side="left" className="w-72 p-2 text-xs">
+              <ComputedColumnEditor existing={computed} onAdd={onAddComputed} onClose={() => setAdding(false)} />
+            </PopoverContent>
+          </Popover>
+        </div>
+      )}
     </aside>
   );
 }
 
-function SidebarItem({ column, grouped }: { column: GridColumn; grouped: boolean }) {
+function SidebarItem({ column, grouped, onRemoveComputed }: { column: GridColumn; grouped: boolean; onRemoveComputed?: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: SIDE_PREFIX + column.id });
   const label = column.columnDef.meta?.label ?? column.id;
+  const computed = !!column.columnDef.meta?.computed;
   return (
     <li
       ref={setNodeRef}
@@ -75,6 +103,12 @@ function SidebarItem({ column, grouped }: { column: GridColumn; grouped: boolean
         onCheckedChange={(v) => column.toggleVisibility(v === true)}
       />
       <span className="min-w-0 flex-1 truncate">{label}</span>
+      {computed && <Badge variant="outline" className="h-4 px-1 text-[9px] uppercase text-faint" data-slot="calc-badge">calc</Badge>}
+      {computed && onRemoveComputed && (
+        <Button variant="ghost" size="icon-xs" aria-label={`Remove ${label}`} className="text-faint" onClick={() => onRemoveComputed(column.id)}>
+          <X />
+        </Button>
+      )}
       {column.getCanGroup() && (
         <Button
           variant="ghost"

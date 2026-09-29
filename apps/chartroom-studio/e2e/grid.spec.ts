@@ -678,6 +678,151 @@ test.describe('the treasury grid harness', () => {
     expect(cleared.columnFormats ?? {}).toEqual({});
   });
 
+  test('adds a calculated column from the sidebar, rolls it up as a ratio of sums, carries it in the link, and removes it', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    const sidebar = page.getByTestId('columns-sidebar');
+    await expect(grid.locator('tbody tr').first()).toBeVisible();
+    await sidebar.getByRole('button', { name: 'Add calculated column' }).click();
+    const editor = page.locator('[data-slot="computed-editor"]');
+    await editor.getByLabel('Calculated column name').fill('MTM share');
+    await editor.getByLabel('Operation').selectOption('ratio');
+    await editor.getByLabel('Operand A').selectOption('mtm');
+    // A mixed pair is refused with the reason before the column exists.
+    await editor.getByLabel('Operand B').selectOption('yield');
+    await expect(editor.locator('[data-slot="computed-preview"]')).toHaveText(/different units \(NUM-01\)/);
+    await expect(editor.getByRole('button', { name: 'Add column' })).toBeDisabled();
+    await editor.getByLabel('Operand B').selectOption('notional');
+    await expect(editor.locator('[data-slot="computed-preview"]')).toHaveText(/reads in pct/);
+    await editor.getByRole('button', { name: 'Add column' }).click();
+
+    // The column is real: a header with the calc badge, cells as percents, a Calculated band.
+    const header = grid.locator('th[data-column="c:mtm_share"]');
+    await expect(header).toHaveAttribute('data-computed', 'true');
+    await expect(header.locator('[data-slot="calc-badge"]')).toHaveText('calc');
+    await expect(grid.locator('[data-slot="header-band"][data-band="Calculated"]')).toHaveCount(1);
+    const first = grid.locator('tbody tr').first();
+    await expect(first.locator('td[data-column="c:mtm_share"]')).toHaveText(/^-?\d+\.\d{2}%$/);
+    await expect(sidebar.locator('[data-slot="sidebar-column"][data-column="c:mtm_share"] [data-slot="calc-badge"]')).toBeVisible();
+
+    // Grouped, the subtotal is the desk's MTM over the desk's notional: read both and check.
+    await sidebar.getByRole('button', { name: 'Group by Desk' }).click();
+    const group = grid.locator('tbody tr[data-grouped]').first();
+    await expect(group).toBeVisible();
+    const money = async (col: string) => {
+      const t = (await group.locator(`td[data-column="${col}"]`).textContent())!;
+      const m = /^(\(?)(-?)\$([\d,.]+)([MB]?)\)?$/.exec(t.trim())!;
+      const n = Number(m[3].replace(/,/g, '')) * (m[4] === 'M' ? 1e6 : m[4] === 'B' ? 1e9 : 1);
+      return m[1] || m[2] ? -n : n;
+    };
+    const mtm = await money('mtm');
+    const notional = await money('notional');
+    const share = Number((await group.locator('td[data-column="c:mtm_share"]').textContent())!.replace('%', ''));
+    expect(Math.abs(share - (mtm / notional) * 100)).toBeLessThan(0.02);
+
+    // The link carries the definition; removing the column from the sidebar drops it everywhere.
+    const hash = await page.evaluate(() => location.hash);
+    const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(decoded.computedColumns).toEqual([{ id: 'c:mtm_share', label: 'MTM share', op: 'ratio', of: ['mtm', 'notional'] }]);
+    await sidebar.getByRole('button', { name: 'Remove MTM share' }).click();
+    await expect(header).toHaveCount(0);
+    const after = JSON.parse(Buffer.from(new URL(`http://x/${(await page.evaluate(() => location.hash)).slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(after.computedColumns).toEqual([]);
+  });
+
+  test('pivots by currency from the header menu: a band per value, measures under each, subtotals per bucket, and stops from the chip', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    await expect(grid.locator('tbody tr').first()).toBeVisible();
+    await grid.locator('th[data-column="currency"]').hover();
+    await page.getByRole('button', { name: 'Ccy column menu' }).click();
+    await page.getByRole('menuitem', { name: 'Pivot by Ccy' }).click();
+
+    // The bands read the currencies; under EUR the six measures; the pivoted measures follow under Total.
+    const bands = grid.locator('[data-slot="header-band"][data-band]');
+    await expect(bands.filter({ hasText: 'EUR' })).toHaveCount(1);
+    await expect(bands.filter({ hasText: 'USD' })).toHaveCount(1);
+    await expect(bands.filter({ hasText: 'Total' })).toHaveCount(1);
+    await expect(grid.locator('[data-slot="header-band"][data-band="EUR"]')).toHaveAttribute('data-columns', 'p:notional:EUR p:mtm:EUR p:dv01:EUR p:cs01:EUR p:yield:EUR p:wal:EUR');
+    await expect(page.locator('[data-slot="pivot-chip"]')).toHaveText(/Ccy/);
+
+    // A leaf row shows its notional only in its own currency's column.
+    const first = grid.locator('tbody tr').first();
+    const ccy = (await first.locator('td[data-column="currency"]').textContent())!.trim();
+    await expect(first.locator(`td[data-column="p:notional:${ccy}"]`)).toHaveText(/^\$[\d,]+\.\dM$/);
+    const other = ccy === 'EUR' ? 'USD' : 'EUR';
+    await expect(first.locator(`td[data-column="p:notional:${other}"]`)).toHaveText('');
+
+    // Grouped by desk, the EUR bucket's subtotal is the desk's EUR notional: at most the desk total.
+    await page.getByTestId('columns-sidebar').getByRole('button', { name: 'Group by Desk' }).click();
+    const group = grid.locator('tbody tr[data-grouped]').first();
+    const money = async (col: string) => Number((await group.locator(`td[data-column="${col}"]`).textContent())!.replace(/[^\d.]/g, ''));
+    const eur = await money('p:notional:EUR');
+    const total = await money('notional');
+    expect(eur).toBeGreaterThan(0);
+    expect(eur).toBeLessThan(total);
+    await expect(group.locator('td[data-column="p:yield:EUR"]')).toHaveText(/^\d+\.\d{2}%$/);
+
+    // The link carries the pivot; the chip's cross stops it and the registry columns return.
+    const hash = await page.evaluate(() => location.hash);
+    const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(decoded.pivot).toEqual({ column: 'currency', values: [] });
+    await page.getByRole('button', { name: 'Stop pivoting by Ccy' }).click();
+    await expect(grid.locator('th[data-column="p:notional:EUR"]')).toHaveCount(0);
+    await expect(grid.locator('[data-slot="header-band"][data-band="Exposure"]')).toHaveCount(1);
+  });
+
+  test('charts a selected block with the governed bar renderer, and refuses a block that mixes units', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    const rows = grid.locator('tbody tr');
+    await expect(rows.first()).toBeVisible();
+    // Group by desk so the block is five desks by notional and MTM: five bars per series.
+    await page.getByTestId('columns-sidebar').getByRole('button', { name: 'Group by Desk' }).click();
+    await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(5);
+    const from = (await rows.nth(0).locator('td[data-column="desk"]').boundingBox())!;
+    const to = (await rows.nth(4).locator('td[data-column="mtm"]').boundingBox())!;
+    await page.mouse.move(from.x + from.width - 6, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + 10, to.y + to.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await rows.nth(2).locator('td[data-column="notional"]').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Chart selection' }).click();
+    const panel = page.getByTestId('range-chart');
+    await expect(panel).toHaveAttribute('data-ok', 'true');
+    await expect(panel).toContainText('Notional, MTM by Desk');
+    const series = panel.locator('[data-slot="range-chart-series"]');
+    await expect(series).toHaveCount(2);
+    const bars = series.first().locator('.cr-bar-row');
+    await expect(bars).toHaveCount(5);
+    // The first bar is the first group, with the cell's own figure.
+    const desk = (await rows.nth(0).locator('td[data-column="desk"]').textContent())!.replace(/\(.*$/, '').trim();
+    await expect(bars.first().locator('.cr-bar-label')).toHaveText(desk);
+    const cell = (await rows.nth(0).locator('td[data-column="notional"]').textContent())!.trim();
+    await expect(bars.first().locator('.cr-bar-value')).toHaveText(cell);
+
+    // A block that mixes dollars and percent is refused with the reason. The
+    // panel closes first so the yield column is back in the viewport to drag to.
+    await panel.getByRole('button', { name: 'Close chart' }).click();
+    await expect(panel).toHaveCount(0);
+    await grid.focus();
+    await page.keyboard.press('Escape');
+    await expect(grid.locator('td[data-selected]')).toHaveCount(0);
+    const from2 = (await rows.nth(0).locator('td[data-column="desk"]').boundingBox())!;
+    const to2 = (await rows.nth(2).locator('td[data-column="yield"]').boundingBox())!;
+    // Start past the group's expander and count, at the cell's right edge.
+    await page.mouse.move(from2.x + from2.width - 6, from2.y + from2.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to2.x + 10, to2.y + to2.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await expect(grid.locator('td[data-selected]')).toHaveCount(3 * 14);
+    await expect(rows.nth(0).locator('td[data-column="desk"]')).toHaveAttribute('data-selected', 'true');
+    await rows.nth(1).locator('td[data-column="yield"]').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Chart selection' }).click();
+    await expect(panel).toHaveAttribute('data-ok', 'false');
+    await expect(panel.locator('[data-slot="range-chart-refused"]')).toHaveText(/mixes units.*NUM-01/);
+  });
+
   test('serves the same book from DuckDB-WASM: filter, sort and grouping compiled to SQL, children fetched on expand', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/#/grid?s=duckdb');

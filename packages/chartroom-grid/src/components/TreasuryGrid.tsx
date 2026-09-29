@@ -24,6 +24,8 @@ import { isGroupNode } from '../data/sqlSource';
 import { useTreasuryTable, type Applied, type GridRowData, type ViewUpdate } from '../grid/useTreasuryTable';
 import type { GridRow } from './GroupCell';
 import type { Agg, ColumnFormat } from '../grid/meta';
+import type { ComputedColumn } from '../grid/computed';
+import type { ChartOutcome } from '../grid/chart';
 import { defaultView, type ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
 import { canRedo, canUndo, createHistory, pushHistory, redoHistory, undoHistory } from '../views/history';
@@ -31,7 +33,8 @@ import { ColumnsSidebar, SIDE_PREFIX, orderedLeafColumns } from './ColumnsSideba
 import { GridTable, COLUMN_PREFIX, type ContextTarget, type Density } from './GridTable';
 import { FilterBar } from './FilterBar';
 import { GridToolbar } from './GridToolbar';
-import { GROUP_PREFIX, GROUP_ZONE_ID } from './GroupByDropZone';
+import { GROUP_PREFIX, GROUP_ZONE_ID, PIVOT_ZONE_ID } from './GroupByDropZone';
+import { distinctValues } from '../grid/pivot';
 import { RowContextMenu } from './RowContextMenu';
 import { StatusBar } from './StatusBar';
 import { Badge } from './ui/badge';
@@ -47,6 +50,8 @@ export interface TreasuryGridProps {
   defaultDensity?: Density;
   /** Where saved views live; null hides saving but keeps reset and the link. */
   viewStore?: ViewStore | null;
+  /** The host draws a chart of the selected block (ADR-81): the grid describes, the host renders. */
+  onChart?: (outcome: ChartOutcome) => void;
 }
 
 const idOf = (dnd: string) => dnd.slice(dnd.indexOf(':') + 1);
@@ -57,7 +62,7 @@ const collision: CollisionDetection = (args) =>
   String(args.active.id).startsWith(COLUMN_PREFIX) ? pointerWithin(args) : closestCenter(args);
 
 export function TreasuryGrid({
-  source, view: controlled, onViewChange, defaultSidebarOpen = false, defaultDensity = 'compact', viewStore = null,
+  source, view: controlled, onViewChange, defaultSidebarOpen = false, defaultDensity = 'compact', viewStore = null, onChart,
 }: TreasuryGridProps) {
   const [ownView, setOwnView] = useState<ViewState>(defaultView);
   const view = controlled ?? ownView;
@@ -149,7 +154,22 @@ export function TreasuryGrid({
     return attach(rows);
   }, [rows, children]);
 
-  const table = useTreasuryTable({ data, view, onViewChange: change, applied: manual });
+  // Pivot mode (ADR-80): the dimension across the top, and its values from
+  // the source — the whole source, so a filter never removes a column.
+  const onPivot = useCallback((column: string | null) => {
+    change((prev) => ({ ...prev, pivot: { ...prev.pivot, column } }));
+  }, [change]);
+  const pivotColumn = view.pivot.column;
+  const [pivotValues, setPivotValues] = useState<{ column: string; values: string[] } | null>(null);
+  useEffect(() => {
+    if (!pivotColumn) return;
+    let live = true;
+    const ask = source.distinct ? source.distinct(pivotColumn) : Promise.resolve(distinctValues(rows ?? [], pivotColumn));
+    void ask.then((values) => { if (live) setPivotValues({ column: pivotColumn, values }); });
+    return () => { live = false; };
+  }, [source, pivotColumn, rows]);
+
+  const table = useTreasuryTable({ data, view, onViewChange: change, applied: manual , pivotValues: pivotValues && pivotValues.column === view.pivot.column ? pivotValues.values : undefined });
 
   // A range is anchored to corner ids and would recompute across a reorder
   // or a pin into a scattered rectangle; the selection resets instead (ADR-71).
@@ -183,6 +203,29 @@ export function TreasuryGrid({
         else next[columnId] = merged;
       }
       return { ...prev, columnFormats: next };
+    });
+  }, [change]);
+
+  // A calculated column (ADR-79) joins the view; dropping one also scrubs
+  // its id from every slice that may name it, so the view stays a view
+  // that parses.
+  const onAddComputed = useCallback((spec: ComputedColumn) => {
+    change((prev) => ({ ...prev, computedColumns: [...prev.computedColumns, spec] }));
+  }, [change]);
+  const onRemoveComputed = useCallback((id: string) => {
+    change((prev) => {
+      const without = <T,>(rec: Record<string, T>) => Object.fromEntries(Object.entries(rec).filter(([k]) => k !== id)) as Record<string, T>;
+      return {
+        ...prev,
+        computedColumns: prev.computedColumns.filter((c) => c.id !== id),
+        columnOrder: prev.columnOrder.filter((c) => c !== id),
+        sorting: prev.sorting.filter((s) => s.id !== id),
+        columnFilters: prev.columnFilters.filter((f) => f.id !== id),
+        columnVisibility: without(prev.columnVisibility),
+        columnSizing: without(prev.columnSizing),
+        columnFormats: without(prev.columnFormats),
+        columnPinning: { start: prev.columnPinning.start.filter((c) => c !== id), end: prev.columnPinning.end.filter((c) => c !== id) },
+      };
     });
   }, [change]);
 
@@ -249,6 +292,9 @@ export function TreasuryGrid({
     if (!over || active === over) return;
     if (active.startsWith(GROUP_PREFIX) && over.startsWith(GROUP_PREFIX)) {
       table.setGrouping((prev) => arrayMove(prev, prev.indexOf(idOf(active)), prev.indexOf(idOf(over))));
+    } else if (over === PIVOT_ZONE_ID) {
+      const column = table.getColumn(idOf(active));
+      if (column?.getCanGroup()) onPivot(column.id);
     } else if (over === GROUP_ZONE_ID || over.startsWith(GROUP_PREFIX)) {
       const column = table.getColumn(idOf(active));
       // The drop is refused unless the meta says groupable — the zone's
@@ -297,10 +343,11 @@ export function TreasuryGrid({
           onExport={() => void onExport()}
           exporting={exporting}
           history={{ ...steps, undo, redo }}
+          onPivot={onPivot}
         />
         <FilterBar table={table} view={view} />
         <div className="flex min-h-0 flex-1">
-          <RowContextMenu table={table} target={contextTarget} detailOpen={detailOpen} onToggleDetail={toggleDetail}>
+          <RowContextMenu table={table} target={contextTarget} detailOpen={detailOpen} onToggleDetail={toggleDetail} onChart={onChart ? (o) => onChart(o.ok ? { ...o, request: { ...o.request, series: o.request.series.map((s) => ({ ...s, data: { ...s.data, asOf: about?.asOf ?? s.data.asOf } })) } } : o) : undefined}>
             <div className="min-w-0 flex-1">
               {!rows ? (
                 <div className="h-full animate-pulse rounded-sm bg-muted" data-slot="skeleton" />
@@ -315,11 +362,22 @@ export function TreasuryGrid({
                   onExpandGroup={onExpandGroup}
                   onFormatChange={onFormatChange}
                   onAggChange={onAggChange}
+                  onRemoveComputed={onRemoveComputed}
+                  onPivot={onPivot}
                 />
               )}
             </div>
           </RowContextMenu>
-          {sidebarOpen && <ColumnsSidebar table={table} grouping={view.grouping} columnOrder={view.columnOrder} />}
+          {sidebarOpen && (
+            <ColumnsSidebar
+              table={table}
+              grouping={view.grouping}
+              columnOrder={view.columnOrder}
+              computed={view.computedColumns}
+              onAddComputed={onAddComputed}
+              onRemoveComputed={onRemoveComputed}
+            />
+          )}
         </div>
         <StatusBar table={table} about={about} applied={manual} pending={pending} />
       </div>

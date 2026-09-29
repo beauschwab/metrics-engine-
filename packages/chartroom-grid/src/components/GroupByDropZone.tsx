@@ -9,13 +9,54 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Rows3, X } from 'lucide-react';
+import { Columns3, GripVertical, Rows3, X } from 'lucide-react';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { cn } from '../lib/utils';
 import { Badge } from './ui/badge';
 
 export const GROUP_ZONE_ID = 'group-zone';
 export const GROUP_PREFIX = 'group:';
+export const PIVOT_ZONE_ID = 'pivot-zone';
+
+/**
+ * The pivot zone (ADR-80): one dimension across the top. A groupable header
+ * dropped here becomes the pivot column; the chip's cross clears it.
+ */
+export function PivotDropZone({ table, pivot, onPivot }: { table: TreasuryTable; pivot: string | null; onPivot: (column: string | null) => void }) {
+  const { setNodeRef, isOver } = useDroppable({ id: PIVOT_ZONE_ID });
+  const label = pivot ? table.getColumn(pivot)?.columnDef.meta?.label ?? pivot : null;
+  return (
+    <div
+      ref={setNodeRef}
+      data-slot="pivot-zone"
+      data-over={isOver || undefined}
+      data-pivot={pivot ?? undefined}
+      className={cn(
+        'flex min-h-8 flex-wrap items-center gap-1.5 rounded-sm border border-dashed border-border px-2 py-1 text-xs text-faint transition-colors',
+        isOver && 'border-primary bg-muted/50 text-foreground',
+      )}
+    >
+      <Columns3 className="size-3.5" />
+      <span className="font-semibold tracking-[0.06em] uppercase text-[10px]">Pivot</span>
+      {label ? (
+        <Badge variant="secondary" data-slot="pivot-chip" data-column={pivot ?? undefined} className="gap-1 pr-1 pl-1.5">
+          {label}
+          <button
+            type="button"
+            data-slot="pivot-chip-remove"
+            aria-label={`Stop pivoting by ${label}`}
+            onClick={() => onPivot(null)}
+            className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="size-3" />
+          </button>
+        </Badge>
+      ) : (
+        <span>drop a column here to pivot</span>
+      )}
+    </div>
+  );
+}
 
 export function GroupByDropZone({ table, grouping }: { table: TreasuryTable; grouping: string[] }) {
   const { setNodeRef, isOver } = useDroppable({ id: GROUP_ZONE_ID });

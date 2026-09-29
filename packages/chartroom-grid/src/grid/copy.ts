@@ -7,11 +7,11 @@
  */
 
 import { aggregatedNumber } from './aggregations';
-import { formatValue, type ColumnMeta } from './meta';
+import { formatValue, type ColumnMeta, aggregateMeta } from './meta';
 
 /** What the copier reads of a cell — structural, as the export is. */
 export interface CopyCell {
-  column: { id: string; columnDef: { meta?: ColumnMeta } };
+  column: { id: string; columnDef: { meta?: ColumnMeta; aggregationFn?: unknown } };
   row: { groupingValue?: unknown; original: unknown };
   getValue(): unknown;
   getIsGrouped(): boolean;
@@ -40,11 +40,13 @@ export function cellText(cell: CopyCell, formatted = true): string {
   if (cell.getIsGrouped()) return String(cell.row.groupingValue ?? '');
   if (node?.__group && node.__group.column === cell.column.id) return node.__group.value;
   if (cell.getIsPlaceholder()) return '';
+  const aggregated = cell.getIsAggregated() || (!!node?.__group && meta?.kind === 'measure');
   const value = cell.getIsAggregated() ? aggregatedNumber(cell.getValue()) : cell.getValue();
   if (value === undefined) return '';
   if (!formatted || !meta) return raw(value);
   if (typeof value === 'string' && value === '') return '';
-  return formatValue(value, meta);
+  // An aggregate reads with the column's meta, a count as a plain integer.
+  return formatValue(value, aggregated ? aggregateMeta(meta, cell.column.columnDef.aggregationFn) : meta);
 }
 
 /** What the copier reads of a table: the resolved selection and the rows it indexes. */

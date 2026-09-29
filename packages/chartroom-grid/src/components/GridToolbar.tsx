@@ -12,13 +12,13 @@ import type { TreasuryTable } from '../grid/useTreasuryTable';
 import type { ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
 import type { Density } from './GridTable';
-import { GroupByDropZone } from './GroupByDropZone';
+import { GroupByDropZone, PivotDropZone } from './GroupByDropZone';
 import { ViewsMenu } from './ViewsMenu';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 
 export function GridToolbar({
-  table, view, viewStore, onLoadView, sidebarOpen, onToggleSidebar, density, onToggleDensity, onExport, exporting, history,
+  table, view, viewStore, onLoadView, sidebarOpen, onToggleSidebar, density, onToggleDensity, onExport, exporting, history, onPivot,
 }: {
   table: TreasuryTable;
   view: ViewState;
@@ -32,6 +32,8 @@ export function GridToolbar({
   exporting: boolean;
   /** Undo and redo over the view (ADR-76): whether each is possible, and the actions. */
   history?: { canUndo: boolean; canRedo: boolean; undo(): void; redo(): void };
+  /** The pivot dimension (ADR-80) and the write that sets or clears it. */
+  onPivot?: (column: string | null) => void;
 }) {
   const [quick, setQuick] = useState(view.globalFilter);
   useEffect(() => {
@@ -47,6 +49,7 @@ export function GridToolbar({
   return (
     <div data-slot="grid-toolbar" className="flex items-center gap-2 border-b border-border bg-card px-2 py-1.5">
       <GroupByDropZone table={table} grouping={view.grouping} />
+      {onPivot && <PivotDropZone table={table} pivot={view.pivot.column} onPivot={onPivot} />}
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-faint" />
         <Input

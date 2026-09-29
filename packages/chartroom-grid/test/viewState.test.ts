@@ -43,13 +43,15 @@ describe('the view state contract', () => {
     expect(v1.version).toBe(VIEW_VERSION);
     expect(v1.columnAggs).toEqual({});
     expect(v1.grouping).toEqual(['desk']);
-    expect(() => parseView({ version: 4 })).toThrow();
+    expect(() => parseView({ version: 6 })).toThrow();
     expect(() => parseView({ version: 0 })).toThrow();
   });
 
   it('migrates a version-2 view to 3 with an empty columnFormats, and 1 all the way', () => {
-    expect(parseView({ version: 2, grouping: ['desk'] })).toMatchObject({ version: 3, grouping: ['desk'], columnAggs: {}, columnFormats: {} });
-    expect(parseView({ version: 1 })).toMatchObject({ version: 3, columnAggs: {}, columnFormats: {} });
+    expect(parseView({ version: 2, grouping: ['desk'] })).toMatchObject({ version: 5, grouping: ['desk'], columnAggs: {}, columnFormats: {}, computedColumns: [], pivot: { column: null, values: [] } });
+    expect(parseView({ version: 1 })).toMatchObject({ version: 5, columnAggs: {}, columnFormats: {}, computedColumns: [], pivot: { column: null, values: [] } });
+    expect(parseView({ version: 3, columnFormats: { notional: { dp: 1 } } })).toMatchObject({ version: 5, columnFormats: { notional: { dp: 1 } }, computedColumns: [] });
+    expect(parseView({ version: 4, computedColumns: [] })).toMatchObject({ version: 5, pivot: { column: null, values: [] } });
     expect(safeParseView({ version: 2, columnFormats: { notional: { scale: 'bn' } } })).toMatchObject({ ok: true, view: { columnFormats: { notional: { scale: 'bn' } } } });
   });
 
@@ -70,6 +72,52 @@ describe('the view state contract', () => {
     ] as const) {
       const r = safeParseView({ version: 3, columnFormats: bad });
       expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.issues.join('\n')).toMatch(why);
+    }
+  });
+
+  it('accepts a pivot on a groupable dimension over measures and refuses the rest (ADR-80)', () => {
+    const ok = parseView({ version: 5, pivot: { column: 'currency', values: ['notional'] }, sorting: [{ id: 'p:notional:EUR', desc: true }], columnVisibility: { 'p:mtm:EUR': false } });
+    expect(ok.pivot).toEqual({ column: 'currency', values: ['notional'] });
+    for (const [bad, why] of [
+      [{ pivot: { column: 'tradeId', values: [] } }, /not groupable/],
+      [{ pivot: { column: 'currency', values: ['desk'] } }, /not a measure/],
+      [{ pivot: { column: 'currency' } }, /required/i],
+      [{ columnFilters: [{ id: 'p:notional:EUR', value: [0, null] }] }, /not filtered/],
+      [{ columnAggs: { 'p:notional:EUR': 'mean' } }, /aggregates as its measure/],
+      [{ columnFormats: { 'p:notional:EUR': { dp: 1 } } }, /format the measure/],
+    ] as const) {
+      const r = safeParseView({ version: 5, ...bad });
+      expect(r.ok, JSON.stringify(bad)).toBe(false);
+      if (!r.ok) expect(r.issues.join('\n')).toMatch(why);
+    }
+  });
+
+  it('accepts calculated columns and every slice naming them, and refuses what cannot be one (ADR-79)', () => {
+    const share = { id: 'c:mtm_share', label: 'MTM share', op: 'ratio', of: ['mtm', 'notional'] };
+    const ok = parseView({
+      version: 4, computedColumns: [share, { id: 'c:dv_x100', label: 'DV01 ×100', op: 'scaled', of: ['dv01'], k: 100 }],
+      sorting: [{ id: 'c:mtm_share', desc: true }], columnOrder: ['c:mtm_share', 'desk'], columnVisibility: { 'c:dv_x100': false },
+      columnPinning: { end: ['c:mtm_share'] }, columnFilters: [{ id: 'c:mtm_share', value: [0, null] }], columnFormats: { 'c:mtm_share': { dp: 3 } },
+    });
+    expect(ok.computedColumns.length).toBe(2);
+    for (const [bad, why] of [
+      [{ computedColumns: [{ ...share, id: 'mtm_share' }] }, /id must be c:/],
+      [{ computedColumns: [{ ...share, id: 'c:notional' }] }, /c:notional/],
+      [{ computedColumns: [share, share] }, /duplicate/],
+      [{ computedColumns: [{ ...share, of: ['mtm', 'yield'] }] }, /different units/],
+      [{ computedColumns: [{ ...share, of: ['mtm', 'desk'] }] }, /not a measure/],
+      [{ computedColumns: [{ ...share, of: ['mtm', 'c:other'] }] }, /not another calculated column/],
+      [{ computedColumns: [{ ...share, op: 'scaled', of: ['mtm'] }] }, /finite k/],
+      [{ computedColumns: [{ ...share, op: 'delta', of: ['mtm'] }] }, /takes 2 operands/],
+      [{ computedColumns: Array.from({ length: 9 }, (_, i) => ({ ...share, id: `c:s${i}` })) }, /at most 8/],
+      [{ sorting: [{ id: 'c:nope', desc: true }] }, /unknown calculated column: c:nope/],
+      [{ computedColumns: [share], grouping: ['c:mtm_share'] }, /not groupable/],
+      [{ computedColumns: [share], columnAggs: { 'c:mtm_share': 'sum' } }, /follows its operands/],
+      [{ computedColumns: [share], columnFormats: { 'c:mtm_share': { scale: 'bn' } } }, /scale is not a format/],
+    ] as const) {
+      const r = safeParseView({ version: 4, ...bad });
+      expect(r.ok, JSON.stringify(bad)).toBe(false);
       if (!r.ok) expect(r.issues.join('\n')).toMatch(why);
     }
   });
@@ -108,7 +156,7 @@ describe('the view state contract', () => {
     ]);
     expect('pagination' in state).toBe(false);
     expect('columnAggs' in state).toBe(false);
-    expect(Object.keys(ViewStateSchema.shape)).toContain('pagination');
+    expect(Object.keys(ViewStateSchema.innerType().shape)).toContain('pagination');
   });
 });
 

@@ -51,3 +51,22 @@ describe('range copy', () => {
     expect(cellText(cell)).toBe('');
   });
 });
+
+describe('an aggregate reads with the leaf cells\' format', () => {
+  it('a subtotal, the total and a copied aggregate share the column\'s reading; a count is a plain integer', () => {
+    const view = parseView({
+      version: 3, grouping: ['desk'], expanded: true,
+      columnAggs: { mtm: 'count' },
+      columnFormats: { notional: { scale: 'bn', dp: 2, negatives: 'parens' } },
+    });
+    const t = headlessTable(BOOK, view);
+    const group = t.getRowModel().rows.find((r) => r.getIsGrouped())!;
+    const leaf = t.getRowModel().rows.find((r) => !r.getIsGrouped())!;
+    const cellOf = (row: typeof group, id: string) => row.getAllCells().find((c) => c.column.id === id)!;
+    expect(cellText(cellOf(leaf, 'notional'))).toMatch(/^\$\d+\.\d{2}B$/);
+    expect(cellText(cellOf(group, 'notional'))).toMatch(/^\$\d+\.\d{2}B$/);
+    const count = group.getLeafRows().filter((r) => !r.getIsGrouped()).length;
+    expect(cellText(cellOf(group, 'mtm'))).toBe(count.toLocaleString('en-US'));
+    expect(cellText(cellOf(leaf, 'mtm'))).toMatch(/^-?\$[\d.]+M$/);
+  });
+});

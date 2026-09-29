@@ -8,6 +8,7 @@
  * expansion has a reference implementation to test the remote one against.
  */
 
+import { distinctValues } from '../grid/pivot';
 import { COLUMN_META, COLUMN_ORDER } from '../grid/columns';
 import type { ViewState } from '../grid/viewState';
 import type { Position } from './mock';
@@ -25,6 +26,9 @@ export function inMemorySource(rows: Position[], name = 'in-memory'): DataSource
   return {
     async describe() {
       return description;
+    },
+    async distinct(column: string) {
+      return distinctValues(rows, column);
     },
     async query(view: ViewState, { groupPath }: QueryOptions = {}): Promise<QueryResult<Position>> {
       let out = rows;

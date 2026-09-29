@@ -45,6 +45,8 @@ export interface TreasuryTableOptions {
    * twice. Omit for a source that serves nothing.
    */
   applied?: Applied;
+  /** The pivot dimension's distinct values (ADR-80); the shell asks the source for them. */
+  pivotValues?: readonly string[];
 }
 
 /** The module-level empty array v9 asks for: a fresh `[]` per render would rerun every row model. */
@@ -53,7 +55,7 @@ const NO_ROWS: GridRowData[] = [];
 
 const withoutSelect = (ids: string[]) => ids.filter((id) => id !== SELECT_ID);
 
-export function useTreasuryTable({ data, view, onViewChange, applied }: TreasuryTableOptions): TreasuryTable {
+export function useTreasuryTable({ data, view, onViewChange, applied, pivotValues }: TreasuryTableOptions): TreasuryTable {
   const handlers = useMemo(() => {
     const slice =
       <K extends ViewSlice>(key: K): OnChangeFn<ViewState[K]> =>
@@ -87,9 +89,10 @@ export function useTreasuryTable({ data, view, onViewChange, applied }: Treasury
   // The selection column first, then every data column with the view's
   // aggregations (ADR-72) and formats (ADR-74) — one array per distinct
   // choice, not per render.
-  const columnsKey = JSON.stringify([view.columnAggs, view.columnFormats]);
+  const pivot = view.pivot.column ? { ...view.pivot, distinct: pivotValues ?? [] } : undefined;
+  const columnsKey = JSON.stringify([view.columnAggs, view.columnFormats, view.computedColumns, pivot]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the serialized choice
-  const allColumns = useMemo(() => [selectColumn, ...buildColumns(view.columnAggs, view.columnFormats)], [columnsKey]);
+  const allColumns = useMemo(() => [selectColumn, ...buildColumns(view.columnAggs, view.columnFormats, view.computedColumns, pivot)], [columnsKey]);
   return useTable({
     features,
     columns: allColumns,

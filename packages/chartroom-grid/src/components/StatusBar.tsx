@@ -6,7 +6,7 @@
  */
 
 import { aggregatedNumber } from '../grid/aggregations';
-import { formatValue } from '../grid/meta';
+import { formatValue, aggregateMeta } from '../grid/meta';
 import type { Applied, TreasuryTable } from '../grid/useTreasuryTable';
 import type { SourceDescription } from '../data/source';
 import { isGroupNode } from '../data/sqlSource';
@@ -50,7 +50,7 @@ export function StatusBar({
             const n = aggregatedNumber(c.getAggregationValue({ rows: selected }));
             return (
               <span key={c.id} data-measure={c.id}>
-                {meta.label} <span className="tabular-nums text-foreground">{n === undefined ? '—' : formatValue(n, meta)}</span>
+                {meta.label} <span className="tabular-nums text-foreground">{n === undefined ? '—' : formatValue(n, aggregateMeta(meta, c.columnDef.aggregationFn))}</span>
               </span>
             );
           })}

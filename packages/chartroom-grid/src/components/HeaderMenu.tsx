@@ -6,10 +6,10 @@
  */
 
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowDownUp, EllipsisVertical, EyeOff, Hash, Highlighter, PanelLeft, PanelRight, PinOff, Rows3, Sigma } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowDownUp, Columns3, EllipsisVertical, EyeOff, Hash, Highlighter, PanelLeft, PanelRight, PinOff, Rows3, Sigma, Trash2 } from 'lucide-react';
 import type { Column } from '@tanstack/react-table';
 import type { Position } from '../data/mock';
-import { COLUMN_META, allowedAggs, allowedFormatKeys } from '../grid/columns';
+import { COLUMN_META, allowedAggs, allowedFormatKeysFor } from '../grid/columns';
 import type { Features } from '../grid/features';
 import {
   AGG_LABELS, DECIMALS, NEGATIVES, NEGATIVE_LABELS, SCALES, SCALE_LABELS, type Agg, type ColumnFormat, type Negatives, type Scale,
@@ -26,7 +26,7 @@ import {
 export type GridColumn = Column<Features, Position, unknown>;
 
 export function HeaderMenu({
-  column, className, onAggChange, onFormatChange,
+  column, className, onAggChange, onFormatChange, onRemoveComputed, onPivot,
 }: {
   column: GridColumn;
   className?: string;
@@ -34,16 +34,21 @@ export function HeaderMenu({
   onAggChange?: (columnId: string, agg: Agg | null) => void;
   /** Change how a measure reads (ADR-74): a patch of format keys, or null to restore the meta's. */
   onFormatChange?: (columnId: string, patch: ColumnFormat | null) => void;
+  /** Drop a calculated column (ADR-79). */
+  onRemoveComputed?: (columnId: string) => void;
+  /** Pivot by this dimension, or stop (ADR-80). */
+  onPivot?: (columnId: string | null) => void;
 }) {
   const meta = column.columnDef.meta;
   const label = meta?.label ?? column.id;
   const sorted = column.getIsSorted();
   const pinned = column.getIsPinned();
-  const aggs = meta?.kind === 'measure' ? allowedAggs(column.id as keyof Position) : [];
+  // A calculated column's aggregation follows its operands (ADR-79): no choice to offer.
+  const aggs = meta?.kind === 'measure' && !meta.computed ? allowedAggs(column.id as keyof Position) : [];
   const currentAgg = typeof column.columnDef.aggregationFn === 'string' ? (column.columnDef.aggregationFn as Agg) : undefined;
-  const formatKeys = meta ? allowedFormatKeys(column.id as keyof Position) : [];
+  const formatKeys = allowedFormatKeysFor(meta);
   // The declared meta is the default; the column's meta is the view's reading.
-  const declared = COLUMN_META[column.id as keyof Position];
+  const declared = meta?.computed ? meta : COLUMN_META[column.id as keyof Position];
   const scale = meta?.scale ?? (meta?.unit === 'mm' ? 'm' : 'units');
   const dp = meta?.dp ?? (meta?.unit === 'pct' || meta?.unit === 'years' ? 2 : meta?.unit === 'bps' || scale !== 'units' ? 1 : 0);
   const formatted = !!declared && (['dp', 'scale', 'negatives', 'negativeRed', 'heatmap'] as const).some((k) => meta?.[k] !== declared[k]);
@@ -180,8 +185,20 @@ export function HeaderMenu({
           </>
         )}
         {column.getCanGroup() && (
-          <DropdownMenuItem onSelect={() => column.toggleGrouping()}>
-            <Rows3 /> {column.getIsGrouped() ? 'Ungroup' : `Group by ${label}`}
+          <>
+            {onPivot && (
+              <DropdownMenuItem onSelect={() => onPivot(column.id)} data-slot="pivot-by">
+                <Columns3 /> Pivot by {label}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onSelect={() => column.toggleGrouping()}>
+              <Rows3 /> {column.getIsGrouped() ? 'Ungroup' : `Group by ${label}`}
+            </DropdownMenuItem>
+          </>
+        )}
+        {meta?.computed && onRemoveComputed && (
+          <DropdownMenuItem onSelect={() => onRemoveComputed(column.id)} data-slot="remove-computed">
+            <Trash2 /> Remove calculated column
           </DropdownMenuItem>
         )}
         {column.getCanHide() && (

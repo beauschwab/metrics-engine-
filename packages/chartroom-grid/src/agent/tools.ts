@@ -11,8 +11,8 @@
  */
 
 import { aggregatedNumber } from '../grid/aggregations';
-import { COLUMN_META, COLUMN_ORDER, allowedAggs, allowedFormatKeys, effectiveAgg } from '../grid/columns';
-import { type ColumnFormat, formatValue, type ColumnMeta } from '../grid/meta';
+import { COLUMN_META, COLUMN_ORDER, allowedAggs, allowedFormatKeys } from '../grid/columns';
+import { type ColumnFormat, formatValue, type ColumnMeta, aggregateMeta } from '../grid/meta';
 import { VIEW_VERSION, safeParseView, type ViewState } from '../grid/viewState';
 import type { DataSource, SourceDescription } from '../data/source';
 import type { Position } from '../data/mock';
@@ -66,6 +66,8 @@ export const VIEW_CONTRACT: ViewContract = {
     columnPinning: '{ start: string[], end: string[] } — logical start/end, not left/right',
     columnSizing: '{ [columnId]: px }',
     columnAggs: '{ [measureId]: one of that column’s aggs } — overrides the meta’s aggregation for subtotals, totals and the SQL the source runs',
+    pivot: '{ column: groupable dimension id | null, values: measure ids ([] = every measure) } — the dimension across the top, one column per value per measure (ids p:<measure>:<value>), each aggregating as its measure does within the value; the pivoted measures follow under a Total band',
+    computedColumns: '[{ id: "c:<slug>", label, op: ratio|delta|sum|pct_change|scaled, of: [measureId, measureId?], k? }] — a reader\'s calculated column over registry measures (max 8, no calculated operands); ratio and pct_change read as a percent of the second operand, delta and sum keep a shared unit, scaled keeps the first\'s; a draft, never a metric (GOV-02)',
     columnFormats: '{ [measureId]: { dp?: 0–4, scale?: units|k|m|bn (dollar columns only), negatives?: minus|parens, negativeRed?, heatmap?, rules?: [{ op: >|>=|<|<=|=|!=, value, emphasis: accent|strong|muted }] (max 4, first match wins) } } — how the measure reads, never its unit (NUM-01); a rule emphasises, it never colours red or green',
   },
   notes: [
@@ -151,7 +153,7 @@ export async function queryView(
       else if (cell.getIsPlaceholder() || grouped) v = undefined;
       else v = cell.getValue();
       if (v !== undefined) values[id] = v;
-      if (display && meta && v !== undefined) shown[id] = formatValue(v, meta);
+      if (display && meta && v !== undefined) shown[id] = formatValue(v, cell.getIsAggregated() ? aggregateMeta(meta, cell.column.columnDef.aggregationFn) : meta);
     }
     const out: QueryRow = { id: row.id, depth: row.depth, kind: grouped ? 'group' : 'leaf', values };
     if (grouped) {
@@ -169,11 +171,11 @@ export async function queryView(
   if (display) totals.display = {};
   for (const c of table.getVisibleLeafColumns()) {
     const meta = c.columnDef.meta;
-    if (!meta || !effectiveAgg(c.id as keyof Position, view.columnAggs)) continue;
+    if (!meta || !c.columnDef.aggregationFn) continue;
     const n = aggregatedNumber(c.getAggregationValue());
     if (n === undefined) continue;
     totals.values[c.id] = n;
-    if (totals.display) totals.display[c.id] = formatValue(n, meta);
+    if (totals.display) totals.display[c.id] = formatValue(n, aggregateMeta(meta, c.columnDef.aggregationFn));
   }
 
   return {

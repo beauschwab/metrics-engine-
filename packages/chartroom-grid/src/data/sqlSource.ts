@@ -11,6 +11,9 @@
  * value, the count and the path a child query needs (lazy expansion).
  */
 
+import type { GroupNode } from './groupNode';
+export { isGroupNode, type GroupNode } from './groupNode';
+import { isPivotId } from '../grid/pivot';
 import { COLUMN_META, COLUMN_ORDER, effectiveAgg } from '../grid/columns';
 import type { ViewState } from '../grid/viewState';
 import { compileSql, DUCKDB, type SqlDialect } from './compileSql';
@@ -22,18 +25,7 @@ export interface SqlExecutor {
   run(sql: string, params: ReadonlyArray<string | number>): Promise<Array<Record<string, unknown>>>;
 }
 
-export interface GroupNode extends Position {
-  __group: {
-    column: keyof Position;
-    value: string;
-    /** The values of every grouping column down to this node, outermost first. */
-    path: string[];
-    depth: number;
-    count: number;
-  };
-}
 
-export const isGroupNode = (row: Position): row is GroupNode => '__group' in row;
 
 /** A group node's row id: stable across queries, distinct from any trade id. */
 export const groupNodeId = (path: string[]) => `g:${path.map(encodeURIComponent).join('/')}`;
@@ -84,8 +76,17 @@ export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${di
         serves,
       };
     },
+    async distinct(column: string): Promise<string[]> {
+      const q = dialect.quote;
+      if (!(column in COLUMN_META)) throw new RangeError(`sqlSource: unknown column ${JSON.stringify(column)}`);
+      const col = q(column);
+      const raw = await executor.run(`SELECT DISTINCT ${col} AS ${q('v')} FROM ${table.split('.').map(q).join('.')} WHERE ${col} IS NOT NULL ORDER BY ${col}`, []);
+      return raw.map((r) => String(r.v ?? '')).filter((v) => v !== '');
+    },
     async query(view: ViewState, { groupPath = [] }: QueryOptions = {}): Promise<QueryResult<Position>> {
-      const compiled = compileSql(view, { table, groupPath }, dialect);
+      // A pivot's buckets (ADR-80) need the dimension's values before the level compiles.
+      const pivotValues = view.pivot.column && view.grouping.length > groupPath.length ? await this.distinct!(view.pivot.column) : undefined;
+      const compiled = compileSql(view, { table, groupPath, pivotValues }, dialect);
       const raw = await executor.run(compiled.sql, compiled.params);
       if (compiled.shape === 'group') {
         const dim = compiled.groupColumn!;
@@ -96,6 +97,8 @@ export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${di
           for (const id of COLUMN_ORDER) {
             if (effectiveAgg(id, view.columnAggs)) (node as unknown as Record<string, unknown>)[id] = num(r[id]);
           }
+          // The bucketed aggregates travel on the node under their pivot ids, parts included.
+          for (const k of Object.keys(r)) if (isPivotId(k)) (node as unknown as Record<string, unknown>)[k] = num(r[k]);
           const path = [...groupPath, value];
           node.tradeId = groupNodeId(path);
           node.__group = { column: dim, value, path, depth: groupPath.length, count: num(r.__count) || 0 };

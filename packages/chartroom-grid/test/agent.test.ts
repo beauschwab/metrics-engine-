@@ -29,7 +29,7 @@ describe('describe_view', () => {
     expect(d.contract.columns.find((c) => c.id === 'dv01')!.aggs).not.toContain('wavg');
     expect(d.contract.columns.find((c) => c.id === 'desk')!.aggs).toEqual([]);
     expect(Object.keys(d.contract.slices).sort()).toEqual(
-      ['columnAggs', 'columnFilters', 'columnFormats', 'columnOrder', 'columnPinning', 'columnSizing', 'columnVisibility', 'expanded', 'globalFilter', 'grouping', 'pagination', 'sorting'],
+      ['columnAggs', 'columnFilters', 'columnFormats', 'columnOrder', 'columnPinning', 'columnSizing', 'columnVisibility', 'computedColumns', 'expanded', 'globalFilter', 'grouping', 'pagination', 'pivot', 'sorting'],
     );
     expect(VIEW_CONTRACT.notes.join(' ')).toMatch(/never a mean of means/);
   });

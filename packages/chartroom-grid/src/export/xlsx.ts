@@ -55,6 +55,8 @@ export interface ExportOptions {
   title?: string;
 }
 
+const isCount = (c: ExportColumn) => c.columnDef.aggregationFn === 'count' || c.columnDef.aggregationFn === 'uniqueCount';
+
 export function buildWorkbook(table: ExportTable, options: ExportOptions = {}): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'chartroom-grid';
@@ -63,7 +65,8 @@ export function buildWorkbook(table: ExportTable, options: ExportOptions = {}): 
   const columns = table.getVisibleLeafColumns().filter((c) => c.columnDef.meta);
   ws.columns = columns.map((c) => {
     const meta = c.columnDef.meta as ColumnMeta;
-    return { header: meta.label, key: c.id, width: Math.max(10, Math.round(c.getSize() / 7)) };
+    // A calculated column is a draft (ADR-79): the sheet says so.
+    return { header: meta.computed ? `${meta.label} (calculated)` : meta.label, key: c.id, width: Math.max(10, Math.round(c.getSize() / 7)) };
   });
   ws.getRow(1).font = { bold: true };
   for (const c of columns) {
@@ -85,6 +88,8 @@ export function buildWorkbook(table: ExportTable, options: ExportOptions = {}): 
     const added = ws.addRow(values);
     if (row.getIsGrouped()) {
       added.font = { bold: true };
+      // A count aggregate is a number of rows: it reads as a plain integer, not in the column's unit.
+      for (const c of columns) if (isCount(c)) added.getCell(c.id).numFmt = '#,##0';
       const groupCell = added.getCell(String(row.groupingColumnId));
       groupCell.alignment = { indent: row.depth };
     }
@@ -98,6 +103,7 @@ export function buildWorkbook(table: ExportTable, options: ExportOptions = {}): 
     if (meta.kind === 'measure' && c.columnDef.aggregationFn) total[c.id] = aggregatedNumber(c.getAggregationValue());
   }
   const totalRow = ws.addRow(total);
+  for (const c of columns) if (isCount(c)) totalRow.getCell(c.id).numFmt = '#,##0';
   // A reader's highlight rules travel as conditional formats over the data rows.
   for (const c of columns) {
     const rules = excelRules((c.columnDef.meta as ColumnMeta).rules);
