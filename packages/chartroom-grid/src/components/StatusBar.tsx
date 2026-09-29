@@ -11,13 +11,16 @@ import type { Applied, TreasuryTable } from '../grid/useTreasuryTable';
 import type { SourceDescription } from '../data/source';
 import { isGroupNode } from '../data/sqlSource';
 
-export function StatusBar({ table, about, applied }: { table: TreasuryTable; about: SourceDescription | null; applied?: Applied }) {
+export function StatusBar({
+  table, about, applied, pending = false,
+}: { table: TreasuryTable; about: SourceDescription | null; applied?: Applied; pending?: boolean }) {
   // With a source that serves a stage, the client model passes rows through:
   // the count shown is what the source answered, against its whole book.
   // When the engine grouped, the rows are nodes; the positions they stand
   // for are their counts, summed at the top level.
-  const filtered = applied?.group
-    ? table.getCoreRowModel().rows.reduce((n, r) => n + (isGroupNode(r.original) ? r.original.__group.count : 1), 0)
+  const core = table.getCoreRowModel().rows;
+  const filtered = core.some((r) => isGroupNode(r.original))
+    ? core.reduce((n, r) => n + (isGroupNode(r.original) ? r.original.__group.count : 1), 0)
     : table.getFilteredRowModel().rows.length;
   const total = applied ? (about?.rowCount ?? filtered) : table.getCoreRowModel().rows.length;
   // What the source *serves* is a capability of the source; what the last
@@ -32,7 +35,8 @@ export function StatusBar({ table, about, applied }: { table: TreasuryTable; abo
         {about ? <>{about.name}{about.asOf ? <> · as of {about.asOf}</> : null}</> : 'describing the source…'}
         {served.length > 0 && <span data-slot="status-served" className="ml-1 text-muted-foreground">· serves {served.join(', ')}</span>}
       </span>
-      <span data-slot="status-rows">
+      <span data-slot="status-rows" data-pending={pending || undefined}>
+        {pending && <span className="mr-1 text-muted-foreground">querying…</span>}
         <span className="tabular-nums text-foreground">{filtered.toLocaleString('en-US')}</span>
         {filtered !== total && <> of <span className="tabular-nums">{total.toLocaleString('en-US')}</span></>} rows
       </span>

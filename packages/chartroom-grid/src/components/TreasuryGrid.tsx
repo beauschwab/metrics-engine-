@@ -80,8 +80,17 @@ export function TreasuryGrid({
     g: serves?.group ? view.grouping : null,
   });
   const [rows, setRows] = useState<Position[] | null>(null);
-  const [applied, setApplied] = useState<Applied | undefined>(undefined);
+  const [pending, setPending] = useState(false);
   const [children, setChildren] = useState<ReadonlyMap<string, Position[]>>(() => new Map());
+  // The table's manual modes follow what the source *serves*, not what the
+  // last answer applied: between a served slice changing and the engine's
+  // answer, the client row models must not group or sort the stale rows
+  // themselves — the ids would be the client's, and the engine's nodes,
+  // when they land, would not match what a reader had just expanded.
+  const manual = useMemo<Applied | undefined>(
+    () => (serves && (serves.filter || serves.sort || serves.group) ? { filter: serves.filter, sort: serves.sort, group: serves.group } : undefined),
+    [serves],
+  );
   useEffect(() => {
     if (!about) return;
     // Children fetched under the previous grouping are stale the moment a
@@ -90,11 +99,12 @@ export function TreasuryGrid({
     // fetched under the new grouping (their paths are the same).
     setChildren((prev) => (prev.size ? new Map() : prev));
     let live = true;
+    setPending(true);
     const t = setTimeout(() => {
       void source.query(view).then((r) => {
         if (!live) return;
         setRows(r.rows);
-        setApplied(r.applied.filter || r.applied.sort || r.applied.group ? r.applied : undefined);
+        setPending(false);
       });
     }, rows === null ? 0 : 120);
     return () => { live = false; clearTimeout(t); };
@@ -113,7 +123,7 @@ export function TreasuryGrid({
     return attach(rows);
   }, [rows, children]);
 
-  const table = useTreasuryTable({ data, view, onViewChange: change, applied });
+  const table = useTreasuryTable({ data, view, onViewChange: change, applied: manual });
 
   // Lazy expansion: a node's children are asked for by its path, once.
   const onExpandGroup = useCallback((row: GridRow) => {
@@ -222,6 +232,7 @@ export function TreasuryGrid({
               ) : (
                 <GridTable
                   table={table}
+                  pending={pending}
                   density={density}
                   detailOpen={detailOpen}
                   onToggleDetail={toggleDetail}
@@ -233,7 +244,7 @@ export function TreasuryGrid({
           </RowContextMenu>
           {sidebarOpen && <ColumnsSidebar table={table} grouping={view.grouping} columnOrder={view.columnOrder} />}
         </div>
-        <StatusBar table={table} about={about} applied={applied} />
+        <StatusBar table={table} about={about} applied={manual} pending={pending} />
       </div>
       <DragOverlay dropAnimation={null}>
         {dragLabel ? <Badge variant="secondary" className="cursor-grabbing shadow-md">{dragLabel}</Badge> : null}

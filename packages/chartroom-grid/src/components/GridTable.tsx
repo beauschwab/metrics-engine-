@@ -52,6 +52,8 @@ export interface ContextTarget {
 
 export interface GridTableProps {
   table: TreasuryTable;
+  /** A served re-query is in flight: the rows shown are the previous answer's. */
+  pending?: boolean;
   density: Density;
   /** Leaf rows whose detail panel is open — transient, not part of the view. */
   detailOpen: ReadonlySet<string>;
@@ -77,7 +79,7 @@ function pinnedStyle(column: GridColumn): CSSProperties {
   };
 }
 
-export function GridTable({ table, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup }: GridTableProps) {
+export function GridTable({ table, pending = false, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup }: GridTableProps) {
   const rowHeight = ROW_HEIGHTS[density];
   const model = table.getRowModel().rows;
   const items = useMemo<DisplayItem[]>(() => {
@@ -127,6 +129,8 @@ export function GridTable({ table, density, detailOpen, onToggleDetail, onContex
       className="grid w-max min-w-full border-separate border-spacing-0 text-[11.5px] text-foreground"
       data-testid="treasury-grid"
       data-density={density}
+      data-pending={pending || undefined}
+      aria-busy={pending || undefined}
       onContextMenuCapture={(e) => {
         const cell = (e.target as HTMLElement).closest('td');
         const row = cell?.closest('tr');
@@ -142,7 +146,7 @@ export function GridTable({ table, density, detailOpen, onToggleDetail, onContex
           </TableRow>
         ))}
       </TableHeader>
-      <TableBody className="relative grid" style={{ height: virtualizer.getTotalSize() }}>
+      <TableBody className={cn('relative grid transition-opacity', pending && 'opacity-50')} style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((item) => {
           const entry = items[item.index]!;
           const row = entry.row;
