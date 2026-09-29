@@ -20,7 +20,10 @@ export function StatusBar({ table, about, applied }: { table: TreasuryTable; abo
     ? table.getCoreRowModel().rows.reduce((n, r) => n + (isGroupNode(r.original) ? r.original.__group.count : 1), 0)
     : table.getFilteredRowModel().rows.length;
   const total = applied ? (about?.rowCount ?? filtered) : table.getCoreRowModel().rows.length;
-  const served = applied ? (['filter', 'sort', 'group'] as const).filter((k) => applied[k]) : [];
+  // What the source *serves* is a capability of the source; what the last
+  // answer *applied* depends on the view (a leaf answer groups nothing).
+  // The bar names the capability.
+  const served = about?.serves ? (['filter', 'sort', 'group'] as const).filter((k) => about.serves[k]) : [];
   const selected = table.getSelectedRowModel().rows.filter((r) => !r.getIsGrouped());
   const measures = table.getVisibleLeafColumns().filter((c) => c.columnDef.meta?.kind === 'measure' && c.columnDef.meta.agg);
   return (
