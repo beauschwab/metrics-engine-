@@ -25,6 +25,7 @@
 
 import {
   aggregationFn_count, aggregationFn_max, aggregationFn_min, aggregationFn_sum,
+  cellSelectionFeature,
   columnFacetingFeature, columnFilteringFeature, columnGroupingFeature,
   columnOrderingFeature, columnPinningFeature, columnResizingFeature,
   columnSizingFeature, columnVisibilityFeature,
@@ -93,8 +94,10 @@ export const features = tableFeatures({
   },
 
   // Selection is transient — a reader's hand on the book, not part of the
-  // saved view — so its slice stays inside the table (ADR-68).
+  // saved view — so its slice stays inside the table (ADR-68). Cell ranges
+  // likewise: a block to copy, never a view (ADR-71).
   rowSelectionFeature,
+  cellSelectionFeature,
 
   columnVisibilityFeature,
   columnOrderingFeature,

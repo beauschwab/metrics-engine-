@@ -107,6 +107,8 @@ export function useTreasuryTable({ data, view, onViewChange, applied }: Treasury
     manualFiltering: applied?.filter ?? false,
     manualSorting: applied?.sort ?? false,
     manualGrouping: applied?.group ?? false,
+    // A block of cells can be selected anywhere but the selection column.
+    enableCellSelection: (cell) => cell.column.id !== SELECT_ID,
     getSubRows: (row) => (row as GridRowData).__children,
     // A client-made group expands when it has sub-rows (the default rule);
     // an engine-made node expands before its children have been fetched.
