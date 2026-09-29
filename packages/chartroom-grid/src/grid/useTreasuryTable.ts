@@ -108,7 +108,9 @@ export function useTreasuryTable({ data, view, onViewChange, applied }: Treasury
     manualSorting: applied?.sort ?? false,
     manualGrouping: applied?.group ?? false,
     getSubRows: (row) => (row as GridRowData).__children,
-    getRowCanExpand: (row) => isGroupNode(row.original),
+    // A client-made group expands when it has sub-rows (the default rule);
+    // an engine-made node expands before its children have been fetched.
+    getRowCanExpand: (row) => isGroupNode(row.original) || row.subRows.length > 0,
     state: {
       ...base,
       columnPinning: { start: [SELECT_ID, ...base.columnPinning.start], end: base.columnPinning.end },
