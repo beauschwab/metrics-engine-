@@ -154,6 +154,15 @@ test.describe('the treasury grid harness', () => {
     await page.getByRole('button', { name: 'Filter Product' }).click();
     const setFilter = page.locator('[data-slot="filter-popover"][data-column="product"]');
     await expect(setFilter.locator('[data-slot="set-filter-values"] li')).toHaveCount(6);
+    // The popover stays under its header when the pointer leaves the header
+    // for the popover itself; a hover-only trigger once let it snap to 0,0.
+    await setFilter.locator('[data-slot="set-filter-values"] li').last().hover();
+    await page.mouse.move(700, 600);
+    const anchor = (await grid.locator('th[data-column="product"]').boundingBox())!;
+    const box = (await setFilter.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(anchor.y + anchor.height - 2);
+    expect(box.y).toBeLessThan(anchor.y + anchor.height + 24);
+    expect(Math.abs(box.x - anchor.x)).toBeLessThan(anchor.width + 40);
     await setFilter.getByLabel('Search Product values').fill('Bond');
     await setFilter.getByRole('button', { name: 'Only shown' }).click();
     await page.keyboard.press('Escape');

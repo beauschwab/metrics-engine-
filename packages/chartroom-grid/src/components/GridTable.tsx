@@ -345,7 +345,10 @@ function HeaderCell({
             {column.getCanFilter() && (
               <FilterPopover
                 column={column}
-                className="hidden size-4 group-hover/th:inline-flex data-[active]:inline-flex"
+                // Opacity, not display: a trigger that leaves the layout when the
+                // pointer moves into the popover leaves the popover anchored to
+                // nothing, and it snaps to the viewport's corner.
+                className="size-4 opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100 data-[active]:opacity-100 data-[state=open]:opacity-100"
               />
             )}
             <HeaderMenu
