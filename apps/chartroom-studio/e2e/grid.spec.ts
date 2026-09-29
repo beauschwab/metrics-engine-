@@ -366,7 +366,8 @@ test.describe('the treasury grid harness', () => {
     const children = grid.locator('tbody tr[data-grouped][data-depth="1"]');
     await expect(children.first()).toBeVisible({ timeout: 30_000 });
     expect(await children.count()).toBeGreaterThan(5);
-    await expect(children.first().locator('td[data-column="currency"]')).toHaveText(/^[A-Z]{3} \(\d{1,3}(,\d{3})?\)$/);
+    // The value and the count are two spans; their texts join without a space.
+    await expect(children.first().locator('td[data-column="currency"]')).toHaveText(/^[A-Z]{3}\s?\(\d{1,3}(,\d{3})?\)$/);
     // Expanding a currency reaches the leaves, still filtered to CDS.
     await children.first().locator('[data-slot="group-toggle"]').click();
     const leaf = grid.locator('tbody tr[data-depth="2"]:not([data-grouped])').first();
