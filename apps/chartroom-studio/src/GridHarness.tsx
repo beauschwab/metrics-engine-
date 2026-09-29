@@ -4,10 +4,15 @@
  * surface: each phase of the grid lands here first, and the e2e suite reads
  * it so a cell that stops formatting from its meta is a red build.
  *
- * Fifty thousand positions behind an in-memory `DataSource`, a virtualized
- * body, and the count in the header read from `describe()` — the harness
- * knows nothing about the rows that the seam did not tell it. The columns
- * panel opens by default here so the review surface shows the whole shell.
+ * Fifty thousand positions, a virtualized body, and the count in the
+ * header read from `describe()` — the harness knows nothing about the rows
+ * that the seam did not tell it. The columns panel opens by default here so
+ * the review surface shows the whole shell.
+ *
+ * Two sources behind the same seam (ADR-70): `#/grid` holds the book in
+ * memory and the client does every stage; `#/grid?s=duckdb` loads the same
+ * book into DuckDB-WASM and the view compiles to SQL, filter, sort and
+ * grouping served by the engine and children fetched on expand.
  *
  * The view lives in the URL (ADR-69): `#/grid?v=…` is read on load and
  * written back on every change with `replaceState`, so a link is the state
@@ -18,11 +23,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  TreasuryGrid, defaultView, generatePositions, inMemorySource, localStorageViewStore,
+  TreasuryGrid, defaultView, duckdbSource, generatePositions, inMemorySource, localStorageViewStore,
   readViewFromHash, writeViewToHash, type SourceDescription, type ViewState, type ViewUpdate,
 } from 'chartroom-grid';
 
 const ROWS = 50_000;
+
+type SourceKind = 'memory' | 'duckdb';
+
+function sourceKind(): SourceKind {
+  const q = location.hash.indexOf('?');
+  return q >= 0 && new URLSearchParams(location.hash.slice(q + 1)).get('s') === 'duckdb' ? 'duckdb' : 'memory';
+}
 
 function initialView(): { view: ViewState; issues: string[] } {
   const read = readViewFromHash(location.hash);
@@ -31,12 +43,34 @@ function initialView(): { view: ViewState; issues: string[] } {
 }
 
 export function GridHarness() {
-  const source = useMemo(() => inMemorySource(generatePositions(ROWS), 'seeded book'), []);
+  const [kind, setKind] = useState<SourceKind>(sourceKind);
+  const book = useMemo(() => generatePositions(ROWS), []);
+  const source = useMemo(
+    () => (kind === 'duckdb' ? duckdbSource(book, 'DuckDB-WASM') : inMemorySource(book, 'seeded book')),
+    [book, kind],
+  );
   const store = useMemo(() => localStorageViewStore(), []);
   const [about, setAbout] = useState<SourceDescription | null>(null);
-  useEffect(() => { void source.describe().then(setAbout); }, [source]);
+  useEffect(() => {
+    let live = true;
+    setAbout(null);
+    void source.describe().then((d) => { if (live) setAbout(d); });
+    return () => { live = false; };
+  }, [source]);
 
   const [{ view, issues }, setState] = useState(initialView);
+  // A hash change that reaches this route with a different (or no) view is
+  // a navigation, not an edit: `#/grid` after `#/grid?v=…` means the default
+  // view. `replaceState` writes below fire no hashchange, so this never loops.
+  useEffect(() => {
+    const onHash = () => {
+      setKind(sourceKind());
+      const next = initialView();
+      setState((prev) => (JSON.stringify(prev.view) === JSON.stringify(next.view) && next.issues.length === 0 ? prev : next));
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   const onViewChange = useCallback((update: ViewUpdate) => {
     setState((prev) => {
       const next = update(prev.view);
@@ -46,13 +80,16 @@ export function GridHarness() {
   }, []);
 
   return (
-    <div className="flex h-screen flex-col" data-testid="grid-harness">
+    <div className="flex h-screen flex-col" data-testid="grid-harness" data-source={kind}>
       <header className="cr-header">
         <span className="cr-brand">Chartroom</span>
         <span className="cr-header-title" data-testid="grid-harness-title">
-          treasury grid — phase 4, {about ? `${about.rowCount.toLocaleString('en-US')} positions as of ${about.asOf}` : 'describing the source…'}
+          treasury grid — phase 5, {about ? `${about.rowCount.toLocaleString('en-US')} positions as of ${about.asOf} · ${about.name}` : kind === 'duckdb' ? 'loading DuckDB-WASM…' : 'describing the source…'}
         </span>
         <span className="cr-header-spacer" />
+        <a className="cr-link" href={kind === 'duckdb' ? '#/grid' : '#/grid?s=duckdb'} data-testid="grid-source-switch">
+          {kind === 'duckdb' ? 'in-memory source' : 'DuckDB-WASM source'}
+        </a>
         <a className="cr-link" href="#/widgets">widget states</a>
         <a className="cr-link" href="#/">back to the studio</a>
       </header>

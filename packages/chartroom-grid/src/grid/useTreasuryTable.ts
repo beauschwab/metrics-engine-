@@ -17,28 +17,45 @@ import { features, type Features } from './features';
 import { SELECT_ID, columns, selectColumn } from './columns';
 import { toTableState, type ViewSlice, type ViewState } from './viewState';
 import type { Position } from '../data/mock';
+import { isGroupNode } from '../data/sqlSource';
 
 export type TreasuryTable = ReactTable<Features, Position>;
+
+/** A row the shell hands the table: a position, or a group node with the children it has loaded. */
+export type GridRowData = Position & { __children?: GridRowData[] };
+
+/** What the source already applied — the table's `manual*` modes follow it (ADR-70). */
+export interface Applied {
+  filter: boolean;
+  sort: boolean;
+  group: boolean;
+}
 
 /** A functional update on the view, the shape React's own setter takes. */
 export type ViewUpdate = (prev: ViewState) => ViewState;
 
 export interface TreasuryTableOptions {
   /** The rows the source answered with; null while it has not. */
-  data: Position[] | null;
+  data: GridRowData[] | null;
   view: ViewState;
   onViewChange: (update: ViewUpdate) => void;
+  /**
+   * The stages the source served. A served stage becomes a `manual*` mode:
+   * the client row model passes rows through instead of doing the work
+   * twice. Omit for a source that serves nothing.
+   */
+  applied?: Applied;
 }
 
 /** The module-level empty array v9 asks for: a fresh `[]` per render would rerun every row model. */
-const NO_ROWS: Position[] = [];
+const NO_ROWS: GridRowData[] = [];
 
 /** The selection column first, then every data column. One stable array. */
 const allColumns = [selectColumn, ...columns];
 
 const withoutSelect = (ids: string[]) => ids.filter((id) => id !== SELECT_ID);
 
-export function useTreasuryTable({ data, view, onViewChange }: TreasuryTableOptions): TreasuryTable {
+export function useTreasuryTable({ data, view, onViewChange, applied }: TreasuryTableOptions): TreasuryTable {
   const handlers = useMemo(() => {
     const slice =
       <K extends ViewSlice>(key: K): OnChangeFn<ViewState[K]> =>
@@ -83,6 +100,15 @@ export function useTreasuryTable({ data, view, onViewChange }: TreasuryTableOpti
     // Resizing writes the view on every pointer move; the body reads
     // `column.getSize()` per visible cell, which is a window, not the book.
     columnResizeMode: 'onChange',
+    // A stage the source served is not done again here (ADR-70). Grouping
+    // served remotely arrives as group nodes whose children load on expand:
+    // the sub-rows are what the shell attached, and a node can expand
+    // before its children have arrived.
+    manualFiltering: applied?.filter ?? false,
+    manualSorting: applied?.sort ?? false,
+    manualGrouping: applied?.group ?? false,
+    getSubRows: (row) => (row as GridRowData).__children,
+    getRowCanExpand: (row) => isGroupNode(row.original),
     state: {
       ...base,
       columnPinning: { start: [SELECT_ID, ...base.columnPinning.start], end: base.columnPinning.end },

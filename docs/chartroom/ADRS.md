@@ -1585,12 +1585,11 @@ reading of the same declaration) and a fixed row height that is never
 measured. A treasury grid is a lattice, not a feed; a measured row is a
 scrollbar that jumps.
 
-**What Phase 1 leaves honest.** The grid queries the source once per
-source: the in-memory source serves no stage of the view, so a sort needs
-no second answer. When a source reports that it serves one, the query must
-key on that slice of the view too — the `TODO(grid-phase-5)` at the
-effect. The e2e drives no interaction yet; the contract is exercised
-headlessly, and the screen is exercised at rest.
+**What Phase 1 left honest.** The grid queried the source once per
+source, since the in-memory source serves no stage of the view; Phase 5
+keys the query on the slices a source reports it serves (ADR-70). The
+Phase 1 e2e drove no interaction; the contract was exercised headlessly
+and the screen at rest, and the later phases drive it.
 
 **What now fails if this regresses.** `the view state contract` refuses
 another version, an unknown key, an unknown column and an ungroupable
@@ -1827,6 +1826,87 @@ writes nothing for the default and refuses what does not parse. The
 studio's `grid.spec.ts` loads a grouped view from a link, watches the
 hash follow a change, reloads into the same view, saves a view and loads
 it back, and shows the refusal for a link that does not parse.
+
+## ADR-70 — the view compiles to SQL behind the seam, and the table does not redo what the engine did
+
+**Pinned:** the grid plan's Phase 5 — `compileSql`, lazy group expansion,
+`manual*` modes, DuckDB-WASM and Dremio — and its third principle, that no
+SQL crosses a trust boundary. The seam was built in Phase 1 (ADR-66) so
+this phase would swap an implementation, not an architecture; it did.
+
+**Decision.**
+
+*The view compiles; identifiers come from meta and values never enter the
+text.* `data/compileSql.ts` is pure: a view, a table and a dialect in, a
+statement and its parameters out. A column id the meta does not know
+throws before a byte of SQL exists; a table name is validated as an
+identifier path; a value is a positional parameter, or — for Dremio's REST
+API, which takes none — an escaped literal from one function, and the
+Dremio executor refuses a statement that arrives with parameters, so the
+one injection path this package could have is closed at compile time. The
+quick filter binds once per column it is matched against, because a
+positional placeholder binds once and a needle reused across fifteen
+columns leaves fourteen of them null — the test that caught it stays.
+
+*Two shapes, one WHERE.* A leaf statement selects positions, filtered,
+sorted, windowed. A group statement, asked when the view groups deeper
+than the `groupPath` given, aggregates the next level: the dimension, a
+count, each measure by its meta's `agg` — `wavg` as SUM(x·w) / SUM(w),
+the client's decomposition (ADR-67) in the engine's words, with the parts
+alongside. Both take the view's set and range filters, the quick filter
+and the path's dimensions. The tests run the compiled statements through
+Node's own SQLite and hold the answers equal to the in-memory path:
+filtered and sorted leaves in the same order, subtotals at every level
+equal to brute force and to the client's aggregation.
+
+*A group the source made is a row the columns can read.* `sqlSource`
+returns Position-shaped nodes — the grouped dimension filled, the others
+blank, every measure holding its aggregate — with `__group` carrying the
+level, the value, the count and the path a child query needs. The shell
+attaches fetched children as sub-rows, the hook's `getSubRows` reads them,
+and a node can expand before its children arrive; the same cell renderer
+draws a source group and a client group alike, and the footer's
+`getAggregationValue()` over group nodes still gives the right weighted
+average, since Σ(avg·W)/ΣW over groups is Σ(x·w)/Σw over leaves. Row ids
+for source groups (`g:Credit/EUR`) differ from the client's, so a saved
+`expanded` slice does not transfer between sources — recorded, not hidden.
+
+*`manual*` follows `applied`, not configuration.* The source's answer says
+what it applied; the hook sets `manualFiltering`, `manualSorting` and
+`manualGrouping` from that, so the client row models pass through what
+the engine already did rather than doing it twice, and the shell
+re-queries only when a slice the source *serves* changes — debounced,
+since a resize handle moves the view many times a second. The in-memory
+source serves nothing and the grid behaves as it did.
+
+*Two engines, one executor interface.* DuckDB-WASM in the browser: the
+book loaded into a table in a worker, the module and worker shipped as
+assets and loaded only when a reader picks that source; parameters bound
+through prepared statements; Arrow's BigInt counts read back as numbers.
+Dremio over its REST SQL API: submit, poll the job, page the results, the
+transport injected so a test can be it. Arrow Flight is the faster wire
+and a gRPC client, which a browser cannot be — the Flight path is a
+server-side executor (the API's Python agent already speaks it) behind the
+same `SqlExecutor`, and is not in this package.
+
+**What stays honest.** Pagination is still carried and not driven: a leaf
+answer from the engine is every matching row, which is the right answer
+for a fifty-thousand-row book and the wrong one for fifty million, where
+`limit`/`offset` in `compileSql` — already there — meet `manualPagination`
+next. The DuckDB path loads the book from JSON on first use, seconds of
+work the studio harness shows as a loading title; a real deployment
+registers a Parquet file or a remote table instead.
+
+**What now fails if this regresses.** `compileSql` pins the leaf statement
+and its parameters, the group statement with `wavg` decomposed and the
+path scoping, the refusals, and the dialect difference; `the SQL source
+answers as the in-memory path does` runs through SQLite and holds leaves
+and subtotals equal; `the Dremio executor` submits with the token, polls,
+pages, refuses parameters and names a failed job, and as a source sends
+the compiled dialect with literals inlined. The studio's `grid.spec.ts`
+loads the DuckDB source, sees the status bar say what it serves, sorts and
+filters through the engine, groups a level at a time and expands to
+children and then to leaves still filtered.
 
 # Proposed — recorded gaps, not yet accepted
 

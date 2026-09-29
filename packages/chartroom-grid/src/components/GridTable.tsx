@@ -34,7 +34,8 @@ import { cn } from '../lib/utils';
 import { ValueCell } from './CellRenderers';
 import { DetailPanel } from './DetailPanel';
 import { FilterPopover } from './FilterPopover';
-import { GroupCell, INDENT_PX, type GridRow } from './GroupCell';
+import { isGroupNode } from '../data/sqlSource';
+import { GroupCell, INDENT_PX, ServerGroupCell, type GridRow } from './GroupCell';
 import { HeaderMenu } from './HeaderMenu';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from './ui/table';
 
@@ -57,6 +58,8 @@ export interface GridTableProps {
   onToggleDetail: (rowId: string) => void;
   /** The cell under a right-click, for the context menu the shell renders. */
   onContextTarget: (target: ContextTarget | null) => void;
+  /** A group the source made asks the shell for its children before it expands (ADR-70). */
+  onExpandGroup: (row: GridRow) => void;
 }
 
 type GridColumn = Column<Features, Position, unknown>;
@@ -74,14 +77,14 @@ function pinnedStyle(column: GridColumn): CSSProperties {
   };
 }
 
-export function GridTable({ table, density, detailOpen, onToggleDetail, onContextTarget }: GridTableProps) {
+export function GridTable({ table, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup }: GridTableProps) {
   const rowHeight = ROW_HEIGHTS[density];
   const model = table.getRowModel().rows;
   const items = useMemo<DisplayItem[]>(() => {
     const out: DisplayItem[] = [];
     for (const row of model) {
       out.push({ kind: 'row', row });
-      if (!row.getIsGrouped() && detailOpen.has(row.id)) out.push({ kind: 'detail', row });
+      if (!row.getIsGrouped() && !isGroupNode(row.original) && detailOpen.has(row.id)) out.push({ kind: 'detail', row });
     }
     return out;
   }, [model, detailOpen]);
@@ -105,7 +108,12 @@ export function GridTable({ table, density, detailOpen, onToggleDetail, onContex
     // eslint-disable-next-line react-hooks/exhaustive-deps -- facets follow the filtered model
   }, [table, model]);
 
-  const filtered = table.getFilteredRowModel().rows.length;
+  // The positions the footer totals: when the engine grouped, the rows are
+  // nodes and the positions are their counts (ADR-70).
+  const coreRows = table.getCoreRowModel().rows;
+  const filtered = coreRows.some((r) => isGroupNode(r.original))
+    ? coreRows.reduce((n, r) => n + (isGroupNode(r.original) ? r.original.__group.count : 1), 0)
+    : table.getFilteredRowModel().rows.length;
   const visible = table.getVisibleLeafColumns();
   const sortCount = visible.filter((c) => c.getIsSorted()).length;
   // The first data column carries the tree indent and the footer's label,
@@ -153,7 +161,7 @@ export function GridTable({ table, density, detailOpen, onToggleDetail, onContex
               </TableRow>
             );
           }
-          const grouped = row.getIsGrouped();
+          const grouped = row.getIsGrouped() || isGroupNode(row.original);
           const selected = row.getIsSelected();
           return (
             <TableRow
@@ -179,6 +187,7 @@ export function GridTable({ table, density, detailOpen, onToggleDetail, onContex
                   heat={heat}
                   detailOpen={detailOpen.has(row.id)}
                   onToggleDetail={onToggleDetail}
+                  onExpandGroup={onExpandGroup}
                 />
               ))}
             </TableRow>
@@ -337,7 +346,7 @@ function SelectAll({ table }: { table: TreasuryTable }) {
 }
 
 function BodyCell({
-  cell, table, first, heat, detailOpen, onToggleDetail,
+  cell, table, first, heat, detailOpen, onToggleDetail, onExpandGroup,
 }: {
   cell: Cell<Features, Position, unknown>;
   table: TreasuryTable;
@@ -345,11 +354,13 @@ function BodyCell({
   heat: Map<string, [number, number] | undefined>;
   detailOpen: boolean;
   onToggleDetail: (rowId: string) => void;
+  onExpandGroup: (row: GridRow) => void;
 }) {
   const column = cell.column;
   const meta = column.columnDef.meta;
   const row = cell.row;
-  const grouped = row.getIsGrouped();
+  const node = isGroupNode(row.original) ? row.original : null;
+  const grouped = row.getIsGrouped() || node !== null;
 
   if (column.id === SELECT_ID) {
     return (
@@ -391,6 +402,19 @@ function BodyCell({
   if (cell.getIsGrouped()) {
     kind = 'group';
     content = <GroupCell row={row} />;
+  } else if (node && column.id === node.__group.column) {
+    kind = 'group';
+    content = <ServerGroupCell row={row} node={node} onToggle={onExpandGroup} />;
+  } else if (node) {
+    // A group the source made: measures hold their aggregates, the other
+    // dimensions are blank — the same reading as a client group (ADR-67).
+    const v = cell.getValue();
+    if (meta?.kind === 'measure' && meta.agg && typeof v === 'number' && Number.isFinite(v)) {
+      kind = 'aggregated';
+      content = <ValueCell value={v} meta={meta} />;
+    } else {
+      kind = 'placeholder';
+    }
   } else if (cell.getIsAggregated()) {
     kind = 'aggregated';
     const n = aggregatedNumber(cell.getValue());

@@ -43,16 +43,20 @@ export { excelFormat } from './export/formats';
 export { buildWorkbook, workbookBytes, type ExportOptions } from './export/xlsx';
 export { GroupByDropZone } from './components/GroupByDropZone';
 export { ColumnsSidebar } from './components/ColumnsSidebar';
-export { GroupCell, leafCount } from './components/GroupCell';
+export { GroupCell, ServerGroupCell, leafCount } from './components/GroupCell';
 export { wavg, Wavg, weightedAverage, aggregatedNumber, type WavgParts } from './grid/aggregations';
 export { cn } from './lib/utils';
-export { useTreasuryTable, type TreasuryTable, type TreasuryTableOptions, type ViewUpdate } from './grid/useTreasuryTable';
+export { useTreasuryTable, type TreasuryTable, type TreasuryTableOptions, type ViewUpdate, type Applied, type GridRowData } from './grid/useTreasuryTable';
 export {
   ViewStateSchema, VIEW_VERSION, defaultView, parseView, safeParseView, toTableState,
   type ViewState, type ViewSlice,
 } from './grid/viewState';
 export type { DataSource, SourceDescription, SourceColumn, QueryOptions, QueryResult } from './data/source';
 export { inMemorySource } from './data/inMemorySource';
+export { compileSql, DUCKDB, SQLITE, DREMIO, type SqlDialect, type CompiledSql, type CompileOptions } from './data/compileSql';
+export { sqlSource, isGroupNode, groupNodeId, type SqlExecutor, type GroupNode, type SqlSourceOptions } from './data/sqlSource';
+export { duckdbSource, createDuckDbExecutor, DUCKDB_TABLE, type DuckDbExecutor } from './data/duckdbSource';
+export { dremioSource, createDremioExecutor, type DremioOptions } from './data/dremioSource';
 export { features, type Features } from './grid/features';
 export { columns, selectColumn, SELECT_ID, COLUMN_META, COLUMN_ORDER } from './grid/columns';
 export { formatValue, alignOf, MISSING, type ColumnMeta, type Unit, type Agg } from './grid/meta';

@@ -322,4 +322,56 @@ test.describe('the treasury grid harness', () => {
     await expect(page.getByTestId('grid-link-refused')).toContainText('not groupable: tradeId');
     await expect(grid.locator('tbody tr').first().locator('td[data-column="tradeId"]')).toHaveText('T000001');
   });
+
+  test('serves the same book from DuckDB-WASM: filter, sort and grouping compiled to SQL, children fetched on expand', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.goto('/#/grid?s=duckdb');
+    const grid = page.getByTestId('treasury-grid');
+    const status = page.getByTestId('status-bar');
+    // The engine and the book arrive as assets; give them time.
+    await expect(page.getByTestId('grid-harness-title')).toHaveText(/50,000 positions as of 2026-09-28 · DuckDB-WASM/, { timeout: 120_000 });
+    await expect(grid.locator('tbody tr').first()).toBeVisible({ timeout: 60_000 });
+    await expect(status.locator('[data-slot="status-served"]')).toHaveText(/serves filter, sort, group/);
+    await expect(grid.locator('tbody tr').first().locator('td[data-column="tradeId"]')).toHaveText('T000001');
+
+    // A sort is served: the engine orders, the client passes rows through.
+    await grid.locator('th[data-column="notional"] [data-slot="column-header"]').click();
+    await expect(grid.locator('th[data-column="notional"]')).toHaveAttribute('aria-sort', 'descending');
+    await expect(grid.locator('tbody tr').first().locator('td[data-column="notional"]')).toHaveText(/^\$[45]\d{3}\.\dM$/, { timeout: 30_000 });
+
+    // A set filter is served: the status counts what the engine answered against the whole book.
+    await grid.locator('th[data-column="product"]').hover();
+    await page.getByRole('button', { name: 'Filter Product' }).click();
+    const setFilter = page.locator('[data-slot="filter-popover"][data-column="product"]');
+    await setFilter.getByLabel('Search Product values').fill('CDS');
+    await setFilter.getByRole('button', { name: 'Only shown' }).click();
+    await page.keyboard.press('Escape');
+    await expect(status.locator('[data-slot="status-rows"]')).toHaveText(/^[\d,]+ of 50,000 rows$/, { timeout: 30_000 });
+    await expect(grid.locator('tbody tr').first().locator('td[data-column="product"]')).toHaveText('CDS');
+
+    // Grouping is served a level at a time: five desk nodes with subtotals,
+    // and a node's children fetched by its path when it expands.
+    await page.getByTestId('columns-sidebar').getByRole('button', { name: 'Group by Desk' }).click();
+    const groups = grid.locator('tbody tr[data-grouped]');
+    await expect(groups).toHaveCount(5, { timeout: 30_000 });
+    const first = groups.first();
+    await expect(first.locator('td[data-column="desk"]')).toHaveText(/\(\d{1,2},\d{3}\)$|\(\d{3}\)$/);
+    await expect(first.locator('td[data-column="notional"]')).toHaveText(/^\$[\d,]+\.\dM$/);
+    await expect(first.locator('td[data-column="yield"]')).toHaveText(/^\d+\.\d\d%$/);
+    await expect(first.locator('td[data-column="counterparty"]')).toHaveText('');
+    await page.getByTestId('columns-sidebar').getByRole('button', { name: 'Group by Ccy' }).click();
+    await expect(page.locator('[data-slot="group-chip"]')).toHaveCount(2);
+    await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(5, { timeout: 30_000 });
+    await grid.locator('tbody tr[data-grouped]').first().locator('[data-slot="group-toggle"]').click();
+    const children = grid.locator('tbody tr[data-grouped][data-depth="1"]');
+    await expect(children.first()).toBeVisible({ timeout: 30_000 });
+    expect(await children.count()).toBeGreaterThan(5);
+    await expect(children.first().locator('td[data-column="currency"]')).toHaveText(/^[A-Z]{3} \(\d{1,3}(,\d{3})?\)$/);
+    // Expanding a currency reaches the leaves, still filtered to CDS.
+    await children.first().locator('[data-slot="group-toggle"]').click();
+    const leaf = grid.locator('tbody tr[data-depth="2"]:not([data-grouped])').first();
+    await expect(leaf).toBeVisible({ timeout: 30_000 });
+    await expect(leaf.locator('td[data-column="product"]')).toHaveText('CDS');
+    await expect(leaf.locator('td[data-column="tradeId"]')).toHaveText(/^T\d{6}$/);
+  });
 });

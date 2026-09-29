@@ -12,7 +12,7 @@
  * density, the cell under the pointer (ADR-68).
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, pointerWithin,
   useSensor, useSensors, type CollisionDetection, type DragEndEvent, type DragStartEvent,
@@ -20,7 +20,9 @@ import {
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { Position } from '../data/mock';
 import type { DataSource, SourceDescription } from '../data/source';
-import { useTreasuryTable, type ViewUpdate } from '../grid/useTreasuryTable';
+import { isGroupNode } from '../data/sqlSource';
+import { useTreasuryTable, type Applied, type GridRowData, type ViewUpdate } from '../grid/useTreasuryTable';
+import type { GridRow } from './GroupCell';
 import { defaultView, type ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
 import { ColumnsSidebar, SIDE_PREFIX, orderedLeafColumns } from './ColumnsSidebar';
@@ -58,23 +60,72 @@ export function TreasuryGrid({
   const view = controlled ?? ownView;
   const change = onViewChange ?? setOwnView;
 
-  // The rows are asked for once per source. The in-memory source serves no
-  // stage of the view, so a sort or a filter is the client's and needs no
-  // second answer; when a source reports it serves one, the query must key
-  // on that slice of the view too — TODO(grid-phase-5).
-  const [rows, setRows] = useState<Position[] | null>(null);
+  // The source describes itself once; the rows are asked for again only
+  // when a slice the source *serves* changes (ADR-70). The in-memory source
+  // serves nothing, so a sort or a filter is the client's and needs no
+  // second answer; DuckDB or Dremio serve filter, sort and grouping, so
+  // those slices re-query — debounced, since a resize handle or a keystroke
+  // can move the view many times a second.
   const [about, setAbout] = useState<SourceDescription | null>(null);
   useEffect(() => {
     let live = true;
-    setRows(null);
     setAbout(null);
     void source.describe().then((d) => { if (live) setAbout(d); });
-    void source.query(view).then((r) => { if (live) setRows(r.rows); });
     return () => { live = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- see the note above
   }, [source]);
+  const serves = about?.serves;
+  const servedKey = JSON.stringify({
+    f: serves?.filter ? [view.columnFilters, view.globalFilter] : null,
+    s: serves?.sort ? view.sorting : null,
+    g: serves?.group ? view.grouping : null,
+  });
+  const [rows, setRows] = useState<Position[] | null>(null);
+  const [applied, setApplied] = useState<Applied | undefined>(undefined);
+  const [children, setChildren] = useState<ReadonlyMap<string, Position[]>>(() => new Map());
+  useEffect(() => {
+    if (!about) return;
+    let live = true;
+    const t = setTimeout(() => {
+      void source.query(view).then((r) => {
+        if (!live) return;
+        setRows(r.rows);
+        setApplied(r.applied.filter || r.applied.sort || r.applied.group ? r.applied : undefined);
+        setChildren(new Map());
+      });
+    }, rows === null ? 0 : 120);
+    return () => { live = false; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the served slices, by design
+  }, [source, about, servedKey]);
 
-  const table = useTreasuryTable({ data: rows, view, onViewChange: change });
+  // Group nodes the source made carry the children the shell has fetched.
+  const data = useMemo<GridRowData[] | null>(() => {
+    if (!rows) return null;
+    if (children.size === 0) return rows;
+    const attach = (list: Position[]): GridRowData[] =>
+      list.map((row) => {
+        const kids = isGroupNode(row) ? children.get(row.tradeId) : undefined;
+        return kids ? { ...row, __children: attach(kids) } : row;
+      });
+    return attach(rows);
+  }, [rows, children]);
+
+  const table = useTreasuryTable({ data, view, onViewChange: change, applied });
+
+  // Lazy expansion: a node's children are asked for by its path, once.
+  const onExpandGroup = useCallback((row: GridRow) => {
+    const node = row.original;
+    if (isGroupNode(node) && !children.has(node.tradeId)) {
+      void source.query(view, { groupPath: node.__group.path }).then((r) => {
+        setChildren((prev) => {
+          if (prev.has(node.tradeId)) return prev;
+          const next = new Map(prev);
+          next.set(node.tradeId, r.rows);
+          return next;
+        });
+      });
+    }
+    row.toggleExpanded();
+  }, [source, view, children]);
   const [sidebarOpen, setSidebarOpen] = useState(defaultSidebarOpen);
   const [density, setDensity] = useState<Density>(defaultDensity);
   const [detailOpen, setDetailOpen] = useState<ReadonlySet<string>>(() => new Set());
@@ -171,13 +222,14 @@ export function TreasuryGrid({
                   detailOpen={detailOpen}
                   onToggleDetail={toggleDetail}
                   onContextTarget={setContextTarget}
+                  onExpandGroup={onExpandGroup}
                 />
               )}
             </div>
           </RowContextMenu>
           {sidebarOpen && <ColumnsSidebar table={table} grouping={view.grouping} columnOrder={view.columnOrder} />}
         </div>
-        <StatusBar table={table} about={about} />
+        <StatusBar table={table} about={about} applied={applied} />
       </div>
       <DragOverlay dropAnimation={null}>
         {dragLabel ? <Badge variant="secondary" className="cursor-grabbing shadow-md">{dragLabel}</Badge> : null}
