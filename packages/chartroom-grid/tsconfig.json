@@ -4,5 +4,5 @@
     "types": ["node"],
     "allowImportingTsExtensions": false
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "mcp.ts"]
 }

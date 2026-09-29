@@ -24,6 +24,15 @@ export { DetailPanel } from './components/DetailPanel';
 export { RowContextMenu } from './components/RowContextMenu';
 export { StatusBar } from './components/StatusBar';
 export { GridToolbar } from './components/GridToolbar';
+export { ViewsMenu } from './components/ViewsMenu';
+export { headlessTable, headlessFeatures, type HeadlessTable, type HeadlessFeatures } from './agent/headless';
+export {
+  describeView, queryView, setView, VIEW_CONTRACT,
+  type DescribeResult, type QueryViewOptions, type QueryViewResult, type QueryRow, type SetViewResult, type ViewContract, type ContractColumn,
+} from './agent/tools';
+export { buildGridServer, GRID_MCP_NAME, GRID_MCP_VERSION, GRID_MCP_INSTRUCTIONS, type GridServerOptions } from './agent/server';
+export { memoryViewStore, storageViewStore, localStorageViewStore, VIEW_STORE_KEY, type SavedView, type ViewStore, type StorageViewStore, type KeyValueStorage } from './views/store';
+export { viewToParam, viewFromParam, readViewFromHash, writeViewToHash, VIEW_PARAM, type ViewFromParam } from './views/url';
 export * from './components/ui/dropdown-menu';
 export * from './components/ui/context-menu';
 export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from './components/ui/popover';

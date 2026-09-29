@@ -56,7 +56,8 @@ export function App() {
     return () => window.removeEventListener('hashchange', on);
   }, []);
   if (route === '#/widgets') return <Harness />;
-  if (route === '#/grid') return <GridHarness />;
+  // `#/grid?v=…` carries a view (ADR-69); the harness reads the query itself.
+  if (route === '#/grid' || route.startsWith('#/grid?')) return <GridHarness />;
   if (route === '#/proposals') return <ProposalsPage />;
   const view = /^#\/view\/([a-z][a-z0-9-]*)$/.exec(route);
   if (view) return <ViewPage id={view[1]} />;

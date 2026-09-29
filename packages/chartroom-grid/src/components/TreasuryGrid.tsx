@@ -22,6 +22,7 @@ import type { Position } from '../data/mock';
 import type { DataSource, SourceDescription } from '../data/source';
 import { useTreasuryTable, type ViewUpdate } from '../grid/useTreasuryTable';
 import { defaultView, type ViewState } from '../grid/viewState';
+import type { ViewStore } from '../views/store';
 import { ColumnsSidebar, SIDE_PREFIX, orderedLeafColumns } from './ColumnsSidebar';
 import { GridTable, COLUMN_PREFIX, type ContextTarget, type Density } from './GridTable';
 import { GridToolbar } from './GridToolbar';
@@ -39,6 +40,8 @@ export interface TreasuryGridProps {
   onViewChange?: (update: ViewUpdate) => void;
   defaultSidebarOpen?: boolean;
   defaultDensity?: Density;
+  /** Where saved views live; null hides saving but keeps reset and the link. */
+  viewStore?: ViewStore | null;
 }
 
 const idOf = (dnd: string) => dnd.slice(dnd.indexOf(':') + 1);
@@ -49,7 +52,7 @@ const collision: CollisionDetection = (args) =>
   String(args.active.id).startsWith(COLUMN_PREFIX) ? pointerWithin(args) : closestCenter(args);
 
 export function TreasuryGrid({
-  source, view: controlled, onViewChange, defaultSidebarOpen = false, defaultDensity = 'compact',
+  source, view: controlled, onViewChange, defaultSidebarOpen = false, defaultDensity = 'compact', viewStore = null,
 }: TreasuryGridProps) {
   const [ownView, setOwnView] = useState<ViewState>(defaultView);
   const view = controlled ?? ownView;
@@ -145,6 +148,8 @@ export function TreasuryGrid({
         <GridToolbar
           table={table}
           view={view}
+          viewStore={viewStore}
+          onLoadView={(next) => change(() => next)}
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
           density={density}

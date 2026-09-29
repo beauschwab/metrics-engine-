@@ -15,7 +15,7 @@
  */
 
 import { z } from 'zod';
-import type { ColumnFiltersState, TableState } from '@tanstack/react-table';
+import type { ColumnFiltersState, TableState } from '@tanstack/table-core';
 import type { Features } from './features';
 import { COLUMN_META, COLUMN_ORDER } from './columns';
 

@@ -1757,6 +1757,77 @@ body following the header, resizes by drag with the cells following,
 selects into the status bar, opens and closes a detail panel, switches
 density, filters from the context menu, and downloads the export.
 
+## ADR-69 — the view is the agent's contract too: saved, linked, and served over MCP
+
+**Pinned:** the grid plan's Phase 4 — saved views, URL state, the
+`describe_view` / `query_view` / `set_view` tools, and an MCP server — and
+its second principle, that the view state is the contract every consumer
+speaks (ADR-66). This ADR is that principle's third and fourth consumers.
+
+**Decision.**
+
+*The React-free core is one import graph, and the agent lives in it.* The
+registry, the columns, the view state and the aggregations import
+`@tanstack/table-core`, not the React adapter; only the hook touches
+`@tanstack/react-table`. `agent/headless.ts` constructs a table without a
+screen from the same three, so an agent tool, a test or a server answers a
+view with the row models, the aggregations and the formatter the screen
+uses — the same `wavg`, the same dash for a missing value. `src/agent`
+may not fetch (the boundaries test), and a stdio server must import
+`node:` (which `src` may not), so the MCP entry sits at the package root
+and the server builder in `src/agent` takes a source through the seam.
+
+*Three tools, and the third refuses.* `describe_view` returns the source's
+description, the current view and a *contract*: every column with its
+meta, which are groupable, which filter shape each takes, and every slice
+of the view in a sentence an agent reads before it patches. `set_view`
+merges a patch slice for slice — or replaces the view when asked — and
+validates the result against the same zod schema the URL and the store
+validate against; an unknown column, an ungroupable grouping or an unknown
+slice comes back as issues naming what was wrong, never as a view that is
+almost right (ADR-44). `query_view` answers the view as the screen shows
+it — group rows with subtotals and leaf counts, leaf rows with values,
+grand totals, optionally each value formatted — a window at a time, with
+`total` the filtered leaf count and `applied` what the source itself did.
+The MCP server holds one view per process, the agent's session; a person
+can be handed it as a link.
+
+*A saved view is a validated document.* `views/store.ts` is an interface
+with two implementations — memory, and any `getItem`/`setItem` storage,
+the browser's included. Every read re-validates; a view saved by an older
+build that no longer parses is dropped and counted, not rendered half
+right. The interface is the seam for the governed API to hold views
+tomorrow — a saved view is something a steward could review, which is why
+it is the validated JSON and nothing else.
+
+*The URL carries the view, and a clean link stays clean.* `#/grid?v=…` is
+the validated JSON, base64url; the default view writes no parameter. The
+studio route reads the parameter on load and refuses one that does not
+parse — with the issues shown, not a blank grid — and writes the view
+back with `replaceState` on every change, so a link is the state and a
+reload is a no-op.
+
+**Why not JSON Schema from the zod.** The classic zod API this package
+uses has no schema emitter, and a raw schema would still not say that a
+`pct` value is already in percent units or that `wavg` is never a mean of
+means. The contract is the sentences an agent needs, generated from the
+same meta the columns are — one source, read a fourth way.
+
+**What now fails if this regresses.** `describe_view` asserts the contract
+lists every column with its filter shape and the notes; `set_view` asserts
+slice-wise merging, replacement, and refusals of an unknown column, an
+ungroupable grouping, an unknown slice and a non-object; `query_view`
+asserts a sorted window with formatted values and totals, a grouped answer
+whose subtotals equal brute force with dimensions blank, expansion on
+request, and the filtered total; `the MCP server` lists the three tools,
+refuses a bad patch with `isError`, keeps one session view and answers a
+supplied view without changing it. `the view store` saves, replaces,
+removes and drops what no longer parses; `the view in a URL` round-trips,
+writes nothing for the default and refuses what does not parse. The
+studio's `grid.spec.ts` loads a grouped view from a link, watches the
+hash follow a change, reloads into the same view, saves a view and loads
+it back, and shows the refusal for a link that does not parse.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

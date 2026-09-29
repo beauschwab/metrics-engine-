@@ -12,6 +12,11 @@
  * moved between betas and the skills shipped in `node_modules/@tanstack/*`
  * are the reference when the docs lag.
  *
+ * Imported from `@tanstack/table-core`, not the React adapter: this file,
+ * the columns, the view state and the aggregations are the React-free core
+ * the agent tools and the MCP server load in Node (ADR-69); only the hook
+ * touches `@tanstack/react-table`.
+ *
  * Not registered: the paginated row model. `getRowModel()` resolves to the
  * last registered model, and a paged one would hand the Phase-1 virtualizer
  * ten rows. Pagination returns in Phase 5 as `manualPagination` — the window
@@ -32,7 +37,7 @@ import {
   globalFilteringFeature, metaHelper, rowAggregationFeature, rowExpandingFeature,
   rowSelectionFeature, rowSortingFeature, sortFn_alphanumeric, sortFn_basic, sortFn_datetime,
   tableFeatures,
-} from '@tanstack/react-table';
+} from '@tanstack/table-core';
 import { wavg } from './aggregations';
 import type { ColumnMeta } from './meta';
 

@@ -10,16 +10,20 @@ import { useEffect, useState } from 'react';
 import { ChevronsDownUp, ChevronsUpDown, Download, FunnelX, PanelRight, Rows2, Rows4, Search } from 'lucide-react';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import type { ViewState } from '../grid/viewState';
+import type { ViewStore } from '../views/store';
 import type { Density } from './GridTable';
 import { GroupByDropZone } from './GroupByDropZone';
+import { ViewsMenu } from './ViewsMenu';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 
 export function GridToolbar({
-  table, view, sidebarOpen, onToggleSidebar, density, onToggleDensity, onExport, exporting,
+  table, view, viewStore, onLoadView, sidebarOpen, onToggleSidebar, density, onToggleDensity, onExport, exporting,
 }: {
   table: TreasuryTable;
   view: ViewState;
+  viewStore: ViewStore | null;
+  onLoadView: (view: ViewState) => void;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   density: Density;
@@ -74,6 +78,7 @@ export function GridToolbar({
       >
         {density === 'compact' ? <Rows2 /> : <Rows4 />}
       </Button>
+      <ViewsMenu store={viewStore} view={view} onLoad={onLoadView} />
       <Button variant="ghost" size="xs" aria-label="Export to Excel" onClick={onExport} disabled={exporting}>
         <Download /> {exporting ? 'Exporting…' : 'Excel'}
       </Button>

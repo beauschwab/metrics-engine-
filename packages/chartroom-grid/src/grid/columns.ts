@@ -7,7 +7,7 @@
  * `agg` shows blank on a subtotal row rather than a sum that means nothing.
  */
 
-import { createColumnHelper } from '@tanstack/react-table';
+import { createColumnHelper } from '@tanstack/table-core';
 import type { Features } from './features';
 import type { ColumnMeta } from './meta';
 import type { Position } from '../data/mock';

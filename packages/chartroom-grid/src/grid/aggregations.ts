@@ -13,7 +13,7 @@
  * contributes nothing — the cell renders the missing dash (ADR-44).
  */
 
-import { constructAggregationFn, type AggregationContext, type Row } from '@tanstack/react-table';
+import { constructAggregationFn, type AggregationContext, type Row } from '@tanstack/table-core';
 import type { ColumnMeta } from './meta';
 
 /** The decomposable pair a `wavg` group carries. */

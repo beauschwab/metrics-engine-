@@ -275,4 +275,51 @@ test.describe('the treasury grid harness', () => {
     const file = await download;
     expect(file.suggestedFilename()).toMatch(/^seeded-book-2026-09-28\.xlsx$/);
   });
+
+  test('carries the view in the link, saves and loads it, and refuses a link that does not parse', async ({ page }) => {
+    const param = (view: unknown) => Buffer.from(JSON.stringify(view)).toString('base64url');
+    const grid = page.getByTestId('treasury-grid');
+
+    // A link with a grouped, sorted view opens grouped and sorted.
+    await page.goto(`/#/grid?v=${param({ version: 1, grouping: ['desk'], sorting: [{ id: 'notional', desc: true }] })}`);
+    await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(5);
+    await expect(grid.locator('th[data-column="notional"]')).toHaveAttribute('aria-sort', 'descending');
+    await expect(page.getByTestId('grid-link-refused')).toHaveCount(0);
+
+    // A change writes the hash; the hash decodes to the new view; a reload keeps it.
+    await page.getByTestId('columns-sidebar').getByRole('button', { name: 'Group by Ccy' }).click();
+    await expect(page.locator('[data-slot="group-chip"]')).toHaveCount(2);
+    const hash = await page.evaluate(() => location.hash);
+    const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(decoded.grouping).toEqual(['desk', 'currency']);
+    expect(decoded.sorting).toEqual([{ id: 'notional', desc: true }]);
+    await page.reload();
+    await expect(page.locator('[data-slot="group-chip"]')).toHaveCount(2);
+
+    // Save the view under a name; open a clean grid; load it back.
+    await page.getByRole('button', { name: 'Saved views' }).click();
+    await page.getByLabel('View name').fill('Desk and currency');
+    await page.getByRole('button', { name: 'Save view' }).click();
+    await expect(page.locator('[data-slot="saved-views"] li')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await page.goto('/#/grid');
+    await expect(page.locator('[data-slot="group-chip"]')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Saved views' }).click();
+    await page.locator('[data-slot="saved-view-load"]', { hasText: 'Desk and currency' }).click();
+    await expect(page.locator('[data-slot="group-chip"]')).toHaveCount(2);
+    await expect(page).toHaveURL(/#\/grid\?v=/);
+
+    // Reset writes a clean link; delete empties the store.
+    await page.getByRole('button', { name: 'Saved views' }).click();
+    await page.getByRole('button', { name: 'Delete view Desk and currency' }).click();
+    await expect(page.locator('[data-slot="saved-views"] li')).toHaveText(/none yet/);
+    await page.getByRole('button', { name: 'Reset view' }).click();
+    await expect(page.locator('[data-slot="group-chip"]')).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/grid$/);
+
+    // A link that does not parse is refused, with the reason, and the default renders.
+    await page.goto(`/#/grid?v=${param({ version: 1, grouping: ['tradeId'] })}`);
+    await expect(page.getByTestId('grid-link-refused')).toContainText('not groupable: tradeId');
+    await expect(grid.locator('tbody tr').first().locator('td[data-column="tradeId"]')).toHaveText('T000001');
+  });
 });
