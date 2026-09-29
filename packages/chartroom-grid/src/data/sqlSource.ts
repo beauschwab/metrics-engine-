@@ -11,7 +11,7 @@
  * value, the count and the path a child query needs (lazy expansion).
  */
 
-import { COLUMN_META, COLUMN_ORDER } from '../grid/columns';
+import { COLUMN_META, COLUMN_ORDER, effectiveAgg } from '../grid/columns';
 import type { ViewState } from '../grid/viewState';
 import { compileSql, DUCKDB, type SqlDialect } from './compileSql';
 import type { Position } from './mock';
@@ -94,7 +94,7 @@ export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${di
           const node = blankPosition() as GroupNode;
           (node as unknown as Record<string, unknown>)[dim] = value;
           for (const id of COLUMN_ORDER) {
-            if (COLUMN_META[id].kind === 'measure' && COLUMN_META[id].agg) (node as unknown as Record<string, unknown>)[id] = num(r[id]);
+            if (effectiveAgg(id, view.columnAggs)) (node as unknown as Record<string, unknown>)[id] = num(r[id]);
           }
           const path = [...groupPath, value];
           node.tradeId = groupNodeId(path);

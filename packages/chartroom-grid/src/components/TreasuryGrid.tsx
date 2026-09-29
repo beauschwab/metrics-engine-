@@ -23,6 +23,7 @@ import type { DataSource, SourceDescription } from '../data/source';
 import { isGroupNode } from '../data/sqlSource';
 import { useTreasuryTable, type Applied, type GridRowData, type ViewUpdate } from '../grid/useTreasuryTable';
 import type { GridRow } from './GroupCell';
+import type { Agg } from '../grid/meta';
 import { defaultView, type ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
 import { ColumnsSidebar, SIDE_PREFIX, orderedLeafColumns } from './ColumnsSidebar';
@@ -124,6 +125,25 @@ export function TreasuryGrid({
   }, [rows, children]);
 
   const table = useTreasuryTable({ data, view, onViewChange: change, applied: manual });
+
+  // A range is anchored to corner ids and would recompute across a reorder
+  // or a pin into a scattered rectangle; the selection resets instead (ADR-71).
+  const layoutKey = JSON.stringify([view.columnOrder, view.columnPinning]);
+  useEffect(() => {
+    if (table.getSelectedCellCount() > 0) table.resetCellSelection(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the layout key is the trigger
+  }, [layoutKey]);
+
+  // A measure's aggregation for this view (ADR-72): one more slice, written
+  // like every other; the columns rebuild and every reader follows.
+  const onAggChange = useCallback((columnId: string, agg: Agg | null) => {
+    change((prev) => {
+      const next = { ...prev.columnAggs } as Record<string, Agg>;
+      if (agg === null) delete next[columnId];
+      else next[columnId] = agg;
+      return { ...prev, columnAggs: next };
+    });
+  }, [change]);
 
   // Lazy expansion: a node's children are asked for by its path, once.
   const onExpandGroup = useCallback((row: GridRow) => {
@@ -238,6 +258,7 @@ export function TreasuryGrid({
                   onToggleDetail={toggleDetail}
                   onContextTarget={setContextTarget}
                   onExpandGroup={onExpandGroup}
+                  onAggChange={onAggChange}
                 />
               )}
             </div>

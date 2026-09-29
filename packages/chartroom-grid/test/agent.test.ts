@@ -25,8 +25,11 @@ describe('describe_view', () => {
     expect(d.contract.columns.map((c) => c.id)).toEqual(COLUMN_ORDER);
     expect(d.contract.columns.find((c) => c.id === 'desk')).toMatchObject({ groupable: true, filter: 'set' });
     expect(d.contract.columns.find((c) => c.id === 'yield')).toMatchObject({ agg: 'wavg', weightBy: 'notional', filter: 'range' });
+    expect(d.contract.columns.find((c) => c.id === 'yield')!.aggs).toContain('wavg');
+    expect(d.contract.columns.find((c) => c.id === 'dv01')!.aggs).not.toContain('wavg');
+    expect(d.contract.columns.find((c) => c.id === 'desk')!.aggs).toEqual([]);
     expect(Object.keys(d.contract.slices).sort()).toEqual(
-      ['columnFilters', 'columnOrder', 'columnPinning', 'columnSizing', 'columnVisibility', 'expanded', 'globalFilter', 'grouping', 'pagination', 'sorting'],
+      ['columnAggs', 'columnFilters', 'columnOrder', 'columnPinning', 'columnSizing', 'columnVisibility', 'expanded', 'globalFilter', 'grouping', 'pagination', 'sorting'],
     );
     expect(VIEW_CONTRACT.notes.join(' ')).toMatch(/never a mean of means/);
   });

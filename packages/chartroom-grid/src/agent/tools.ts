@@ -11,7 +11,7 @@
  */
 
 import { aggregatedNumber } from '../grid/aggregations';
-import { COLUMN_META, COLUMN_ORDER } from '../grid/columns';
+import { COLUMN_META, COLUMN_ORDER, allowedAggs, effectiveAgg } from '../grid/columns';
 import { formatValue, type ColumnMeta } from '../grid/meta';
 import { VIEW_VERSION, safeParseView, type ViewState } from '../grid/viewState';
 import type { DataSource, SourceDescription } from '../data/source';
@@ -27,6 +27,8 @@ export interface ContractColumn {
   groupable: boolean;
   agg?: ColumnMeta['agg'];
   weightBy?: string;
+  /** The aggregations `columnAggs` may choose for this measure. */
+  aggs: ColumnMeta['agg'][];
   /** The filter shape this column takes in `columnFilters`. */
   filter: 'set' | 'range';
 }
@@ -45,7 +47,7 @@ export const VIEW_CONTRACT: ViewContract = {
     const m = COLUMN_META[id];
     return {
       id, label: m.label, kind: m.kind, unit: m.unit, dp: m.dp,
-      groupable: !!m.groupable, agg: m.agg, weightBy: m.weightBy,
+      groupable: !!m.groupable, agg: m.agg, weightBy: m.weightBy, aggs: allowedAggs(id),
       filter: m.kind === 'dimension' ? 'set' : 'range',
     };
   }),
@@ -60,6 +62,7 @@ export const VIEW_CONTRACT: ViewContract = {
     columnOrder: 'string[] of column ids; columns not listed follow in declared order',
     columnPinning: '{ start: string[], end: string[] } — logical start/end, not left/right',
     columnSizing: '{ [columnId]: px }',
+    columnAggs: '{ [measureId]: one of that column’s aggs } — overrides the meta’s aggregation for subtotals, totals and the SQL the source runs',
   },
   notes: [
     'Column ids must be ones the contract lists; unknown ids are refused with an issue naming them.',
@@ -162,7 +165,7 @@ export async function queryView(
   if (display) totals.display = {};
   for (const c of table.getVisibleLeafColumns()) {
     const meta = c.columnDef.meta;
-    if (!meta || meta.kind !== 'measure' || !meta.agg) continue;
+    if (!meta || !effectiveAgg(c.id as keyof Position, view.columnAggs)) continue;
     const n = aggregatedNumber(c.getAggregationValue());
     if (n === undefined) continue;
     totals.values[c.id] = n;

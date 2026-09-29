@@ -65,6 +65,15 @@ describe('compileSql', () => {
     expect(leaves.params).toEqual(['Credit', 'EUR']);
   });
 
+  it('aggregates by the view’s choice: AVG, COUNT(DISTINCT), MEDIAN where the engine has it', () => {
+    const view = parseView({ version: 2, grouping: ['desk'], columnAggs: { yield: 'mean', dv01: 'uniqueCount', notional: 'median' } });
+    const d = compileSql(view, { table: 'positions' }, DUCKDB);
+    expect(d.sql).toContain('AVG("yield") AS "yield"');
+    expect(d.sql).toContain('COUNT(DISTINCT "dv01") AS "dv01"');
+    expect(d.sql).toContain('MEDIAN("notional") AS "notional"');
+    expect(() => compileSql(view, { table: 'positions' }, SQLITE)).toThrow(/sqlite has no median/);
+  });
+
   it('refuses an unknown column, a bad table and a path deeper than the grouping', () => {
     const view = defaultView();
     expect(() => compileSql({ ...view, sorting: [{ id: 'pnl', desc: false }] }, { table: 'positions' })).toThrow(/unknown column/);
@@ -158,6 +167,15 @@ describe('the SQL source answers as the in-memory path does', () => {
     }
     const leaves = await sql.query(view, { groupPath: ['Credit', 'EUR'] });
     expect(leaves.applied.group).toBe(false);
+
+    // The view's aggregation choice reaches the engine: a mean yield per desk.
+    const chosen = parseView({ ...view, columnAggs: { yield: 'mean' } });
+    const means = await sql.query(chosen);
+    for (const node of means.rows) {
+      if (!isGroupNode(node)) throw new Error('not a group');
+      const mine = kept.filter((b) => b.desk === node.__group.value);
+      expect(node.yield).toBeCloseTo(mine.reduce((a, b) => a + b.yield, 0) / mine.length, 9);
+    }
     expect(leaves.rows.map((r) => r.tradeId).sort()).toEqual(kept.filter((b) => b.desk === 'Credit' && b.currency === 'EUR').map((b) => b.tradeId).sort());
   });
 });

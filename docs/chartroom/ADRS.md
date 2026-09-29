@@ -1908,6 +1908,92 @@ loads the DuckDB source, sees the status bar say what it serves, sorts and
 filters through the engine, groups a level at a time and expands to
 children and then to leaves still filtered.
 
+## ADR-71 — a block of cells is a thing to copy, not a view
+
+**Pinned:** the owner's request after Phase 5 for Excel-like range
+selection and copy, which the grid plan had deferred; un-deferred here.
+
+**Decision.** v9's `cellSelectionFeature` joins the registry. A drag or a
+Shift-click selects a rectangle, Ctrl or Cmd adds or subtracts one, the
+arrow keys move the active cell and Shift-arrows extend it, Escape clears.
+The selection column takes no part. The selection is transient — a
+reader's hand on the book, like row selection (ADR-68) — and never enters
+the view, a saved view or a link.
+
+*Copy is the screen's text.* Ctrl+C, and the context menu's "Copy range",
+write the block as tab-separated text: the formatted number the reader
+sees by default, the raw value on request, an optional first row of column
+labels, one blank line between disjoint rectangles. A group cell copies
+its value, an aggregate its number, a placeholder nothing — the same
+reading as the cell (ADR-67). The copier resolves cells from the
+selection's *bounds* over each row's visible cells, in the render order
+the feature resolves its rectangles in — pinned start, centre, pinned end
+— because `getSelectedCellRangesData()` yields values, and a value cannot
+say what it is.
+
+*Paste has nowhere to land.* The grid is read-only over a source; a paste
+into cells would be an edit and a write path to the source, a decision of
+its own. Copying out to a spreadsheet is what "copy/paste" means here
+until that decision is made.
+
+*Ranges are corners, not cells.* v9 anchors a range to its corner ids, so
+a sort or a filter keeps the corners and recomputes what sits between
+them; a reorder or a pin resets the selection in the shell, as the
+shipped skill advises, rather than letting a rectangle scatter.
+
+**What now fails if this regresses.** `range copy` selects a block on a
+headless table and asserts the tab-separated text, formatted and raw, the
+label row, a group row's cells as the screen shows them, and two disjoint
+ranges separated by a blank line. The studio's `grid.spec.ts` drags a
+block, reads the outline and the count, copies with Ctrl+C and reads the
+clipboard back.
+
+## ADR-72 — a measure's aggregation is the view's to choose, within what the column can bear
+
+**Pinned:** the owner's request after Phase 5 to "expose agg functions";
+ADR-67 fixed one aggregation per measure in column `meta`, and this entry
+opens that to the reader without giving up what ADR-67 protected.
+
+**Decision.** The view gains a `columnAggs` slice (view version 2; a
+version-1 view migrates with an empty slice): a map from a measure's id
+to one of `sum`, `wavg`, `mean`, `median`, `min`, `max`, `count`,
+`uniqueCount`. The column's `meta.agg` stays the default; the view's
+entry, when present, is what the column aggregates by, everywhere at
+once — a group's subtotal, the grand total, the status bar, the xlsx
+export, the agent's `describe_view`, and the SQL the seam compiles.
+Columns are rebuilt from the view, so there is one place that decides
+(`effectiveAgg`) and no reader keeps its own opinion.
+
+*The column says what it can bear.* `allowedAggs` lists a measure's
+choices: every aggregation for a plain measure, and `wavg` only where
+`meta.weightBy` names a weight — a weighted average without a weight is
+not a number, so the menu never offers it and the parser refuses it. A
+dimension has no aggregation and no menu. A view carrying a choice a
+column cannot take does not parse, the same as a sort on an unknown
+column (ADR-66): a link or an agent cannot make the grid show a figure it
+cannot stand behind.
+
+*The engine gets the same word.* `compileSql` turns the choice into the
+dialect's function — `AVG`, `COUNT(DISTINCT …)`, `MEDIAN` where the
+dialect has one — and decomposes `wavg` as before (ADR-70). A dialect
+without a median (SQLite) throws at compile time with the column named,
+rather than serving a mean and calling it a median.
+
+*The default is a menu item, not a mystery.* The header menu's "Aggregate
+as" marks the column's default, shows the current choice in its trigger,
+and offers "Restore default" only while a choice is in force. Restoring
+deletes the entry rather than writing the default back, so a view carries
+only what the reader changed.
+
+**What now fails if this regresses.** `viewState.test.ts` migrates a
+version-1 view and refuses a dimension, an unknown aggregation and an
+unweighted `wavg`; `aggregation.test.ts` re-aggregates a group and the
+grand total under a chosen mean and median; `sql.test.ts` compiles each
+choice per dialect and runs a mean per desk through SQLite; `agent.test.ts`
+reads the choices back from the contract. The studio's `grid.spec.ts`
+chooses a mean for Yield from the header menu and reads the footer, a
+group row and the link.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

@@ -11,16 +11,10 @@ import { ChevronsDownUp, ChevronsUpDown, Copy, EyeOff, Funnel, FunnelX, PanelLef
 import { formatValue } from '../grid/meta';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { SELECT_ID } from '../grid/columns';
+import { rangesToTsv, selectedCellRanges } from '../grid/copy';
+import { copyText as copy } from './clipboard';
 import type { ContextTarget } from './GridTable';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger } from './ui/context-menu';
-
-function copy(text: string) {
-  try {
-    void navigator.clipboard?.writeText(text);
-  } catch {
-    // The clipboard is a courtesy, not a contract.
-  }
-}
 
 export function RowContextMenu({
   table, target, detailOpen, onToggleDetail, children,
@@ -38,11 +32,29 @@ export function RowContextMenu({
   const value = row && column && !grouped ? row.getValue(column.id) : undefined;
   const shown = value !== undefined && meta ? formatValue(value, meta) : undefined;
   const isGrouping = table.getVisibleLeafColumns().some((c) => c.getIsGrouped());
+  const selectedCells = table.getSelectedCellCount();
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-56 text-xs" data-slot="row-context-menu">
+        {selectedCells > 0 && (
+          <>
+            <ContextMenuLabel className="text-[10px] tracking-[0.06em] uppercase text-faint">
+              {selectedCells.toLocaleString('en-US')} cells selected
+            </ContextMenuLabel>
+            <ContextMenuItem onSelect={() => copy(rangesToTsv(selectedCellRanges(table)))}>
+              <Copy /> Copy range
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => copy(rangesToTsv(selectedCellRanges(table), { headers: true }))}>
+              <Copy /> Copy range with headers
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => copy(rangesToTsv(selectedCellRanges(table), { formatted: false }))}>
+              <Copy /> Copy range as raw values
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
         {row && column && meta ? (
           <>
             <ContextMenuLabel className="text-[10px] tracking-[0.06em] uppercase text-faint">

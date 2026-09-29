@@ -39,6 +39,7 @@ export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from './compon
 export { Input } from './components/ui/input';
 export { Separator } from './components/ui/separator';
 export { heatIntensity, heatBackground, HEAT_MAX_PERCENT } from './grid/heat';
+export { rangesToTsv, selectedCellRanges, cellText, type CopyCell, type CopyOptions, type CopyTable } from './grid/copy';
 export { excelFormat } from './export/formats';
 export { buildWorkbook, workbookBytes, type ExportOptions } from './export/xlsx';
 export { GroupByDropZone } from './components/GroupByDropZone';
@@ -48,7 +49,7 @@ export { wavg, Wavg, weightedAverage, aggregatedNumber, type WavgParts } from '.
 export { cn } from './lib/utils';
 export { useTreasuryTable, type TreasuryTable, type TreasuryTableOptions, type ViewUpdate, type Applied, type GridRowData } from './grid/useTreasuryTable';
 export {
-  ViewStateSchema, VIEW_VERSION, defaultView, parseView, safeParseView, toTableState,
+  ViewStateSchema, VIEW_VERSION, defaultView, parseView, safeParseView, toTableState, migrateView,
   type ViewState, type ViewSlice,
 } from './grid/viewState';
 export type { DataSource, SourceDescription, SourceColumn, QueryOptions, QueryResult } from './data/source';
@@ -58,8 +59,8 @@ export { sqlSource, isGroupNode, groupNodeId, type SqlExecutor, type GroupNode, 
 export { duckdbSource, createDuckDbExecutor, DUCKDB_TABLE, type DuckDbExecutor } from './data/duckdbSource';
 export { dremioSource, createDremioExecutor, type DremioOptions } from './data/dremioSource';
 export { features, type Features } from './grid/features';
-export { columns, selectColumn, SELECT_ID, COLUMN_META, COLUMN_ORDER } from './grid/columns';
-export { formatValue, alignOf, MISSING, type ColumnMeta, type Unit, type Agg } from './grid/meta';
+export { columns, buildColumns, effectiveAgg, allowedAggs, selectColumn, SELECT_ID, COLUMN_META, COLUMN_ORDER, type ColumnAggs } from './grid/columns';
+export { formatValue, alignOf, MISSING, AGGS, AGG_LABELS, type ColumnMeta, type Unit, type Agg } from './grid/meta';
 export {
   generatePositions, seeded, type Position,
   DESKS, ENTITIES, CURRENCIES, PRODUCTS, TENORS,

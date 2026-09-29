@@ -5,22 +5,35 @@
  * column def set from meta or, for the selection column, switched off.
  */
 
-import { ArrowDown, ArrowUp, ArrowDownUp, EllipsisVertical, EyeOff, PanelLeft, PanelRight, PinOff, Rows3 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowDownUp, EllipsisVertical, EyeOff, PanelLeft, PanelRight, PinOff, Rows3, Sigma } from 'lucide-react';
 import type { Column } from '@tanstack/react-table';
 import type { Position } from '../data/mock';
+import { allowedAggs } from '../grid/columns';
 import type { Features } from '../grid/features';
+import { AGG_LABELS, type Agg } from '../grid/meta';
 import { cn } from '../lib/utils';
 import { Button } from './ui/button';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
+  DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 
 export type GridColumn = Column<Features, Position, unknown>;
 
-export function HeaderMenu({ column, className }: { column: GridColumn; className?: string }) {
-  const label = column.columnDef.meta?.label ?? column.id;
+export function HeaderMenu({
+  column, className, onAggChange,
+}: {
+  column: GridColumn;
+  className?: string;
+  /** Choose a measure's aggregation for the view (ADR-72); null restores the meta's. */
+  onAggChange?: (columnId: string, agg: Agg | null) => void;
+}) {
+  const meta = column.columnDef.meta;
+  const label = meta?.label ?? column.id;
   const sorted = column.getIsSorted();
   const pinned = column.getIsPinned();
+  const aggs = meta?.kind === 'measure' ? allowedAggs(column.id as keyof Position) : [];
+  const currentAgg = typeof column.columnDef.aggregationFn === 'string' ? (column.columnDef.aggregationFn as Agg) : undefined;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -63,6 +76,31 @@ export function HeaderMenu({ column, className }: { column: GridColumn; classNam
                 <PinOff /> Unpin
               </DropdownMenuItem>
             )}
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {aggs.length > 0 && onAggChange && (
+          <>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger data-slot="agg-menu">
+                <Sigma className="mr-2 size-4" /> Aggregate as {currentAgg ? `· ${AGG_LABELS[currentAgg]}` : ''}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="text-xs" data-slot="agg-choices" data-column={column.id}>
+                <DropdownMenuRadioGroup value={currentAgg ?? ''} onValueChange={(v) => onAggChange(column.id, v as Agg)}>
+                  {aggs.map((a) => (
+                    <DropdownMenuRadioItem key={a} value={a}>
+                      {AGG_LABELS[a]}{a === meta?.agg ? ' (default)' : ''}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+                {currentAgg !== meta?.agg && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => onAggChange(column.id, null)}>Restore default</DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
           </>
         )}

@@ -24,7 +24,8 @@
  */
 
 import {
-  aggregationFn_count, aggregationFn_max, aggregationFn_min, aggregationFn_sum,
+  aggregationFn_count, aggregationFn_max, aggregationFn_mean, aggregationFn_median, aggregationFn_min,
+  aggregationFn_sum, aggregationFn_uniqueCount,
   cellSelectionFeature,
   columnFacetingFeature, columnFilteringFeature, columnGroupingFeature,
   columnOrderingFeature, columnPinningFeature, columnResizingFeature,
@@ -89,6 +90,9 @@ export const features = tableFeatures({
     min: aggregationFn_min,
     max: aggregationFn_max,
     count: aggregationFn_count,
+    mean: aggregationFn_mean,
+    median: aggregationFn_median,
+    uniqueCount: aggregationFn_uniqueCount,
     // Decomposable Σ(x·w) / Σ(w), weighted by the meta's column (ADR-67).
     wavg,
   },

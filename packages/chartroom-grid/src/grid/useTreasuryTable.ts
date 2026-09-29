@@ -14,7 +14,7 @@
 import { useMemo } from 'react';
 import { functionalUpdate, useTable, type OnChangeFn, type ReactTable, type Updater } from '@tanstack/react-table';
 import { features, type Features } from './features';
-import { SELECT_ID, columns, selectColumn } from './columns';
+import { SELECT_ID, buildColumns, selectColumn } from './columns';
 import { toTableState, type ViewSlice, type ViewState } from './viewState';
 import type { Position } from '../data/mock';
 import { isGroupNode } from '../data/sqlSource';
@@ -50,8 +50,6 @@ export interface TreasuryTableOptions {
 /** The module-level empty array v9 asks for: a fresh `[]` per render would rerun every row model. */
 const NO_ROWS: GridRowData[] = [];
 
-/** The selection column first, then every data column. One stable array. */
-const allColumns = [selectColumn, ...columns];
 
 const withoutSelect = (ids: string[]) => ids.filter((id) => id !== SELECT_ID);
 
@@ -86,6 +84,11 @@ export function useTreasuryTable({ data, view, onViewChange, applied }: Treasury
   }, [onViewChange]);
 
   const base = toTableState(view);
+  // The selection column first, then every data column with the view's
+  // aggregations (ADR-72) — one array per distinct choice, not per render.
+  const aggsKey = JSON.stringify(view.columnAggs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the serialized choice
+  const allColumns = useMemo(() => [selectColumn, ...buildColumns(view.columnAggs)], [aggsKey]);
   return useTable({
     features,
     columns: allColumns,

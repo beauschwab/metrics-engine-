@@ -323,6 +323,94 @@ test.describe('the treasury grid harness', () => {
     await expect(grid.locator('tbody tr').first().locator('td[data-column="tradeId"]')).toHaveText('T000001');
   });
 
+  test('selects a block of cells by drag, copies it as tab-separated text, and clears it', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    const rows = grid.locator('tbody tr');
+    await expect(rows.first()).toBeVisible();
+
+    // Drag from the first row's desk to the third row's product: a 3×4 block.
+    const from = (await rows.nth(0).locator('td[data-column="desk"]').boundingBox())!;
+    const to = (await rows.nth(2).locator('td[data-column="product"]').boundingBox())!;
+    await page.mouse.move(from.x + 10, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + 10, to.y + to.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await expect(grid.locator('td[data-selected]')).toHaveCount(12);
+    await expect(rows.nth(0).locator('td[data-column="desk"]')).toHaveAttribute('data-selected', 'true');
+    await expect(rows.nth(2).locator('td[data-column="product"]')).toHaveAttribute('data-selected', 'true');
+    await expect(rows.nth(0).locator('td[data-column="tenorBucket"]')).not.toHaveAttribute('data-selected', 'true');
+
+    // Ctrl+C writes the block as the screen shows it.
+    const firstDesk = await rows.nth(0).locator('td[data-column="desk"]').textContent();
+    await grid.focus();
+    await page.keyboard.press('Control+c');
+    const text = await page.evaluate(() => navigator.clipboard.readText());
+    const lines = text.split('\n');
+    expect(lines.length).toBe(3);
+    expect(lines[0]!.split('\t').length).toBe(4);
+    expect(lines[0]!.split('\t')[0]).toBe(firstDesk);
+
+    // The context menu copies with a header row.
+    await rows.nth(1).locator('td[data-column="currency"]').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Copy range with headers' }).click();
+    const withHeaders = await page.evaluate(() => navigator.clipboard.readText());
+    expect(withHeaders.split('\n')[0]).toBe('Desk\tEntity\tCcy\tProduct');
+
+    // Escape clears; the selection column never selects.
+    await grid.focus();
+    await page.keyboard.press('Escape');
+    await expect(grid.locator('td[data-selected]')).toHaveCount(0);
+    const sel = (await rows.nth(0).locator('td[data-column="select"]').boundingBox())!;
+    await page.mouse.move(sel.x + sel.width - 4, sel.y + sel.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(sel.x + sel.width - 4, sel.y + 40, { steps: 3 });
+    await page.mouse.up();
+    await expect(grid.locator('td[data-selected]')).toHaveCount(0);
+  });
+
+  test('changes a column\'s aggregation from the header menu; the footer, the subtotals and the link follow', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    await expect(grid.locator('tbody tr').first()).toBeVisible();
+    const footerYield = grid.locator('tfoot td[data-column="yield"]');
+    await expect(footerYield).not.toHaveText('');
+    const weighted = (await footerYield.textContent())!;
+
+    // Yield aggregates as a notional-weighted average by default; choose the plain mean.
+    await grid.locator('th[data-column="yield"]').hover();
+    await page.getByRole('button', { name: 'Yield column menu' }).click();
+    await page.locator('[data-slot="agg-menu"]').hover();
+    const choices = page.locator('[data-slot="agg-choices"][data-column="yield"]');
+    await expect(choices.getByRole('menuitemradio', { name: 'Weighted average (default)' })).toHaveAttribute('aria-checked', 'true');
+    await choices.getByRole('menuitemradio', { name: 'Mean', exact: true }).click();
+    await expect(footerYield).not.toHaveText(weighted);
+    const mean = (await footerYield.textContent())!;
+
+    // The choice is part of the view: the link carries it, and a group row uses it.
+    const hash = await page.evaluate(() => location.hash);
+    const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(decoded.columnAggs).toEqual({ yield: 'mean' });
+    await page.getByTestId('columns-sidebar').getByRole('button', { name: 'Group by Desk' }).click();
+    await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(5);
+    await expect(grid.locator('tbody tr[data-grouped]').first().locator('td[data-column="yield"]')).toHaveAttribute('data-cell', 'aggregated');
+    await expect(footerYield).toHaveText(mean);
+
+    // A dimension offers no aggregation; restoring the default brings the weighted figure back.
+    await grid.locator('th[data-column="counterparty"]').hover();
+    await page.getByRole('button', { name: 'Counterparty column menu' }).click();
+    await expect(page.locator('[data-slot="agg-menu"]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await grid.locator('th[data-column="yield"]').hover();
+    await page.getByRole('button', { name: 'Yield column menu' }).click();
+    await page.locator('[data-slot="agg-menu"]').hover();
+    await choices.getByRole('menuitem', { name: 'Restore default' }).click();
+    await expect(footerYield).toHaveText(weighted);
+    const restored = JSON.parse(Buffer.from(new URL(`http://x/${(await page.evaluate(() => location.hash)).slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(restored.columnAggs ?? {}).toEqual({});
+  });
+
   test('serves the same book from DuckDB-WASM: filter, sort and grouping compiled to SQL, children fetched on expand', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/#/grid?s=duckdb');

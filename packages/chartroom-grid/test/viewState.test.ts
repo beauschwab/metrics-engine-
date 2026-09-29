@@ -38,8 +38,25 @@ describe('the view state contract', () => {
     expect(parseView(JSON.parse(JSON.stringify(v)))).toEqual(v);
   });
 
-  it('refuses another version, an unknown key, and an unknown column', () => {
-    expect(() => parseView({ version: 2 })).toThrow();
+  it('migrates a version-1 document and refuses any other version', () => {
+    const v1 = parseView({ version: 1, grouping: ['desk'] });
+    expect(v1.version).toBe(VIEW_VERSION);
+    expect(v1.columnAggs).toEqual({});
+    expect(v1.grouping).toEqual(['desk']);
+    expect(() => parseView({ version: 3 })).toThrow();
+    expect(() => parseView({ version: 0 })).toThrow();
+  });
+
+  it('accepts an aggregation a measure can take and refuses one it cannot', () => {
+    const ok = parseView({ version: 2, columnAggs: { yield: 'mean', notional: 'median', wal: 'wavg' } });
+    expect(ok.columnAggs).toEqual({ yield: 'mean', notional: 'median', wal: 'wavg' });
+    for (const bad of [{ desk: 'sum' }, { yield: 'total' }, { pnl: 'sum' }, { mtm: 'wavg' }]) {
+      const r = safeParseView({ version: 2, columnAggs: bad });
+      expect(r.ok).toBe(false);
+    }
+  });
+
+  it('refuses an unknown key and an unknown column', () => {
     expect(() => parseView({})).toThrow();
     expect(() => parseView({ version: 1, rowSelection: {} })).toThrow();
     const bad = safeParseView({ version: 1, sorting: [{ id: 'pnl', desc: false }] });
@@ -63,6 +80,7 @@ describe('the view state contract', () => {
       'expanded', 'globalFilter', 'grouping', 'sorting',
     ]);
     expect('pagination' in state).toBe(false);
+    expect('columnAggs' in state).toBe(false);
     expect(Object.keys(ViewStateSchema.shape)).toContain('pagination');
   });
 });

@@ -21,7 +21,11 @@
 import { formatValue as catalogFormat } from 'chartroom-widgets/format';
 
 export type Unit = 'ccy' | 'mm' | 'bps' | 'pct' | 'years' | 'date';
-export type Agg = 'sum' | 'wavg' | 'min' | 'max' | 'count';
+export type Agg = 'sum' | 'wavg' | 'mean' | 'median' | 'min' | 'max' | 'count' | 'uniqueCount';
+export const AGGS: readonly Agg[] = ['sum', 'wavg', 'mean', 'median', 'min', 'max', 'count', 'uniqueCount'];
+export const AGG_LABELS: Record<Agg, string> = {
+  sum: 'Sum', wavg: 'Weighted average', mean: 'Mean', median: 'Median', min: 'Min', max: 'Max', count: 'Count', uniqueCount: 'Distinct count',
+};
 
 export interface ColumnMeta {
   /** The header label — what a reader calls the column. */

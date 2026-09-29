@@ -39,7 +39,7 @@ export interface ExportRow {
 }
 export interface ExportColumn {
   id: string;
-  columnDef: { meta?: ColumnMeta };
+  columnDef: { meta?: ColumnMeta; aggregationFn?: unknown };
   getSize(): number;
   getAggregationValue(): unknown;
 }
@@ -95,7 +95,7 @@ export function buildWorkbook(table: ExportTable, options: ExportOptions = {}): 
   if (first) total[first.id] = `Total · ${table.getFilteredRowModel().rows.length.toLocaleString('en-US')} rows`;
   for (const c of columns) {
     const meta = c.columnDef.meta as ColumnMeta;
-    if (meta.kind === 'measure' && meta.agg) total[c.id] = aggregatedNumber(c.getAggregationValue());
+    if (meta.kind === 'measure' && c.columnDef.aggregationFn) total[c.id] = aggregatedNumber(c.getAggregationValue());
   }
   const totalRow = ws.addRow(total);
   totalRow.font = { bold: true };

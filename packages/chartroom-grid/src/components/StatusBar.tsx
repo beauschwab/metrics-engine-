@@ -28,7 +28,7 @@ export function StatusBar({
   // The bar names the capability.
   const served = about?.serves ? (['filter', 'sort', 'group'] as const).filter((k) => about.serves[k]) : [];
   const selected = table.getSelectedRowModel().rows.filter((r) => !r.getIsGrouped());
-  const measures = table.getVisibleLeafColumns().filter((c) => c.columnDef.meta?.kind === 'measure' && c.columnDef.meta.agg);
+  const measures = table.getVisibleLeafColumns().filter((c) => c.columnDef.meta?.kind === 'measure' && c.columnDef.aggregationFn);
   return (
     <div data-slot="status-bar" data-testid="status-bar" className="flex h-7 items-center gap-4 border-t border-border bg-card px-3 text-[11px] text-faint">
       <span data-slot="status-source">

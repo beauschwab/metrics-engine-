@@ -10,7 +10,7 @@
 
 import { constructTable, tableFeatures, type ColumnDef, type Table } from '@tanstack/table-core';
 import { storeReactivityBindings } from '@tanstack/table-core/store-reactivity-bindings';
-import { columns } from '../grid/columns';
+import { buildColumns } from '../grid/columns';
 import { features } from '../grid/features';
 import { toTableState, type ViewState } from '../grid/viewState';
 import type { Position } from '../data/mock';
@@ -22,7 +22,7 @@ export type HeadlessTable = Table<HeadlessFeatures, Position>;
 export function headlessTable(rows: Position[], view: ViewState): HeadlessTable {
   return constructTable<HeadlessFeatures, Position>({
     features: headlessFeatures,
-    columns: columns as unknown as ColumnDef<HeadlessFeatures, Position, unknown>[],
+    columns: buildColumns(view.columnAggs) as unknown as ColumnDef<HeadlessFeatures, Position, unknown>[],
     data: rows,
     getRowId: (r) => r.tradeId,
     state: toTableState(view),

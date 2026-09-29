@@ -17,9 +17,23 @@
 import { z } from 'zod';
 import type { ColumnFiltersState, TableState } from '@tanstack/table-core';
 import type { Features } from './features';
-import { COLUMN_META, COLUMN_ORDER } from './columns';
+import { COLUMN_META, COLUMN_ORDER, allowedAggs } from './columns';
+import { AGGS, type Agg } from './meta';
+import type { Position } from '../data/mock';
 
-export const VIEW_VERSION = 1 as const;
+/**
+ * Version 2 added `columnAggs` (ADR-72). A version-1 document is migrated
+ * on read — the same JSON, one empty slice more — so every saved view and
+ * every link written before it still parses.
+ */
+export const VIEW_VERSION = 2 as const;
+
+export function migrateView(input: unknown): unknown {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return input;
+  const v = input as Record<string, unknown>;
+  if (v.version === 1) return { ...v, version: 2, columnAggs: v.columnAggs ?? {} };
+  return input;
+}
 
 const KNOWN = new Set<string>(COLUMN_ORDER);
 const columnId = z.string().refine((id) => KNOWN.has(id), (id) => ({ message: `unknown column: ${id}` }));
@@ -53,6 +67,19 @@ export const ViewStateSchema = z
       .object({ start: z.array(columnId).default([]), end: z.array(columnId).default([]) })
       .default({}),
     columnSizing: byColumn(z.number().positive()).default({}),
+    // A measure's aggregation, overriding the meta's (ADR-72): only a
+    // registered name, only on a measure, `wavg` only where a weight exists.
+    columnAggs: z
+      .record(z.string(), z.enum(AGGS as [Agg, ...Agg[]]))
+      .superRefine((rec, ctx) => {
+        for (const [k, agg] of Object.entries(rec)) {
+          if (!KNOWN.has(k)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `unknown column: ${k}`, path: [k] });
+          else if (!allowedAggs(k as keyof Position).includes(agg)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${agg} is not an aggregation ${k} can take`, path: [k] });
+          }
+        }
+      })
+      .default({}),
   })
   .strict();
 
@@ -70,12 +97,12 @@ export const defaultView = (): ViewState => parseView({ version: VIEW_VERSION })
 
 /** Parse untrusted JSON into a view, or throw the zod error naming what is wrong. */
 export function parseView(input: unknown): ViewState {
-  return ViewStateSchema.parse(input) as ViewState;
+  return ViewStateSchema.parse(migrateView(input)) as ViewState;
 }
 
 /** The safe form for callers that render the reason rather than throw (ADR-44). */
 export function safeParseView(input: unknown): { ok: true; view: ViewState } | { ok: false; issues: string[] } {
-  const r = ViewStateSchema.safeParse(input);
+  const r = ViewStateSchema.safeParse(migrateView(input));
   return r.success
     ? { ok: true, view: r.data as ViewState }
     : { ok: false, issues: r.error.issues.map((i) => `${i.path.join('.') || '$'}: ${i.message}`) };
@@ -96,5 +123,6 @@ export function toTableState(view: ViewState) {
     columnOrder: view.columnOrder,
     columnPinning: view.columnPinning,
     columnSizing: view.columnSizing,
+    // `columnAggs` is not table state: it shapes the column definitions.
   } satisfies Partial<TableState<Features>>;
 }

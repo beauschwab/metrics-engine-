@@ -27,8 +27,10 @@ import type { Position } from '../data/mock';
 import type { Features } from '../grid/features';
 import { aggregatedNumber } from '../grid/aggregations';
 import { SELECT_ID } from '../grid/columns';
+import { rangesToTsv, selectedCellRanges } from '../grid/copy';
+import { copyText } from './clipboard';
 import { heatBackground, heatIntensity } from '../grid/heat';
-import { alignOf } from '../grid/meta';
+import { alignOf, type Agg } from '../grid/meta';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { cn } from '../lib/utils';
 import { ValueCell } from './CellRenderers';
@@ -62,6 +64,8 @@ export interface GridTableProps {
   onContextTarget: (target: ContextTarget | null) => void;
   /** A group the source made asks the shell for its children before it expands (ADR-70). */
   onExpandGroup: (row: GridRow) => void;
+  /** A measure's aggregation chosen for the view (ADR-72). */
+  onAggChange?: (columnId: string, agg: Agg | null) => void;
 }
 
 type GridColumn = Column<Features, Position, unknown>;
@@ -79,7 +83,7 @@ function pinnedStyle(column: GridColumn): CSSProperties {
   };
 }
 
-export function GridTable({ table, pending = false, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup }: GridTableProps) {
+export function GridTable({ table, pending = false, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup, onAggChange }: GridTableProps) {
   const rowHeight = ROW_HEIGHTS[density];
   const model = table.getRowModel().rows;
   const items = useMemo<DisplayItem[]>(() => {
@@ -131,6 +135,26 @@ export function GridTable({ table, pending = false, density, detailOpen, onToggl
       data-density={density}
       data-pending={pending || undefined}
       aria-busy={pending || undefined}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        // The block's keyboard (ADR-71): copy, clear, move, extend, all.
+        const mod = e.ctrlKey || e.metaKey;
+        if (mod && (e.key === 'c' || e.key === 'C')) {
+          if (table.getSelectedCellCount() === 0) return;
+          e.preventDefault();
+          copyText(rangesToTsv(selectedCellRanges(table), { formatted: !e.shiftKey }));
+        } else if (mod && (e.key === 'a' || e.key === 'A')) {
+          e.preventDefault();
+          table.selectAllCells();
+        } else if (e.key === 'Escape') {
+          table.resetCellSelection(true);
+        } else if (e.key.startsWith('Arrow') && table.getFocusedCell()) {
+          e.preventDefault();
+          const dir = e.key.slice(5).toLowerCase() as 'up' | 'down' | 'left' | 'right';
+          if (e.shiftKey) table.extendCellSelection(dir);
+          else table.moveCellSelection(dir);
+        }
+      }}
       onContextMenuCapture={(e) => {
         const cell = (e.target as HTMLElement).closest('td');
         const row = cell?.closest('tr');
@@ -141,7 +165,7 @@ export function GridTable({ table, pending = false, density, detailOpen, onToggl
         {table.getHeaderGroups().map((group) => (
           <TableRow key={group.id} className="flex w-full bg-card hover:bg-card">
             {group.headers.map((header) => (
-              <HeaderCell key={header.id} header={header} table={table} sortCount={sortCount} />
+              <HeaderCell key={header.id} header={header} table={table} sortCount={sortCount} onAggChange={onAggChange} />
             ))}
           </TableRow>
         ))}
@@ -203,7 +227,7 @@ export function GridTable({ table, pending = false, density, detailOpen, onToggl
           {visible.map((column) => {
             const meta = column.columnDef.meta;
             const align = meta ? alignOf(meta) : 'left';
-            const total = meta?.kind === 'measure' && meta.agg ? aggregatedNumber(column.getAggregationValue()) : undefined;
+            const total = meta?.kind === 'measure' && column.columnDef.aggregationFn ? aggregatedNumber(column.getAggregationValue()) : undefined;
             return (
               <TableCell
                 key={column.id}
@@ -228,7 +252,9 @@ export function GridTable({ table, pending = false, density, detailOpen, onToggl
   );
 }
 
-function HeaderCell({ header, table, sortCount }: { header: Header<Features, Position, unknown>; table: TreasuryTable; sortCount: number }) {
+function HeaderCell({
+  header, table, sortCount, onAggChange,
+}: { header: Header<Features, Position, unknown>; table: TreasuryTable; sortCount: number; onAggChange?: (columnId: string, agg: Agg | null) => void }) {
   const column = header.column;
   const meta = column.columnDef.meta;
   const isSelect = column.id === SELECT_ID;
@@ -307,6 +333,7 @@ function HeaderCell({ header, table, sortCount }: { header: Header<Features, Pos
             )}
             <HeaderMenu
               column={column}
+              onAggChange={onAggChange}
               className="size-4 opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
             />
           </span>
@@ -400,6 +427,16 @@ function BodyCell({
     );
   }
 
+  // The block: one outline around a union of rectangles, from the edges the
+  // feature computes; the fill is the accent, faint (ADR-71).
+  const selected = cell.getIsSelected();
+  const edges = selected ? cell.getSelectionEdges() : null;
+  const outline = edges
+    ? [edges.top && 'inset 0 1px 0 var(--cr-accent)', edges.bottom && 'inset 0 -1px 0 var(--cr-accent)', edges.left && 'inset 1px 0 0 var(--cr-accent)', edges.right && 'inset -1px 0 0 var(--cr-accent)']
+        .filter(Boolean)
+        .join(', ') || undefined
+    : undefined;
+
   let content: ReactNode = null;
   let kind: 'group' | 'aggregated' | 'placeholder' | 'value' = 'value';
   let background: string | undefined;
@@ -413,7 +450,7 @@ function BodyCell({
     // A group the source made: measures hold their aggregates, the other
     // dimensions are blank — the same reading as a client group (ADR-67).
     const v = cell.getValue();
-    if (meta?.kind === 'measure' && meta.agg && typeof v === 'number' && Number.isFinite(v)) {
+    if (meta?.kind === 'measure' && column.columnDef.aggregationFn && typeof v === 'number' && Number.isFinite(v)) {
       kind = 'aggregated';
       content = <ValueCell value={v} meta={meta} />;
     } else {
@@ -438,14 +475,24 @@ function BodyCell({
       data-column={column.id}
       data-cell={kind}
       data-heat={background ? '' : undefined}
+      data-selected={selected || undefined}
+      onMouseDown={(e) => {
+        // A right-click inside the range keeps it, so the context menu can
+        // copy what the user selected (Excel does the same); anywhere else,
+        // any button starts a new range at this cell.
+        if (e.button === 2 && selected) return;
+        cell.getSelectionStartHandler()(e);
+      }}
+      onMouseEnter={cell.getSelectionExtendHandler()}
       style={{
         width: column.getSize(),
         paddingLeft: first && kind === 'value' && row.depth > 0 ? 10 + row.depth * INDENT_PX : undefined,
-        backgroundColor: background,
+        backgroundColor: selected ? 'color-mix(in oklab, var(--cr-accent) 12%, var(--cr-panel))' : background,
+        boxShadow: outline,
         ...pinnedStyle(column),
       }}
       className={cn(
-        'flex min-w-0 items-center border-b border-border-subtle bg-inherit px-2.5 py-0 data-[align=right]:justify-end',
+        'flex min-w-0 select-none items-center border-b border-border-subtle bg-inherit px-2.5 py-0 data-[align=right]:justify-end',
         kind === 'group' && 'z-[1] overflow-visible',
         column.getIsPinned() === 'start' && 'border-r border-r-border',
         column.getIsPinned() === 'end' && 'border-l border-l-border',

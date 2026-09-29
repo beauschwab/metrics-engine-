@@ -9,7 +9,7 @@
 
 import { createColumnHelper } from '@tanstack/table-core';
 import type { Features } from './features';
-import type { ColumnMeta } from './meta';
+import { AGGS, type Agg, type ColumnMeta } from './meta';
 import type { Position } from '../data/mock';
 
 const helper = createColumnHelper<Features, Position>();
@@ -57,25 +57,49 @@ export const selectColumn = helper.display({
   enablePinning: false,
 });
 
-export const columns = helper.columns(
-  COLUMN_ORDER.map((id) => {
-    const meta = COLUMN_META[id];
-    return helper.accessor(id, {
-      header: meta.label,
-      meta,
-      size: meta.width,
-      enableGrouping: meta.kind === 'dimension' && !!meta.groupable,
-      // Every aggregation the meta names is registered (`wavg` since Phase 2,
-      // ADR-67); a measure without one leaves a subtotal blank — ADR-44.
-      aggregationFn: meta.agg,
-      // A dimension filters as a set ("value is one of these"); a measure as
-      // an inclusive range with open ends. Both read the meta's kind, not a
-      // per-feature list — the set filter and the number filter (Phase 3)
-      // are the UI over these.
-      filterFn: meta.kind === 'dimension' ? 'arrHas' : 'inNumberRange',
-      // Measures sort numerically — a grouped row's aggregate is a Number
-      // object (ADR-67), which `basic` compares by value.
-      sortFn: meta.kind === 'measure' ? 'basic' : 'alphanumeric',
-    });
-  }),
-);
+/** A view's per-column aggregation overrides (ADR-72). */
+export type ColumnAggs = Partial<Record<keyof Position, Agg>>;
+
+/** The aggregation a measure takes: the view's choice, else the meta's. */
+export function effectiveAgg(id: keyof Position, aggs?: ColumnAggs): Agg | undefined {
+  const meta = COLUMN_META[id];
+  if (meta.kind !== 'measure') return undefined;
+  return aggs?.[id] ?? meta.agg;
+}
+
+/** The aggregations a measure may take: `wavg` only where the meta names a weight. */
+export function allowedAggs(id: keyof Position): Agg[] {
+  const meta = COLUMN_META[id];
+  if (meta.kind !== 'measure') return [];
+  return AGGS.filter((a) => a !== 'wavg' || !!meta.weightBy);
+}
+
+/** The column definitions for a view: the same columns, the view's aggregations. */
+export function buildColumns(aggs: ColumnAggs = {}) {
+  return helper.columns(
+    COLUMN_ORDER.map((id) => {
+      const meta = COLUMN_META[id];
+      return helper.accessor(id, {
+        header: meta.label,
+        meta,
+        size: meta.width,
+        enableGrouping: meta.kind === 'dimension' && !!meta.groupable,
+        // Every aggregation the meta or the view names is registered (`wavg`
+        // since Phase 2, ADR-67); a measure without one leaves a subtotal
+        // blank — ADR-44.
+        aggregationFn: effectiveAgg(id, aggs),
+        // A dimension filters as a set ("value is one of these"); a measure as
+        // an inclusive range with open ends. Both read the meta's kind, not a
+        // per-feature list — the set filter and the number filter (Phase 3)
+        // are the UI over these.
+        filterFn: meta.kind === 'dimension' ? 'arrHas' : 'inNumberRange',
+        // Measures sort numerically — a grouped row's aggregate is a Number
+        // object (ADR-67), which `basic` compares by value.
+        sortFn: meta.kind === 'measure' ? 'basic' : 'alphanumeric',
+      });
+    }),
+  );
+}
+
+/** The columns with the meta's own aggregations. */
+export const columns = buildColumns();

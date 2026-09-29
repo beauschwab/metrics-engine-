@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { constructTable, tableFeatures, type ColumnDef, type Row } from '@tanstack/table-core';
 import { storeReactivityBindings } from '@tanstack/table-core/store-reactivity-bindings';
 import { aggregatedNumber, weightedAverage, Wavg } from '../src/grid/aggregations';
-import { COLUMN_META, columns } from '../src/grid/columns';
+import { COLUMN_META, buildColumns } from '../src/grid/columns';
 import { features } from '../src/grid/features';
 import { parseView, type ViewState } from '../src/grid/viewState';
 import { generatePositions, type Position } from '../src/data/mock';
@@ -22,7 +22,7 @@ const DATA = generatePositions(3000);
 const build = (view: ViewState, data = DATA) =>
   constructTable<Headless, Position>({
     features: headless,
-    columns: columns as unknown as ColumnDef<Headless, Position, unknown>[],
+    columns: buildColumns(view.columnAggs) as unknown as ColumnDef<Headless, Position, unknown>[],
     data,
     getRowId: (r) => r.tradeId,
     state: {
@@ -165,5 +165,24 @@ describe('filtering updates subtotals', () => {
     const kept = DATA.filter((r) => Object.values(r).some((v) => String(v).toLowerCase().includes('cp-0100')));
     expect(kept.length).toBeGreaterThan(0);
     expect(t.getFilteredRowModel().rows.length).toBe(kept.length);
+  });
+});
+
+describe('a view’s aggregation choice (ADR-72)', () => {
+  it('replaces the meta’s aggregation for subtotals and the grand total, and can be restored', () => {
+    const chosen = build(parseView({ version: 2, grouping: ['desk'], columnAggs: { yield: 'mean', notional: 'max', dv01: 'uniqueCount' } }));
+    for (const g of chosen.getRowModel().rows as R[]) {
+      const mine = leaves(g);
+      expect(g.getValue<number>('yield')).toBeCloseTo(sum(mine.map((r) => r.yield)) / mine.length, 9);
+      expect(g.getValue<number>('notional')).toBe(Math.max(...mine.map((r) => r.notional)));
+      expect(g.getValue<number>('dv01')).toBe(new Set(mine.map((r) => r.dv01)).size);
+      // mtm keeps the meta's sum.
+      expect(g.getValue<number>('mtm')).toBeCloseTo(sum(mine.map((r) => r.mtm)), 6);
+    }
+    expect(chosen.getColumn('yield')!.getAggregationValue<number>()).toBeCloseTo(sum(DATA.map((r) => r.yield)) / DATA.length, 9);
+    const restored = build(parseView({ version: 2, grouping: ['desk'] }));
+    const yieldWavg = aggregatedNumber(restored.getRowModel().rows[0]!.getValue('yield'))!;
+    const yieldMean = chosen.getRowModel().rows[0]!.getValue<number>('yield');
+    expect(Math.abs(yieldWavg - yieldMean)).toBeGreaterThan(1e-6);
   });
 });

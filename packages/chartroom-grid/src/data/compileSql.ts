@@ -14,7 +14,7 @@
  * range filters, the quick filter, and the group path's dimensions.
  */
 
-import { COLUMN_META, COLUMN_ORDER } from '../grid/columns';
+import { COLUMN_META, COLUMN_ORDER, effectiveAgg } from '../grid/columns';
 import type { ColumnMeta } from '../grid/meta';
 import type { ViewState } from '../grid/viewState';
 import type { Position } from './mock';
@@ -28,6 +28,8 @@ export interface SqlDialect {
   text(expr: string): string;
   /** True when the dialect takes no parameters and values must be inlined as literals. */
   inlineLiterals: boolean;
+  /** The median of a column, where the engine has one. */
+  median?: (expr: string) => string;
 }
 
 const dq = (id: string) => `"${id.replace(/"/g, '""')}"`;
@@ -38,6 +40,7 @@ export const DUCKDB: SqlDialect = {
   ilike: (expr, needle) => `${expr} ILIKE ${needle}`,
   text: (expr) => `CAST(${expr} AS VARCHAR)`,
   inlineLiterals: false,
+  median: (expr) => `MEDIAN(${expr})`,
 };
 
 export const SQLITE: SqlDialect = {
@@ -54,6 +57,7 @@ export const DREMIO: SqlDialect = {
   ilike: (expr, needle) => `LOWER(${expr}) LIKE LOWER(${needle})`,
   text: (expr) => `CAST(${expr} AS VARCHAR)`,
   inlineLiterals: true,
+  median: (expr) => `MEDIAN(${expr})`,
 };
 
 export interface CompiledSql {
@@ -131,15 +135,21 @@ function where(view: ViewState, opts: CompileOptions, dialect: SqlDialect, param
   return clauses;
 }
 
-function aggregate(id: keyof Position, dialect: SqlDialect): string[] {
+function aggregate(id: keyof Position, dialect: SqlDialect, view: ViewState): string[] {
   const meta = META[id]!;
   const col = dialect.quote(id);
   const as = (expr: string, alias: string) => `${expr} AS ${dialect.quote(alias)}`;
-  switch (meta.agg) {
+  switch (effectiveAgg(id, view.columnAggs)) {
     case 'sum': return [as(`SUM(${col})`, id)];
     case 'min': return [as(`MIN(${col})`, id)];
     case 'max': return [as(`MAX(${col})`, id)];
     case 'count': return [as(`COUNT(${col})`, id)];
+    case 'mean': return [as(`AVG(${col})`, id)];
+    case 'uniqueCount': return [as(`COUNT(DISTINCT ${col})`, id)];
+    case 'median': {
+      if (!dialect.median) throw new RangeError(`compileSql: ${dialect.name} has no median; choose another aggregation for ${id}`);
+      return [as(dialect.median(col), id)];
+    }
     case 'wavg': {
       const w = dialect.quote(columnId(meta.weightBy ?? ''));
       return [
@@ -166,12 +176,12 @@ export function compileSql(view: ViewState, opts: CompileOptions, dialect: SqlDi
     const select = [
       `${dimCol}`,
       `COUNT(*) AS ${dialect.quote('__count')}`,
-      ...COLUMN_ORDER.filter((id) => META[id]!.kind === 'measure').flatMap((id) => aggregate(id, dialect)),
+      ...COLUMN_ORDER.filter((id) => META[id]!.kind === 'measure').flatMap((id) => aggregate(id, dialect, view)),
     ];
     const order: string[] = [];
     for (const s of view.sorting) {
       const id = columnId(s.id);
-      if (id === dim || META[id]!.agg) order.push(`${dialect.quote(id)} ${s.desc ? 'DESC' : 'ASC'}`);
+      if (id === dim || effectiveAgg(id, view.columnAggs)) order.push(`${dialect.quote(id)} ${s.desc ? 'DESC' : 'ASC'}`);
     }
     if (!order.some((o) => o.startsWith(dimCol))) order.push(`${dimCol} ASC`);
     const sql = `SELECT ${select.join(', ')} FROM ${from}${whereSql} GROUP BY ${dimCol} ORDER BY ${order.join(', ')}`;
