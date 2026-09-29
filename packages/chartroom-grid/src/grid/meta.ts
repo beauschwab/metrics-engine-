@@ -49,6 +49,8 @@ export interface ColumnMeta {
   heatmap?: boolean;
   /** Negative values read in the breach colour. */
   negativeRed?: boolean;
+  /** Initial column width in px; the reader may resize (Phase 3), the view state remembers. */
+  width?: number;
 }
 
 /** The dash every widget renders for a value it does not have. */

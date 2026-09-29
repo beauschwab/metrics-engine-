@@ -4,10 +4,11 @@
  * bundled by the studio's Vite, which owns no such alias — a component
  * added by `npx shadcn add` gets its import path rewritten on landing.
  *
- * One addition to the upstream file: `containerClassName`. shadcn wraps the
- * table in a scroll container of its own, and a sticky header sticks to the
- * nearest scrolling ancestor, so the grid must be able to size that
- * container rather than wrap it in another.
+ * One addition to the upstream file: `containerClassName` and `ref`, both
+ * on the container. shadcn wraps the table in a scroll container of its
+ * own; a sticky header sticks to the nearest scrolling ancestor and the
+ * virtualizer measures the scrolling element, so the grid must be able to
+ * size and reach that container rather than wrap it in another.
  */
 
 import * as React from 'react';
@@ -16,10 +17,11 @@ import { cn } from '../../lib/utils';
 function Table({
   className,
   containerClassName,
+  ref,
   ...props
-}: React.ComponentProps<'table'> & { containerClassName?: string }) {
+}: Omit<React.ComponentProps<'table'>, 'ref'> & { containerClassName?: string; ref?: React.Ref<HTMLDivElement> }) {
   return (
-    <div data-slot="table-container" className={cn('relative w-full overflow-x-auto', containerClassName)}>
+    <div ref={ref} data-slot="table-container" className={cn('relative w-full overflow-x-auto', containerClassName)}>
       <table data-slot="table" className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
   );

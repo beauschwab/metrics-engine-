@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@tanstack/react-table": "9.2.4",
+    "@tanstack/react-virtual": "^3.14.13",
     "chartroom-widgets": "*",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.7.0",

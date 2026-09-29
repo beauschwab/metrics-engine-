@@ -4,30 +4,35 @@
  * surface: each phase of the grid lands here first, and the e2e suite reads
  * it so a cell that stops formatting from its meta is a red build.
  *
- * Phase 0: a few hundred rows, plain table. Phase 1 turns the count up to
- * 50,000 and virtualizes the body. The chrome is the studio's header; the
- * frame around the grid is Tailwind on the grid's theme (ADR-65).
+ * Phase 1: fifty thousand positions behind an in-memory `DataSource`, a
+ * virtualized body, and the count in the header read from `describe()` —
+ * the harness knows nothing about the rows that the seam did not tell it.
  */
 
-import { useMemo } from 'react';
-import { TreasuryGrid, generatePositions } from 'chartroom-grid';
+import { useEffect, useMemo, useState } from 'react';
+import { TreasuryGrid, generatePositions, inMemorySource, type SourceDescription } from 'chartroom-grid';
 
-const ROWS = 200;
+const ROWS = 50_000;
 
 export function GridHarness() {
-  const rows = useMemo(() => generatePositions(ROWS), []);
+  const source = useMemo(() => inMemorySource(generatePositions(ROWS), 'seeded book'), []);
+  const [about, setAbout] = useState<SourceDescription | null>(null);
+  useEffect(() => { void source.describe().then(setAbout); }, [source]);
+
   return (
     <div className="flex h-screen flex-col" data-testid="grid-harness">
       <header className="cr-header">
         <span className="cr-brand">Chartroom</span>
-        <span className="cr-header-title">treasury grid — phase 0, {ROWS.toLocaleString('en-US')} seeded positions</span>
+        <span className="cr-header-title" data-testid="grid-harness-title">
+          treasury grid — phase 1, {about ? `${about.rowCount.toLocaleString('en-US')} positions as of ${about.asOf}` : 'describing the source…'}
+        </span>
         <span className="cr-header-spacer" />
         <a className="cr-link" href="#/widgets">widget states</a>
         <a className="cr-link" href="#/">back to the studio</a>
       </header>
       <div className="min-h-0 flex-1 px-5 pt-3 pb-5">
         <div className="h-full border border-border bg-card">
-          <TreasuryGrid rows={rows} />
+          <TreasuryGrid source={source} />
         </div>
       </div>
     </div>

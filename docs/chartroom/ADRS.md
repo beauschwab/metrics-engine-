@@ -1535,6 +1535,75 @@ class. The studio's
 `grid.spec.ts` still reads the rendered units and the breach colour on a
 negative MTM, now through shadcn's `data-slot` markup.
 
+## ADR-66 — the view state is the contract, and the data seam is a query of it
+
+**Pinned:** the grid plan's second and third principles — "view state is
+the contract" and "no SQL crosses a trust boundary" — and its Phase 1. The
+occasion is the first thing after Phase 0 that could have been done two
+ways: a table whose state lives in the table, with a save button that
+serializes it, or a JSON shape that *is* the state, which the table is
+driven from.
+
+**Decision.** The second, in three parts.
+
+*One versioned, strict, zod-validated shape (`grid/viewState.ts`).* It
+carries the table's slices — grouping, filters, global filter, sorting,
+expansion, pagination, visibility, order, pinning, sizing — under a
+`version` literal, and refuses at the boundary what a plain `TableState`
+would render: an unknown key, a column that does not exist, a grouping on
+a column whose meta is not `groupable`. That last one is the point. An
+agent handed `set_view` (Phase 4) can ask for anything; asking to group by
+trade id is answered with an issue naming the column, not with fifty
+thousand groups. `pagination` is carried but not driven — the paginated
+row model is unregistered (ADR-64) until Phase 5's server-side modes.
+
+*The table is controlled from the view, slice by slice.* v9 has no global
+state callback; one functional update on the view fans out to a change
+handler per registered slice, so a feature API — `column.toggleSorting()`,
+`column.pin()` — writes the view through the hook, and the view is never a
+copy of the state that could drift from it. The hook stays the one
+constructor of a table (ADR-64); a screen supplies rows and a view, or
+neither and the grid keeps its own.
+
+*A source answers a view; it does not receive SQL.* `DataSource` is two
+methods: `describe()` — name, as-of, row count, the columns' meta, and
+which stages it will serve — and `query(view, { groupPath? })`. The
+in-memory source returns the whole book and says in `applied` that it
+filtered, sorted and grouped nothing; the client row models do that work.
+A DuckDB or Dremio source will compile the view and report what it
+applied, and the table flips its `manual*` modes from that answer rather
+than from configuration — the seam is built now so Phase 5 swaps an
+implementation, not an architecture. `groupPath` is lazy expansion's hook,
+and the in-memory source serves it so the remote one has a reference to be
+tested against.
+
+**Virtualization is renderer composition, not a feature.** TanStack
+Virtual windows the *final* row model — never the raw data, which would
+ignore the filter and the grouping — in the grid/flex geometry the
+maintained example uses, with column widths from meta (`width`, one more
+reading of the same declaration) and a fixed row height that is never
+measured. A treasury grid is a lattice, not a feed; a measured row is a
+scrollbar that jumps.
+
+**What Phase 1 leaves honest.** The grid queries the source once per
+source: the in-memory source serves no stage of the view, so a sort needs
+no second answer. When a source reports that it serves one, the query must
+key on that slice of the view too — the `TODO(grid-phase-5)` at the
+effect. The e2e drives no interaction yet; the contract is exercised
+headlessly, and the screen is exercised at rest.
+
+**What now fails if this regresses.** `the view state contract` refuses
+another version, an unknown key, an unknown column and an ungroupable
+grouping, and round-trips a view through JSON; `a view drives a headless
+table` builds a table from a view and asserts it sorts, groups (collapsed
+until `expanded`), hides, orders and sizes as the view says; `the
+in-memory source` describes the book from the meta, answers with
+`applied` all false, serves a group path equal to brute force and refuses
+one deeper than the grouping. The studio's `grid.spec.ts` reads a count
+that only `describe()` could have supplied, a window of rows in the DOM
+over a body fifty thousand rows tall, and the last trade after a scroll
+with the header still in view.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the
