@@ -1368,6 +1368,84 @@ line is drawn at. The old code fails it five times over. The test that was
 there before — `ticks sit strictly inside the extent` — passed throughout:
 containment was true, and it was never the property that mattered.
 
+## ADR-64 — the treasury grid is a headless core behind the widget seam, not AG Grid and not a component library
+
+Phase 0 shipped; the plan's later phases are its consequence. The occasion
+is a request to build the dashboard builder's standard grid to the shape of
+the AG Grid Enterprise demo — grouping with subtotals, set filters, pinning,
+master-detail, xlsx export — over a non-ticking treasury book, arranged so
+the data layer can later become DuckDB-WASM or Dremio and so the grid's
+state doubles as an agent tool contract.
+
+**Decision, in four parts.**
+
+*The table logic is TanStack Table v9, pinned exact (`9.2.4`).* Headless:
+it owns row models, state slices and the feature registry, and renders
+nothing. This is ADR-63's arrangement, one layer up — the arithmetic is a
+library's, the marks are ours. v9 is explicit where v8 was implicit: a
+state slice, an API or a row model exists only if `tableFeatures()`
+registers it, and the registry type-checks its own prerequisites, which is
+why the grid declares every feature once (`grid/features.ts`) and every
+screen reaches the same instance through one hook. The version is pinned
+because the API moved between betas and the docs lag; the declarations and
+skills shipped in `node_modules/@tanstack/*` are the reference, not memory.
+
+*No Tailwind, no shadcn.* The plan as pasted specified both. ADR-34 declined
+that substrate for AI Elements and ADR-48 bound the studio to Aperture Risk
+by reference; a grid is not the occasion to reverse either. The grid ships
+one stylesheet of geometry (`grid.css`) that names no colour of its own —
+every chromatic is a `--cr-*` alias — and the Popover, Command, ContextMenu
+and Sheet the later phases want are built as the studio's own components in
+those libraries' vocabulary, as the chat pane was. The component contract
+is what the AG Grid demo is worth replicating; its CSS is not.
+
+*Column meta is the single source of behaviour.* Formatting, groupability,
+aggregation, conditional formatting and the export's number formats all
+read `ColumnMeta`; there is no per-feature column list. Where a unit
+already has a rendering in the widget catalog the grid delegates to
+`chartroom-widgets/format`, so a cell says the tile's number and the deck's
+(ADR-29). One vocabulary difference is recorded rather than papered over:
+the grid's `bps` is a *unit* the stored value is in, where the catalog's
+`bps` is a *format* that converts a percent — when the grid binds to a
+registry metric the contract's `format` derives the meta, and that mapping
+is where the two meet.
+
+*The package sits at `spec ← grid ← studio`.* It is not a widget: a widget
+receives a few hundred resolved aggregates and may not fetch, and this grid
+holds fifty thousand raw positions behind a `DataSource` that a remote
+adapter will one day implement. So it is a sibling of the catalog, not a
+member — the boundaries test says it imports the widgets' React-free
+subpaths only, and that its table, components and export never fetch;
+`src/data` is the one directory a query may leave from. When the grid does
+become a canvas widget (`data-grid@1`, Phase 4+), the widget will be a thin
+contract over this package, the way `perspective-grid@1` is a contract over
+a renderer (ADR-9).
+
+**Why not the alternatives.** AG Grid Enterprise is licensed per developer
+and closed; its state is not a JSON shape an agent can be handed and
+validated. FINOS Perspective (ADR-9's deferred wrap) is a pivot engine, not
+a row grid, and its WASM is the weight ADR-9 declined to pay for a few
+hundred cells — it may still land under `perspective-grid@1` when the
+cross-filter loop gives it a job. Building the row models by hand is what
+ADR-8 did for scales, and ADR-63 records how that went.
+
+**What Phase 0 leaves honest.** `wavg` is declared in meta but not
+registered, so a weighted column shows blank on a subtotal row rather than
+an average of averages (ADR-44) until Phase 2 lands it behind its tests.
+Pagination is not registered at all: `getRowModel()` resolves to the last
+registered model, and a paged one would hand the Phase-1 virtualizer ten
+rows; it returns as `manualPagination` in Phase 5. Every deferred hook is a
+`TODO(grid-phase-N)` at the seam it plugs into.
+
+**What now fails if this regresses.** `column meta drives the table` builds
+a headless v9 instance and asserts every cell carries the meta its column
+declared and formats through the registry to the same string; `says the
+catalog's number` pins `ccy`, `mm` and `pct` to the widgets' `formatValue`;
+the studio's `grid.spec.ts` reads the harness at `#/grid` and checks the
+rendered units. The boundaries test fails on the grid importing a widget
+component, the server, the studio, or fetching from anywhere but its data
+seam.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

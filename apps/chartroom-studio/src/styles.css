@@ -22,6 +22,8 @@
 @import 'keel-design-system/tokens/typography.css';
 @import 'keel-design-system/tokens/spacing.css';
 @import 'keel-design-system/tokens/radii.css';
+/* The grid's geometry; its chromatics are the aliases below (ADR-64). */
+@import 'chartroom-grid/grid.css';
 
 :root {
   /* ---- surfaces: Aperture's layered near-blacks ---- */
@@ -334,6 +336,12 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .cr-harness-state { font-size: 10px; color: var(--cr-text-faint); text-transform: uppercase; letter-spacing: 0.08em; }
 .cr-harness-cell .cr-frame { height: 230px; margin-top: 4px; }
 .cr-harness-cell .cr-frame-body { padding: 10px 12px; }
+
+/* ---- grid harness --------------------------------------------------- */
+
+.cr-grid-harness { display: flex; flex-direction: column; height: 100vh; }
+.cr-grid-harness-body { flex: 1; min-height: 0; padding: 12px 20px 20px; }
+.cr-grid-harness-body .cr-grid { border: 1px solid var(--cr-border); background: var(--cr-panel); }
 
 /* ---- the brief card (Phase 2) --------------------------------------- */
 

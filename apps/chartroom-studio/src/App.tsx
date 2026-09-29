@@ -30,6 +30,7 @@ import type { AnalystEnv, Basis } from './bindings';
 import { Canvas } from './Canvas';
 import { Inspector, type Tab } from './Inspector';
 import { Harness } from './Harness';
+import { GridHarness } from './GridHarness';
 import { ProposalsPage } from './ProposalsPage';
 import { ViewPage } from './ViewPage';
 import { AgentRail, type Pointer } from './chat/AgentRail';
@@ -55,6 +56,7 @@ export function App() {
     return () => window.removeEventListener('hashchange', on);
   }, []);
   if (route === '#/widgets') return <Harness />;
+  if (route === '#/grid') return <GridHarness />;
   if (route === '#/proposals') return <ProposalsPage />;
   const view = /^#\/view\/([a-z][a-z0-9-]*)$/.exec(route);
   if (view) return <ViewPage id={view[1]} />;

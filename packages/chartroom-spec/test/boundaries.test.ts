@@ -28,6 +28,7 @@ const ROOT = join(__dirname, '..', '..', '..');
 const PKG = {
   spec: join(ROOT, 'packages', 'chartroom-spec'),
   widgets: join(ROOT, 'packages', 'chartroom-widgets'),
+  grid: join(ROOT, 'packages', 'chartroom-grid'),
   patterns: join(ROOT, 'packages', 'chartroom-patterns'),
   critics: join(ROOT, 'packages', 'chartroom-critics'),
   server: join(ROOT, 'apps', 'chartroom-api'),
@@ -97,6 +98,30 @@ describe('package boundaries', () => {
     expect(offenders(join(PKG.widgets, 'src'), (s) =>
       s.includes('chartroom-api') || s.includes('chartroom-studio')
       || s.startsWith('node:'))).toEqual([]);
+  });
+
+  it('grid imports spec and the widgets’ React-free subpaths, never components, server or studio', () => {
+    // `spec ← grid ← studio`. The grid reads `chartroom-widgets/format` so a
+    // number in a cell is the number in a tile (ADR-64); it never reaches the
+    // widget *components* — two catalogs of renderers importing each other is
+    // how one ends up rendering the other's empty state.
+    expect(offenders(join(PKG.grid, 'src'), (s) =>
+      s.includes('chartroom-api') || s.includes('chartroom-studio')
+      || s.includes('chartroom-mcp') || s.startsWith('node:')
+      || (s.includes('chartroom-widgets')
+        && !s.endsWith('/contracts') && !s.endsWith('/format')))).toEqual([]);
+  });
+
+  it('the grid’s table and components never fetch — only its data seam may', () => {
+    // `src/data` is the boundary a DuckDB or Dremio source lands behind
+    // (ADR-64); the hook, the columns and every component are as
+    // presentation-only as a widget.
+    const ui = ['grid', 'components', 'export', 'agent']
+      .map((d) => join(PKG.grid, 'src', d))
+      .filter((d) => statSync(d, { throwIfNoEntry: false })?.isDirectory());
+    const hits = ui.flatMap(sources).filter((f) =>
+      /\bfetch\s*\(|XMLHttpRequest|WebSocket/.test(readFileSync(f, 'utf8')));
+    expect(hits).toEqual([]);
   });
 
   it('server imports spec and widget contracts/format, never components or studio', () => {

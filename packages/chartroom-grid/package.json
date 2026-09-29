@@ -1,0 +1,32 @@
+{
+  "name": "chartroom-grid",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The treasury data grid: a headless TanStack Table v9 core, column meta as the single source of behaviour, and view state as the contract the UI, saved views, the query compiler and agent tools all speak.",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./grid.css": "./src/grid.css"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-table": "9.2.4",
+    "chartroom-widgets": "*",
+    "zod": "^3.25.76"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@tanstack/table-core": "9.2.4",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.1.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
+  }
+}
