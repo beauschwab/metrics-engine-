@@ -8,8 +8,9 @@
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowDownUp, Columns3, EllipsisVertical, EyeOff, Hash, Highlighter, PanelLeft, PanelRight, PinOff, Rows3, Sigma, Trash2 } from 'lucide-react';
 import type { Column } from '@tanstack/react-table';
-import type { Position } from '../data/mock';
-import { COLUMN_META, allowedAggs, allowedFormatKeysFor } from '../grid/columns';
+import type { GridRecord } from '../grid/schema';
+import { allowedAggs, allowedFormatKeysFor } from '../grid/columns';
+import { useSchema } from './SchemaContext';
 import type { Features } from '../grid/features';
 import {
   AGG_LABELS, DECIMALS, NEGATIVES, NEGATIVE_LABELS, SCALES, SCALE_LABELS, type Agg, type ColumnFormat, type Negatives, type Scale,
@@ -23,7 +24,7 @@ import {
   DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 
-export type GridColumn = Column<Features, Position, unknown>;
+export type GridColumn = Column<Features, GridRecord, unknown>;
 
 export function HeaderMenu({
   column, className, onAggChange, onFormatChange, onRemoveComputed, onPivot,
@@ -40,15 +41,16 @@ export function HeaderMenu({
   onPivot?: (columnId: string | null) => void;
 }) {
   const meta = column.columnDef.meta;
+  const schema = useSchema();
   const label = meta?.label ?? column.id;
   const sorted = column.getIsSorted();
   const pinned = column.getIsPinned();
   // A calculated column's aggregation follows its operands (ADR-79): no choice to offer.
-  const aggs = meta?.kind === 'measure' && !meta.computed ? allowedAggs(column.id as keyof Position) : [];
+  const aggs = meta?.kind === 'measure' && !meta.computed ? allowedAggs(column.id, schema) : [];
   const currentAgg = typeof column.columnDef.aggregationFn === 'string' ? (column.columnDef.aggregationFn as Agg) : undefined;
   const formatKeys = allowedFormatKeysFor(meta);
   // The declared meta is the default; the column's meta is the view's reading.
-  const declared = meta?.computed ? meta : COLUMN_META[column.id as keyof Position];
+  const declared = meta?.computed ? meta : schema.columns[column.id];
   const scale = meta?.scale ?? (meta?.unit === 'mm' ? 'm' : 'units');
   const dp = meta?.dp ?? (meta?.unit === 'pct' || meta?.unit === 'years' ? 2 : meta?.unit === 'bps' || scale !== 'units' ? 1 : 0);
   const formatted = !!declared && (['dp', 'scale', 'negatives', 'negativeRed', 'heatmap'] as const).some((k) => meta?.[k] !== declared[k]);

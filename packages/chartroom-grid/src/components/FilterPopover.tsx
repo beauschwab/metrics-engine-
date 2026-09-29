@@ -14,7 +14,7 @@
 import { useMemo, useState } from 'react';
 import { Funnel, FunnelX } from 'lucide-react';
 import type { Column } from '@tanstack/react-table';
-import type { Position } from '../data/mock';
+import type { GridRecord } from '../grid/schema';
 import type { Features } from '../grid/features';
 import { formatValue } from '../grid/meta';
 import { cn } from '../lib/utils';
@@ -23,7 +23,7 @@ import { Checkbox } from './ui/checkbox';
 import { Input } from './ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
-type GridColumn = Column<Features, Position, unknown>;
+type GridColumn = Column<Features, GridRecord, unknown>;
 
 export function FilterPopover({ column, className }: { column: GridColumn; className?: string }) {
   const meta = column.columnDef.meta;

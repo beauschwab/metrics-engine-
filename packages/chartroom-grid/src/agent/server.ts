@@ -16,7 +16,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { DataSource } from '../data/source';
-import type { Position } from '../data/mock';
+import { schemaFromDescription, type GridRecord } from '../grid/schema';
 import { defaultView, type ViewState } from '../grid/viewState';
 import { describeView, queryView, setView } from './tools';
 
@@ -47,7 +47,7 @@ export interface GridServerOptions {
   initialView?: ViewState;
 }
 
-export function buildGridServer(source: DataSource<Position>, options: GridServerOptions = {}): McpServer {
+export function buildGridServer(source: DataSource<GridRecord>, options: GridServerOptions = {}): McpServer {
   let view: ViewState = options.initialView ?? defaultView();
   const server = new McpServer({ name: GRID_MCP_NAME, version: GRID_MCP_VERSION }, { instructions: GRID_MCP_INSTRUCTIONS });
 
@@ -65,7 +65,7 @@ export function buildGridServer(source: DataSource<Position>, options: GridServe
       replace: z.boolean().optional().describe('Start from an empty view instead of the current one.'),
     },
   }, async ({ patch, replace }) => {
-    const result = setView(view, patch, { replace });
+    const result = setView(view, patch, { replace }, schemaFromDescription(await source.describe()));
     if (!result.ok) return refuse(result.issues);
     view = result.view;
     return ok({ ok: true, view });
@@ -84,7 +84,7 @@ export function buildGridServer(source: DataSource<Position>, options: GridServe
   }, async ({ limit, offset, display, expandAll, view: override }) => {
     let target = view;
     if (override !== undefined) {
-      const parsed = setView(view, override, { replace: true });
+      const parsed = setView(view, override, { replace: true }, schemaFromDescription(await source.describe()));
       if (!parsed.ok) return refuse(parsed.issues);
       target = parsed.view;
     }

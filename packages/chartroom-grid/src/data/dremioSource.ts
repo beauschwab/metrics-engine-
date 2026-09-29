@@ -13,7 +13,7 @@
  */
 
 import { DREMIO } from './compileSql';
-import type { Position } from './mock';
+import type { GridRecord, GridSchema } from '../grid/schema';
 import type { DataSource } from './source';
 import { sqlSource, type SqlExecutor } from './sqlSource';
 
@@ -76,6 +76,6 @@ export function createDremioExecutor({
   };
 }
 
-export function dremioSource(options: DremioOptions & { table: string; name?: string }): DataSource<Position> {
-  return sqlSource({ executor: createDremioExecutor(options), table: options.table, dialect: DREMIO, name: options.name ?? 'Dremio' });
+export function dremioSource(options: DremioOptions & { table: string; name?: string; schema?: GridSchema }): DataSource<GridRecord> {
+  return sqlSource({ executor: createDremioExecutor(options), table: options.table, dialect: DREMIO, name: options.name ?? 'Dremio', schema: options.schema });
 }

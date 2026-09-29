@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { headlessTable } from '../src/agent/headless';
-import { generatePositions } from '../src/data/mock';
+import { generatePositions, type Position } from '../src/data/mock';
 import { COLUMN_META } from '../src/grid/columns';
 import { cellText } from '../src/grid/copy';
 import { computedIdFor, computedUnit, evaluateComputed, type ComputedColumn } from '../src/grid/computed';
@@ -52,7 +52,7 @@ describe('the table carries a calculated column', () => {
   it('a leaf cell is the arithmetic on the row, formatted in the derived unit', () => {
     const t = headlessTable(BOOK, parseView({ version: 4, computedColumns: [share, risk, bp] }));
     const row = t.getRowModel().rows[0]!;
-    const p = row.original;
+    const p = row.original as Position;
     expect(row.getValue('c:mtm_share')).toBeCloseTo((p.mtm / p.notional) * 100, 9);
     expect(row.getValue('c:risk')).toBe(p.dv01 + p.cs01);
     expect(row.getValue('c:yield_bp')).toBeCloseTo(p.yield * 100, 9);
@@ -66,7 +66,7 @@ describe('the table carries a calculated column', () => {
     const groups = t.getRowModel().rows.filter((r) => r.getIsGrouped());
     expect(groups.length).toBeGreaterThan(1);
     for (const g of groups) {
-      const leaves = g.getLeafRows().filter((r) => !r.getIsGrouped()).map((r) => r.original);
+      const leaves = g.getLeafRows().filter((r) => !r.getIsGrouped()).map((r) => r.original as Position);
       const expectedShare = (sum(leaves.map((p) => p.mtm)) / sum(leaves.map((p) => p.notional))) * 100;
       expect(g.getValue<number>('c:mtm_share')).toBeCloseTo(expectedShare, 6);
       // A mean of ratios would be a different, wrong number.

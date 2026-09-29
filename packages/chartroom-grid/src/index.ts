@@ -46,6 +46,9 @@ export {
   PIVOT_PREFIX, isPivotId, pivotId, parsePivotId, distinctValues, pivotMeta, pivotValue, pivotAggregation, type PivotState,
 } from './grid/pivot';
 export { pivotMeasures, type PivotBuild } from './grid/columns';
+export { schemaFromColumns, schemaFromDescription, measuresOf, idsOf, type GridSchema, type GridRecord } from './grid/schema';
+export { TREASURY_SCHEMA, TREASURY_META, TREASURY_ORDER } from './data/treasury';
+export { SchemaContext, useSchema } from './components/SchemaContext';
 export { rangesToTsv, selectedCellRanges, cellText, type CopyCell, type CopyOptions, type CopyTable } from './grid/copy';
 export {
   parseSearch, tokenizeSearch, parseSearchNumber, resolveSearchColumn, rowMatchesSearch, termMatches, describeSearchToken,
@@ -63,6 +66,7 @@ export { useTreasuryTable, type TreasuryTable, type TreasuryTableOptions, type V
 export {
   ViewStateSchema, VIEW_VERSION, defaultView, parseView, safeParseView, toTableState, migrateView,
   type ViewState, type ViewSlice,
+  viewSchemaFor,
 } from './grid/viewState';
 export type { DataSource, SourceDescription, SourceColumn, QueryOptions, QueryResult } from './data/source';
 export { inMemorySource } from './data/inMemorySource';

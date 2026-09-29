@@ -16,13 +16,14 @@ import { functionalUpdate, useTable, type OnChangeFn, type ReactTable, type Upda
 import { features, type Features } from './features';
 import { SELECT_ID, buildColumns, selectColumn } from './columns';
 import { toTableState, type ViewSlice, type ViewState } from './viewState';
-import type { Position } from '../data/mock';
+import type { GridRecord, GridSchema } from './schema';
+import { TREASURY_SCHEMA } from '../data/treasury';
 import { isGroupNode } from '../data/sqlSource';
 
-export type TreasuryTable = ReactTable<Features, Position>;
+export type TreasuryTable = ReactTable<Features, GridRecord>;
 
 /** A row the shell hands the table: a position, or a group node with the children it has loaded. */
-export type GridRowData = Position & { __children?: GridRowData[] };
+export type GridRowData = GridRecord & { __children?: GridRowData[] };
 
 /** What the source already applied — the table's `manual*` modes follow it (ADR-70). */
 export interface Applied {
@@ -47,6 +48,8 @@ export interface TreasuryTableOptions {
   applied?: Applied;
   /** The pivot dimension's distinct values (ADR-80); the shell asks the source for them. */
   pivotValues?: readonly string[];
+  /** The columns the source serves (ADR-82); the treasury book by default. */
+  schema?: GridSchema;
 }
 
 /** The module-level empty array v9 asks for: a fresh `[]` per render would rerun every row model. */
@@ -55,7 +58,7 @@ const NO_ROWS: GridRowData[] = [];
 
 const withoutSelect = (ids: string[]) => ids.filter((id) => id !== SELECT_ID);
 
-export function useTreasuryTable({ data, view, onViewChange, applied, pivotValues }: TreasuryTableOptions): TreasuryTable {
+export function useTreasuryTable({ data, view, onViewChange, applied, pivotValues, schema = TREASURY_SCHEMA }: TreasuryTableOptions): TreasuryTable {
   const handlers = useMemo(() => {
     const slice =
       <K extends ViewSlice>(key: K): OnChangeFn<ViewState[K]> =>
@@ -90,14 +93,14 @@ export function useTreasuryTable({ data, view, onViewChange, applied, pivotValue
   // aggregations (ADR-72) and formats (ADR-74) — one array per distinct
   // choice, not per render.
   const pivot = view.pivot.column ? { ...view.pivot, distinct: pivotValues ?? [] } : undefined;
-  const columnsKey = JSON.stringify([view.columnAggs, view.columnFormats, view.computedColumns, pivot]);
+  const columnsKey = JSON.stringify([view.columnAggs, view.columnFormats, view.computedColumns, pivot, schema.order]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the serialized choice
-  const allColumns = useMemo(() => [selectColumn, ...buildColumns(view.columnAggs, view.columnFormats, view.computedColumns, pivot)], [columnsKey]);
+  const allColumns = useMemo(() => [selectColumn, ...buildColumns(view.columnAggs, view.columnFormats, view.computedColumns, pivot, schema)], [columnsKey, schema]);
   return useTable({
     features,
     columns: allColumns,
     data: data ?? NO_ROWS,
-    getRowId: (row) => row.tradeId,
+    getRowId: (row) => String(row[schema.rowId]),
     // Grouped columns move to the front, AG Grid's shape: the tree reads
     // left to right, and a chip's order is the column order.
     groupedColumnMode: 'reorder',

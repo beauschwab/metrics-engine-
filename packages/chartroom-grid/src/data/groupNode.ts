@@ -4,11 +4,11 @@
  * this a node" without importing the SQL source that makes them.
  */
 
-import type { Position } from './mock';
+import type { GridRecord } from '../grid/schema';
 
-export interface GroupNode extends Position {
+export interface GroupNode extends GridRecord {
   __group: {
-    column: keyof Position;
+    column: string;
     value: string;
     /** The values of every grouping column down to this node, outermost first. */
     path: string[];
@@ -17,4 +17,4 @@ export interface GroupNode extends Position {
   };
 }
 
-export const isGroupNode = (row: Position): row is GroupNode => '__group' in row;
+export const isGroupNode = (row: unknown): row is GroupNode => typeof row === 'object' && row !== null && '__group' in row;

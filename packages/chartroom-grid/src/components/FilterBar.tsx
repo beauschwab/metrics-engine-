@@ -10,11 +10,12 @@
 
 import { FunnelX, X } from 'lucide-react';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
-import { COLUMN_META } from '../grid/columns';
 import { formatValue, type ColumnMeta } from '../grid/meta';
 import { describeSearchToken, parseSearch, withoutSearchToken, type SearchToken } from '../grid/search';
 import type { ViewState } from '../grid/viewState';
-import type { Position } from '../data/mock';
+import type { GridSchema } from '../grid/schema';
+import { TREASURY_SCHEMA } from '../data/treasury';
+import { useSchema } from './SchemaContext';
 import { cn } from '../lib/utils';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -22,8 +23,8 @@ import { Button } from './ui/button';
 const SHOWN_VALUES = 3;
 
 /** One line for a column filter: the set's values, or the range's ends. */
-export function describeColumnFilter(id: string, value: unknown, known?: ColumnMeta): string {
-  const meta = known ?? COLUMN_META[id as keyof Position];
+export function describeColumnFilter(id: string, value: unknown, known?: ColumnMeta, schema: GridSchema = TREASURY_SCHEMA): string {
+  const meta = known ?? schema.columns[id];
   if (!meta) return String(value);
   if (meta.kind === 'dimension') {
     const values = Array.isArray(value) ? value.map(String) : [String(value)];
@@ -39,7 +40,8 @@ export function describeColumnFilter(id: string, value: unknown, known?: ColumnM
 }
 
 export function FilterBar({ table, view }: { table: TreasuryTable; view: ViewState }) {
-  const search = parseSearch(view.globalFilter);
+  const schema = useSchema();
+  const search = parseSearch(view.globalFilter, schema);
   if (view.columnFilters.length === 0 && search.tokens.length === 0) return null;
 
   const removeToken = (token: SearchToken) => table.setGlobalFilter(withoutSearchToken(view.globalFilter, token.raw));
@@ -48,14 +50,14 @@ export function FilterBar({ table, view }: { table: TreasuryTable; view: ViewSta
     <div data-slot="filter-bar" className="flex flex-wrap items-center gap-1 border-b border-border bg-card px-2 py-1 text-xs">
       <span className="text-faint">Filtered by</span>
       {view.columnFilters.map((f) => {
-        const meta = table.getColumn(f.id)?.columnDef.meta ?? COLUMN_META[f.id as keyof Position];
+        const meta = table.getColumn(f.id)?.columnDef.meta ?? schema.columns[f.id];
         const label = meta?.label ?? f.id;
         return (
           <Chip
             key={`col:${f.id}`}
             slot="filter-chip"
             data-column={f.id}
-            label={`${label}: ${describeColumnFilter(f.id, f.value, meta)}`}
+            label={`${label}: ${describeColumnFilter(f.id, f.value, meta, schema)}`}
             removeLabel={`Remove ${label} filter`}
             onRemove={() => table.getColumn(f.id)?.setFilterValue(undefined)}
           />
@@ -67,7 +69,7 @@ export function FilterBar({ table, view }: { table: TreasuryTable; view: ViewSta
           slot="search-chip"
           data-token={token.raw}
           data-kind={token.kind}
-          label={describeSearchToken(token)}
+          label={describeSearchToken(token, schema)}
           title={token.kind === 'unknown' ? token.reason : undefined}
           className={token.kind === 'unknown' ? 'line-through decoration-destructive' : undefined}
           removeLabel={`Remove ${token.raw} from the search`}

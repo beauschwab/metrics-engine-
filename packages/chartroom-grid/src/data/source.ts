@@ -30,6 +30,8 @@ export interface SourceDescription {
   columns: SourceColumn[];
   /** What this source will do server-side when asked. */
   serves: { filter: boolean; sort: boolean; group: boolean; groupPath: boolean };
+  /** The column whose value identifies a row (ADR-82); `tradeId` for a position book. */
+  rowId?: string;
 }
 
 export interface QueryOptions {

@@ -2398,6 +2398,50 @@ category. The studio's `grid.spec.ts` drags a block of desk and notional,
 opens the context menu, charts it, and reads the bars' labels and values
 against the cells.
 
+## ADR-82 — the grid reads its columns from the source, and the treasury book is one source
+
+**Pinned:** the owner's "what's next": the grid as the standard component in
+the dashboard builder, whose data is a registry metric's groups, not a
+book of positions.
+
+**Decision.** A `GridSchema` — column meta by id, the display order, and
+the column that identifies a row — replaces the fixed treasury columns
+everywhere the grid used to read them: the column builder, the view
+contract's parser, the search grammar, the SQL compiler, the sources, the
+headless table and the agent tools. The treasury book becomes one schema
+among many (`TREASURY_SCHEMA`), and the default wherever a schema is not
+given, so nothing that spoke to the grid before has to change and every
+test that proved a behaviour on the book still proves it. A source's
+`describe()` now names its `rowId` beside its columns, and the shell
+builds its schema from the description: the grid shows whatever the
+source says it serves.
+
+*One parse per schema.* The view contract is a zod schema built from a
+grid schema — column ids checked against it, groupability and measure
+kind read from it — and cached per schema object, so a link is still
+refused at the boundary with the column named, whichever source it is
+for. A component that needs a column's declared meta, not the view's
+reading of it, asks a schema context the shell provides.
+
+*The search grammar reads the table.* The quick filter used to resolve
+`ccy:` against the treasury labels; it now resolves against the table's
+own columns, calculated and pivot columns included — which closes the
+TODO in ADR-79 as a side effect — and against an explicit schema for the
+SQL compiler and the agent, so the three still agree.
+
+*A row is a record.* `Position` is a type alias with the book's fields,
+assignable to the grid's `GridRecord`; a source of any other shape hands
+the grid records and a schema, and the row id is whatever the schema
+names.
+
+**What now fails if this regresses.** `schema.test.ts` drives the grid
+with a second schema — a registry metric's groups by entity and tenor —
+and shows views parsing against it and refusing the treasury columns,
+tables identified by its row id with subtotals and totals, the search
+grammar naming its columns by label on the client and in SQL, and the
+agent contract and tools speaking it. Every earlier test runs unchanged
+against the treasury default.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

@@ -13,7 +13,8 @@
  * hundred. The generator is the same either way.
  */
 
-export interface Position {
+/** A position: a grid record (ADR-82) with these fields. A type alias, so it is assignable to `GridRecord`. */
+export type Position = {
   tradeId: string;
   asOf: string;
   desk: string;
@@ -29,7 +30,7 @@ export interface Position {
   cs01: number;
   yield: number;
   wal: number;
-}
+};
 
 export const DESKS = ['Rates', 'Credit', 'FX', 'Funding', 'Mortgages'] as const;
 export const ENTITIES = ['WF-US', 'WF-EMEA', 'WF-APAC', 'WF-CA'] as const;

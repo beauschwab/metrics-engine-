@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { headlessTable } from '../src/agent/headless';
-import { generatePositions } from '../src/data/mock';
+import { generatePositions, type Position } from '../src/data/mock';
 import { COLUMN_META, allowedFormatKeys, buildColumns, effectiveMeta } from '../src/grid/columns';
 import { cellText } from '../src/grid/copy';
 import { formatValue, matchRule } from '../src/grid/meta';
@@ -79,10 +79,10 @@ describe('the column carries the view\'s format', () => {
     const leafCell = leaf.getAllCells().find((c) => c.column.id === 'notional')!;
     expect(cellText(leafCell)).toMatch(/^\$\d+\.\d{3}B$/);
     expect(cellText(groupCell)).toMatch(/^\$\d+\.\d{3}B$/);
-    const negative = rows.find((r) => !r.getIsGrouped() && r.original.mtm < 0)!;
+    const negative = rows.find((r) => !r.getIsGrouped() && (r.original as Position).mtm < 0)!;
     const mtmCell = negative.getAllCells().find((c) => c.column.id === 'mtm')!;
     expect(cellText(mtmCell)).toMatch(/^\(\$[\d,]+\)$/);
-    expect(cellText(mtmCell, false)).toBe(String(negative.original.mtm));
+    expect(cellText(mtmCell, false)).toBe(String((negative.original as Position).mtm));
     const total = notional.getAggregationValue();
     expect(formatValue(typeof total === 'number' ? total : Number(total), notional.columnDef.meta!)).toMatch(/^\$\d+\.\d{3}B$/);
     // The same columns without a format read as declared.

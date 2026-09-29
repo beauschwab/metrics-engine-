@@ -12,7 +12,7 @@ import { parseSearch, rowMatchesSearch } from '../src/grid/search';
 import { defaultView, parseView } from '../src/grid/viewState';
 import { compileSql, DREMIO, DUCKDB, SQLITE } from '../src/data/compileSql';
 import { inMemorySource } from '../src/data/inMemorySource';
-import { generatePositions } from '../src/data/mock';
+import { generatePositions, type Position } from '../src/data/mock';
 import { dateText, groupNodeId, isGroupNode, sqlSource } from '../src/data/sqlSource';
 import { queryView } from '../src/agent/tools';
 import { sqliteExecutor } from './sqliteExecutor';
@@ -147,7 +147,7 @@ describe('the SQL source answers as the in-memory path does', () => {
     const g = compileSql(grouped, { table: 'positions' });
     expect(g.sql).toContain('ORDER BY ((SUM("mtm")) / NULLIF(SUM("notional"), 0)) * 100 DESC, "desk" ASC');
     const top = await sql.query(grouped);
-    const shares = top.rows.map((n) => (n.mtm / n.notional) * 100);
+    const shares = top.rows.map((n) => (Number(n.mtm) / Number(n.notional)) * 100);
     for (let i = 1; i < shares.length; i++) expect(shares[i]!).toBeLessThanOrEqual(shares[i - 1]!);
   });
 
@@ -179,7 +179,7 @@ describe('the SQL source answers as the in-memory path does', () => {
     for (const globalFilter of ['desk:Credit ccy:EUR notional>1bn', 'Bond desk=Rates yield>=3', 'entity!=WF-US mtm<0', 'notional>abc']) {
       const view = parseView({ version: 2, globalFilter, sorting: [{ id: 'tradeId', desc: false }] });
       const fromSql = await sql.query(view);
-      const client = BOOK.filter((b) => rowMatchesSearch(parseSearch(globalFilter), (id) => b[id])).map((b) => b.tradeId).sort();
+      const client = BOOK.filter((b) => rowMatchesSearch(parseSearch(globalFilter), (id) => b[id as keyof Position])).map((b) => b.tradeId).sort();
       expect(fromSql.rows.map((r) => r.tradeId).sort(), globalFilter).toEqual(client);
       const viaMemory = await queryView(memory, view, { limit: 1000, display: false });
       expect(viaMemory.total, globalFilter).toBe(client.length);

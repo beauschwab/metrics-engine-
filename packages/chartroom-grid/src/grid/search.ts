@@ -22,14 +22,16 @@
  * bar, so the three never disagree on what a token means.
  */
 
-import type { Position } from '../data/mock';
-import { COLUMN_META, COLUMN_ORDER } from './columns';
+import type { Row } from '@tanstack/table-core';
+import { TREASURY_SCHEMA } from '../data/treasury';
+import type { ColumnMeta } from './meta';
+import type { GridSchema } from './schema';
 
 export type SearchOp = ':' | '=' | '!=' | '>' | '>=' | '<' | '<=';
 
 export interface SearchTerm {
   kind: 'term';
-  column: keyof Position;
+  column: string;
   op: SearchOp;
   /** A string for a dimension, a number for a measure. */
   value: string | number;
@@ -45,7 +47,7 @@ export interface SearchText {
 
 export interface SearchUnknown {
   kind: 'unknown';
-  column: keyof Position;
+  column: string;
   raw: string;
   reason: string;
 }
@@ -61,17 +63,23 @@ export interface SearchQuery {
 
 const EMPTY: SearchQuery = { tokens: [], terms: [], text: [], unknown: [] };
 
-/** Column ids and labels, lowercased and without spaces, to what they name. */
-const COLUMN_NAMES: ReadonlyMap<string, keyof Position> = new Map(
-  COLUMN_ORDER.flatMap((id) => [
-    [id.toLowerCase(), id] as const,
-    [COLUMN_META[id].label.toLowerCase().replace(/\s+/g, ''), id] as const,
-  ]),
-);
+/** Column ids and labels, lowercased and without spaces, to what they name — once per schema. */
+const names = new WeakMap<GridSchema, ReadonlyMap<string, string>>();
+function columnNames(schema: GridSchema): ReadonlyMap<string, string> {
+  let m = names.get(schema);
+  if (!m) {
+    m = new Map(schema.order.flatMap((id) => [
+      [id.toLowerCase(), id] as const,
+      [(schema.columns[id]?.label ?? id).toLowerCase().replace(/\s+/g, ''), id] as const,
+    ]));
+    names.set(schema, m);
+  }
+  return m;
+}
 
 /** The column a token names, by id or label, or undefined. */
-export function resolveSearchColumn(name: string): keyof Position | undefined {
-  return COLUMN_NAMES.get(name.toLowerCase().replace(/\s+/g, ''));
+export function resolveSearchColumn(name: string, schema: GridSchema = TREASURY_SCHEMA): string | undefined {
+  return columnNames(schema).get(name.toLowerCase().replace(/\s+/g, ''));
 }
 
 const OPS: SearchOp[] = ['!=', '>=', '<=', ':', '=', '>', '<'];
@@ -98,14 +106,14 @@ export function tokenizeSearch(input: string): string[] {
 
 const unquote = (s: string): string => (/^(["']).*\1$/.test(s) && s.length >= 2 ? s.slice(1, -1) : s);
 
-function parseToken(raw: string): SearchToken {
+function parseToken(raw: string, schema: GridSchema): SearchToken {
   const m = /^([A-Za-z_][\w ]*?)(!=|>=|<=|:|=|>|<)(.+)$/s.exec(raw);
   if (m) {
-    const column = resolveSearchColumn(m[1]!);
+    const column = resolveSearchColumn(m[1]!, schema);
     const op = m[2] as SearchOp;
     const rest = unquote(m[3]!);
     if (column && OPS.includes(op)) {
-      const meta = COLUMN_META[column];
+      const meta = schema.columns[column] as ColumnMeta;
       if (meta.kind === 'dimension') {
         if (op === ':' || op === '=' || op === '!=') return { kind: 'term', column, op, value: rest, raw };
         return { kind: 'unknown', column, raw, reason: `${meta.label} is text; use :, = or !=` };
@@ -119,9 +127,9 @@ function parseToken(raw: string): SearchToken {
 }
 
 /** Parse the quick filter; an empty or blank string is the empty query. */
-export function parseSearch(input: string): SearchQuery {
+export function parseSearch(input: string, schema: GridSchema = TREASURY_SCHEMA): SearchQuery {
   if (input.trim() === '') return EMPTY;
-  const tokens = tokenizeSearch(input).map(parseToken);
+  const tokens = tokenizeSearch(input).map((raw) => parseToken(raw, schema));
   return {
     tokens,
     terms: tokens.filter((t): t is SearchTerm => t.kind === 'term'),
@@ -132,12 +140,12 @@ export function parseSearch(input: string): SearchQuery {
 
 /** The quick filter without one token, as the reader typed the rest. */
 export function withoutSearchToken(input: string, raw: string): string {
-  return parseSearch(input).tokens.filter((t) => t.raw !== raw).map((t) => t.raw).join(' ');
+  return tokenizeSearch(input).filter((t) => t !== raw).join(' ');
 }
 
 /** The quick filter with one more token, kept as the reader typed the rest. */
 export function withSearchToken(input: string, raw: string): string {
-  const tokens = parseSearch(input).tokens.map((t) => t.raw);
+  const tokens = tokenizeSearch(input);
   return [...tokens.filter((t) => t !== raw), raw].join(' ');
 }
 
@@ -171,14 +179,14 @@ export function termMatches(term: SearchTerm, value: unknown): boolean {
  * Whether a row satisfies the whole query: every term on its column, every
  * free word somewhere in the row, and nothing unknown.
  */
-export function rowMatchesSearch(query: SearchQuery, get: (id: keyof Position) => unknown): boolean {
+export function rowMatchesSearch(query: SearchQuery, get: (id: string) => unknown, schema: GridSchema = TREASURY_SCHEMA): boolean {
   if (query.unknown.length > 0) return false;
   for (const term of query.terms) if (!termMatches(term, get(term.column))) return false;
   for (const word of query.text) {
     const want = word.value.toLowerCase();
     if (want === '') continue;
     let found = false;
-    for (const id of COLUMN_ORDER) {
+    for (const id of schema.order) {
       if (fold(get(id)).includes(want)) { found = true; break; }
     }
     if (!found) return false;
@@ -187,37 +195,64 @@ export function rowMatchesSearch(query: SearchQuery, get: (id: keyof Position) =
 }
 
 /** One line for a term, the way the filter bar and the agent say it. */
-export function describeSearchToken(token: SearchToken): string {
+export function describeSearchToken(token: SearchToken, schema: GridSchema = TREASURY_SCHEMA): string {
   if (token.kind === 'text') return `“${token.value}”`;
-  const label = COLUMN_META[token.column].label;
+  const label = schema.columns[token.column]?.label ?? token.column;
   if (token.kind === 'unknown') return `${label}: ${token.raw} (${token.reason})`;
   const op = token.op === ':' ? 'contains' : token.op === '=' ? 'is' : token.op === '!=' ? 'is not' : token.op;
   return `${label} ${op} ${String(token.value)}`;
 }
 
 interface ResolvedSearch {
-  query: SearchQuery;
+  input: string;
+  /** The parse, once the table's columns are known: keyed by table. */
+  parsed: WeakMap<object, { query: SearchQuery; schema: GridSchema }>;
   /** One verdict per row: the table asks once per globally filterable column. */
   memo: WeakMap<object, boolean>;
+}
+
+interface SearchTable { getAllLeafColumns(): ReadonlyArray<{ id: string; columnDef: { meta?: ColumnMeta } }> }
+
+/** The schema a table's own columns describe — calculated and pivot columns included. */
+const tableSchemas = new WeakMap<object, { key: string; schema: GridSchema }>();
+function schemaOfTable(table: SearchTable): GridSchema {
+  const cols = table.getAllLeafColumns().filter((c) => c.columnDef.meta);
+  const key = cols.map((c) => c.id).join('|');
+  const cached = tableSchemas.get(table);
+  if (cached && cached.key === key) return cached.schema;
+  const columns: Record<string, ColumnMeta> = {};
+  for (const c of cols) columns[c.id] = c.columnDef.meta!;
+  const schema: GridSchema = { columns, order: cols.map((c) => c.id), rowId: cols[0]?.id ?? '' };
+  tableSchemas.set(table, { key, schema });
+  return schema;
 }
 
 /**
  * The table's global filter. v9 runs the global filter once per column and
  * stops at the first column that says yes, so a row-level grammar answers
  * for the whole row on the first ask and remembers the verdict for the
- * other columns. Registered as `search` in the feature registry.
+ * other columns. The grammar reads the table's own columns, so a token can
+ * name whatever the table shows. Registered as `search` in the registry.
  */
 export const searchFilterFn = Object.assign(
-  (row: { getValue: (id: string) => unknown }, _columnId: string, resolved: ResolvedSearch): boolean => {
+  (row: Row<any, any>, _columnId: string, resolved: ResolvedSearch): boolean => {
     const known = resolved.memo.get(row);
     if (known !== undefined) return known;
-    const verdict = rowMatchesSearch(resolved.query, (id) => row.getValue(id));
+    const table = row.table as unknown as SearchTable;
+    let p = resolved.parsed.get(table);
+    if (!p) {
+      const schema = schemaOfTable(table);
+      p = { query: parseSearch(resolved.input, schema), schema };
+      resolved.parsed.set(table, p);
+    }
+    const verdict = rowMatchesSearch(p.query, (id) => row.getValue(id), p.schema);
     resolved.memo.set(row, verdict);
     return verdict;
   },
   {
     resolveFilterValue: (value: unknown): ResolvedSearch => ({
-      query: parseSearch(typeof value === 'string' ? value : ''),
+      input: typeof value === 'string' ? value : '',
+      parsed: new WeakMap(),
       memo: new WeakMap(),
     }),
     autoRemove: (value: unknown) => typeof value !== 'string' || value.trim() === '',

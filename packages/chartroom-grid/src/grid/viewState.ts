@@ -17,13 +17,14 @@
 import { z } from 'zod';
 import type { ColumnFiltersState, TableState } from '@tanstack/table-core';
 import type { Features } from './features';
-import { COLUMN_META, COLUMN_ORDER, REGISTRY_IDS, allowedAggs, allowedFormatKeysFor, metaFor } from './columns';
+import { allowedAggs, allowedFormatKeysFor, metaFor } from './columns';
+import { TREASURY_SCHEMA } from '../data/treasury';
+import { idsOf, type GridSchema } from './schema';
 import { COMPUTED_OPS, MAX_COMPUTED, computedIssues, isComputedId, type ComputedColumn, type ComputedOp } from './computed';
 import { isPivotId } from './pivot';
 import {
   AGGS, DECIMALS, EMPHASES, MAX_RULES, NEGATIVES, RULE_OPS, SCALES, type Agg, type ColumnFormat, type Emphasis, type Negatives, type RuleOp, type Scale,
 } from './meta';
-import type { Position } from '../data/mock';
 
 /**
  * Version 2 added `columnAggs` (ADR-72); version 3 added `columnFormats`
@@ -43,15 +44,17 @@ export function migrateView(input: unknown): unknown {
   return v;
 }
 
-const KNOWN = new Set<string>(COLUMN_ORDER);
+/** The zod schema for one grid schema's views, built once per schema. */
+function buildViewSchema(schema: GridSchema) {
+const KNOWN = idsOf(schema);
 // A `c:` id is a calculated column's (ADR-79): accepted here, and checked
 // against the view's own `computedColumns` once the whole view is parsed.
 // A `p:` id is a pivot column's (ADR-80): its values come from the data,
 // so it is accepted by shape and simply absent when the data lacks it.
 const columnId = z.string().refine((id) => KNOWN.has(id) || isComputedId(id) || isPivotId(id), (id) => ({ message: `unknown column: ${id}` }));
-const measureId = columnId.refine((id) => COLUMN_META[id as keyof typeof COLUMN_META]?.kind === 'measure', (id) => ({ message: `column is not a measure: ${id}` }));
+const measureId = columnId.refine((id) => schema.columns[id]?.kind === 'measure', (id) => ({ message: `column is not a measure: ${id}` }));
 const groupableId = columnId.refine(
-  (id) => !!COLUMN_META[id as keyof typeof COLUMN_META]?.groupable,
+  (id) => !!schema.columns[id]?.groupable,
   (id) => ({ message: `column is not groupable: ${id}` }),
 );
 const byColumn = <V extends z.ZodTypeAny>(value: V) =>
@@ -70,13 +73,13 @@ const ComputedColumnSchema = z.strictObject({
 });
 
 /** The checks that need the whole view: calculated ids against their definitions. */
-function crossCheck(v: { [k: string]: unknown }, ctx: z.RefinementCtx): void {
+const crossCheck = (v: { [k: string]: unknown }, ctx: z.RefinementCtx): void => {
   const issue = (message: string, path: (string | number)[]) => ctx.addIssue({ code: z.ZodIssueCode.custom, message, path });
   const computed = (v.computedColumns ?? []) as ComputedColumn[];
-  const metaOf = (id: string) => (COLUMN_META as Record<string, typeof COLUMN_META[keyof typeof COLUMN_META]>)[id];
+  const metaOf = (id: string) => schema.columns[id];
   const seen = new Set<string>();
   computed.forEach((c, i) => {
-    for (const m of computedIssues(c, metaOf, REGISTRY_IDS)) issue(m, ['computedColumns', i]);
+    for (const m of computedIssues(c, metaOf, KNOWN)) issue(m, ['computedColumns', i]);
     if (seen.has(c.id)) issue(`duplicate calculated column: ${c.id}`, ['computedColumns', i, 'id']);
     seen.add(c.id);
   });
@@ -98,14 +101,14 @@ function crossCheck(v: { [k: string]: unknown }, ctx: z.RefinementCtx): void {
     if (!isComputedId(k)) continue;
     defined(k, ['columnFormats', k]);
     if (!seen.has(k)) continue;
-    const allowed = allowedFormatKeysFor(metaFor(k, computed));
+    const allowed = allowedFormatKeysFor(metaFor(k, computed, schema));
     for (const key of Object.keys(format)) {
       if (format[key] !== undefined && !allowed.includes(key as never)) issue(`${key} is not a format ${k} can take`, ['columnFormats', k, key]);
     }
   }
-}
+};
 
-export const ViewStateSchema = z
+return z
   .object({
     version: z.literal(VIEW_VERSION),
     grouping: z.array(groupableId).default([]),
@@ -137,7 +140,7 @@ export const ViewStateSchema = z
           if (isComputedId(k)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `a calculated column's aggregation follows its operands: ${k}`, path: [k] });
           else if (isPivotId(k)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `a pivot column aggregates as its measure does: ${k}`, path: [k] });
           else if (!KNOWN.has(k)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `unknown column: ${k}`, path: [k] });
-          else if (!allowedAggs(k as keyof Position).includes(agg)) {
+          else if (!allowedAggs(k, schema).includes(agg)) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${agg} is not an aggregation ${k} can take`, path: [k] });
           }
         }
@@ -165,7 +168,7 @@ export const ViewStateSchema = z
           if (isComputedId(k)) continue; // checked against the view's definitions in crossCheck
           if (isPivotId(k)) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `a pivot column reads as its measure does; format the measure: ${k}`, path: [k] }); continue; }
           if (!KNOWN.has(k)) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `unknown column: ${k}`, path: [k] }); continue; }
-          const allowed = allowedFormatKeysFor(metaFor(k));
+          const allowed = allowedFormatKeysFor(metaFor(k, [], schema));
           for (const key of Object.keys(format) as (keyof ColumnFormat)[]) {
             if (format[key] === undefined) continue;
             if (allowed.length === 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${k} is a dimension and has no format`, path: [k, key] });
@@ -177,6 +180,17 @@ export const ViewStateSchema = z
   })
   .strict()
   .superRefine(crossCheck);
+}
+
+const viewSchemas = new WeakMap<GridSchema, ReturnType<typeof buildViewSchema>>();
+export function viewSchemaFor(schema: GridSchema = TREASURY_SCHEMA) {
+  let v = viewSchemas.get(schema);
+  if (!v) { v = buildViewSchema(schema); viewSchemas.set(schema, v); }
+  return v;
+}
+
+/** The treasury book's view schema — the default every caller had before ADR-82. */
+export const ViewStateSchema = viewSchemaFor(TREASURY_SCHEMA);
 
 /**
  * The parsed shape. `columnFilters` is stated as the table's own type: zod
@@ -188,16 +202,16 @@ export type ViewState = Omit<z.infer<typeof ViewStateSchema>, 'columnFilters'> &
 };
 
 /** A view with nothing applied: every default, current version. */
-export const defaultView = (): ViewState => parseView({ version: VIEW_VERSION });
+export const defaultView = (schema: GridSchema = TREASURY_SCHEMA): ViewState => parseView({ version: VIEW_VERSION }, schema);
 
 /** Parse untrusted JSON into a view, or throw the zod error naming what is wrong. */
-export function parseView(input: unknown): ViewState {
-  return ViewStateSchema.parse(migrateView(input)) as ViewState;
+export function parseView(input: unknown, schema: GridSchema = TREASURY_SCHEMA): ViewState {
+  return viewSchemaFor(schema).parse(migrateView(input)) as ViewState;
 }
 
 /** The safe form for callers that render the reason rather than throw (ADR-44). */
-export function safeParseView(input: unknown): { ok: true; view: ViewState } | { ok: false; issues: string[] } {
-  const r = ViewStateSchema.safeParse(migrateView(input));
+export function safeParseView(input: unknown, schema: GridSchema = TREASURY_SCHEMA): { ok: true; view: ViewState } | { ok: false; issues: string[] } {
+  const r = viewSchemaFor(schema).safeParse(migrateView(input));
   return r.success
     ? { ok: true, view: r.data as ViewState }
     : { ok: false, issues: r.error.issues.map((i) => `${i.path.join('.') || '$'}: ${i.message}`) };

@@ -17,7 +17,7 @@
  */
 
 import { constructAggregationFn, type Row } from '@tanstack/table-core';
-import type { Position } from '../data/mock';
+import type { GridRecord } from './schema';
 import { isGroupNode } from '../data/groupNode';
 import { Wavg, type WavgParts } from './aggregations';
 import type { Agg, ColumnMeta } from './meta';
@@ -45,11 +45,11 @@ export function parsePivotId(id: string): { measure: string; value: string } | u
 }
 
 /** The distinct values of a column over leaf rows, in reading order. */
-export function distinctValues(rows: readonly Position[], column: string): string[] {
+export function distinctValues(rows: readonly GridRecord[], column: string): string[] {
   const seen = new Set<string>();
   for (const r of rows) {
     if (isGroupNode(r)) continue;
-    const v = (r as unknown as Record<string, unknown>)[column];
+    const v = r[column];
     if (v !== undefined && v !== null && v !== '') seen.add(String(v));
   }
   return [...seen].sort((a, b) => a.localeCompare(b));
@@ -65,16 +65,16 @@ export function pivotMeta(measureMeta: ColumnMeta, value: string): ColumnMeta {
  * nothing otherwise. An engine-made group node carries the bucketed
  * aggregate under the pivot id itself (ADR-70, ADR-80).
  */
-export function pivotValue(row: Position, pivotColumn: string, measure: string, value: string): unknown {
-  const r = row as unknown as Record<string, unknown>;
+export function pivotValue(row: GridRecord, pivotColumn: string, measure: string, value: string): unknown {
+  const r = row;
   if (isGroupNode(row)) return r[pivotId(measure, value)];
   return String(r[pivotColumn] ?? '') === value ? r[measure] : undefined;
 }
 
 const inBucket = (row: Row<any, any>, pivotColumn: string, value: string): boolean => {
-  const o = row.original as Position;
+  const o = row.original as GridRecord;
   if (isGroupNode(o)) return true;
-  return String((o as unknown as Record<string, unknown>)[pivotColumn] ?? '') === value;
+  return String(o[pivotColumn] ?? '') === value;
 };
 
 const numbers = (rows: ReadonlyArray<Row<any, any>>, id: string, pivotColumn: string, value: string): number[] => {
@@ -99,13 +99,13 @@ export function pivotAggregation(agg: Agg, measure: string, weightBy: string | u
     aggregate: (ctx) => {
       const rows = ctx.rows;
       // An engine-made level: the nodes already carry the bucket's aggregate; merge them.
-      const nodes = rows.filter((r) => isGroupNode(r.original as Position));
+      const nodes = rows.filter((r) => isGroupNode(r.original));
       if (nodes.length > 0 && nodes.length === rows.length) {
         const xs = numbers(rows, id, pivotColumn, value);
         if (agg === 'wavg') {
           let sumXW = 0; let sumW = 0;
           for (const r of rows) {
-            const o = r.original as unknown as Record<string, unknown>;
+            const o = r.original as GridRecord;
             const xw = o[`${id}__xw`]; const w = o[`${id}__w`];
             if (typeof xw === 'number' && typeof w === 'number') { sumXW += xw; sumW += w; }
           }

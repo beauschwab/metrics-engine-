@@ -15,7 +15,6 @@
  */
 
 import { constructAggregationFn } from '@tanstack/table-core';
-import type { Position } from '../data/mock';
 import { aggregatedNumber } from './aggregations';
 import type { ColumnMeta, Unit } from './meta';
 
@@ -136,5 +135,5 @@ export const computedAggregation = (spec: ComputedColumn) =>
     },
   });
 
-/** A type guard for the registry's own ids. */
-export const isRegistryId = (id: string, registryIds: ReadonlySet<string>): id is keyof Position => registryIds.has(id);
+/** Whether an id is one the schema declares. */
+export const isRegistryId = (id: string, registryIds: ReadonlySet<string>): boolean => registryIds.has(id);

@@ -11,11 +11,13 @@
  */
 
 import { aggregatedNumber } from '../grid/aggregations';
-import { COLUMN_META, COLUMN_ORDER, allowedAggs, allowedFormatKeys } from '../grid/columns';
+import { allowedAggs, allowedFormatKeys } from '../grid/columns';
+import { schemaFromDescription, type GridSchema } from '../grid/schema';
+import { TREASURY_SCHEMA } from '../data/treasury';
 import { type ColumnFormat, formatValue, type ColumnMeta, aggregateMeta } from '../grid/meta';
 import { VIEW_VERSION, safeParseView, type ViewState } from '../grid/viewState';
 import type { DataSource, SourceDescription } from '../data/source';
-import type { Position } from '../data/mock';
+import type { GridRecord } from '../grid/schema';
 import { headlessTable } from './headless';
 
 export interface ContractColumn {
@@ -43,15 +45,17 @@ export interface ViewContract {
   notes: string[];
 }
 
-export const VIEW_CONTRACT: ViewContract = {
+/** The contract for one schema's views (ADR-82): the columns it declares, in words an agent reads before it patches. */
+export function viewContract(schema: GridSchema): ViewContract {
+  return {
   version: VIEW_VERSION,
-  columns: COLUMN_ORDER.map((id) => {
-    const m = COLUMN_META[id];
+  columns: schema.order.map((id) => {
+    const m = schema.columns[id]!;
     return {
       id, label: m.label, kind: m.kind, unit: m.unit, dp: m.dp,
-      groupable: !!m.groupable, agg: m.agg, weightBy: m.weightBy, aggs: allowedAggs(id),
+      groupable: !!m.groupable, agg: m.agg, weightBy: m.weightBy, aggs: allowedAggs(id, schema),
       filter: m.kind === 'dimension' ? 'set' : 'range',
-      formats: allowedFormatKeys(id),
+      formats: allowedFormatKeys(id, [], schema),
     };
   }),
   slices: {
@@ -76,7 +80,11 @@ export const VIEW_CONTRACT: ViewContract = {
     'A weighted average (agg: wavg) is Σ(x·w)/Σ(w) over the group, weighted by weightBy — never a mean of means.',
     'pct values are in percent units: 3.46 means 3.46%. mm values are raw dollars formatted in millions.',
   ],
-};
+  };
+}
+
+/** The treasury book's contract — the default every caller had before ADR-82. */
+export const VIEW_CONTRACT: ViewContract = viewContract(TREASURY_SCHEMA);
 
 export interface DescribeResult {
   source: SourceDescription;
@@ -84,8 +92,9 @@ export interface DescribeResult {
   contract: ViewContract;
 }
 
-export async function describeView(source: DataSource<Position>, view: ViewState): Promise<DescribeResult> {
-  return { source: await source.describe(), view, contract: VIEW_CONTRACT };
+export async function describeView(source: DataSource<GridRecord>, view: ViewState): Promise<DescribeResult> {
+  const about = await source.describe();
+  return { source: about, view, contract: viewContract(schemaFromDescription(about)) };
 }
 
 export interface QueryViewOptions {
@@ -125,7 +134,7 @@ export interface QueryViewResult {
 const MAX_LIMIT = 1000;
 
 export async function queryView(
-  source: DataSource<Position>,
+  source: DataSource<GridRecord>,
   view: ViewState,
   options: QueryViewOptions = {},
 ): Promise<QueryViewResult> {
@@ -134,7 +143,7 @@ export async function queryView(
   const display = options.display ?? true;
   const answer = await source.query(view);
   const effective: ViewState = options.expandAll ? { ...view, expanded: true } : view;
-  const table = headlessTable(answer.rows, effective);
+  const table = headlessTable(answer.rows, effective, schemaFromDescription(await source.describe()));
   const columnsOut = table.getVisibleLeafColumns().map((c) => c.id);
   const model = table.getRowModel().rows;
   const window = model.slice(offset, offset + limit);
@@ -198,12 +207,12 @@ export type SetViewResult = { ok: true; view: ViewState } | { ok: false; issues:
  * from an empty view so the patch is the whole new view; otherwise a slice
  * the patch names replaces that slice and the rest stands.
  */
-export function setView(view: ViewState, patch: unknown, options: { replace?: boolean } = {}): SetViewResult {
+export function setView(view: ViewState, patch: unknown, options: { replace?: boolean } = {}, schema: GridSchema = TREASURY_SCHEMA): SetViewResult {
   if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) {
     return { ok: false, issues: ['$: the patch must be an object of view slices'] };
   }
   const base = options.replace ? { version: VIEW_VERSION } : view;
   const merged = { ...base, ...(patch as Record<string, unknown>), version: VIEW_VERSION };
-  const parsed = safeParseView(merged);
+  const parsed = safeParseView(merged, schema);
   return parsed.ok ? { ok: true, view: parsed.view } : { ok: false, issues: parsed.issues };
 }

@@ -14,7 +14,7 @@ import type { Column } from '@tanstack/react-table';
 import { SELECT_ID } from '../grid/columns';
 import type { Features } from '../grid/features';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
-import type { Position } from '../data/mock';
+import type { GridRecord } from '../grid/schema';
 import { cn } from '../lib/utils';
 import type { ComputedColumn } from '../grid/computed';
 import { ComputedColumnEditor } from './ComputedColumnEditor';
@@ -25,7 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
 export const SIDE_PREFIX = 'side:';
 
-type GridColumn = Column<Features, Position>;
+type GridColumn = Column<Features, GridRecord>;
 
 /** Every data column, hidden ones included, in the view's order; never the selection column. */
 export function orderedLeafColumns(table: TreasuryTable, columnOrder: string[]): GridColumn[] {

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { headlessTable } from '../src/agent/headless';
-import { generatePositions } from '../src/data/mock';
+import { generatePositions, type Position } from '../src/data/mock';
 import {
   describeSearchToken, parseSearch, parseSearchNumber, rowMatchesSearch, tokenizeSearch, withSearchToken, withoutSearchToken,
 } from '../src/grid/search';
@@ -67,7 +67,7 @@ describe('parseSearch', () => {
 
   it('describes a token the way the bar shows it', () => {
     const q = parseSearch('Credit ccy:EUR notional>1bn desk!=FX notional>abc');
-    expect(q.tokens.map(describeSearchToken)).toEqual([
+    expect(q.tokens.map((t) => describeSearchToken(t))).toEqual([
       '“Credit”', 'Ccy contains EUR', 'Notional > 1000000000', 'Desk is not FX', 'Notional: notional>abc (Notional needs a number)',
     ]);
   });
@@ -75,7 +75,7 @@ describe('parseSearch', () => {
 
 describe('the table filters by the grammar', () => {
   const rowsFor = (globalFilter: string) =>
-    headlessTable(BOOK, parseView({ version: 2, globalFilter })).getFilteredRowModel().rows.map((r) => r.original);
+    headlessTable(BOOK, parseView({ version: 2, globalFilter })).getFilteredRowModel().rows.map((r) => r.original as Position);
 
   it('every term holds on every kept row, and nothing that holds is dropped', () => {
     const kept = rowsFor('desk:Credit ccy:EUR notional>1bn');

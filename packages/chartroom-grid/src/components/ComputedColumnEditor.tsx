@@ -8,7 +8,8 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { COLUMN_META, COLUMN_ORDER, REGISTRY_IDS } from '../grid/columns';
+import { idsOf, measuresOf } from '../grid/schema';
+import { useSchema } from './SchemaContext';
 import {
   COMPUTED_ARITY, COMPUTED_OPS, COMPUTED_OP_LABELS, MAX_COMPUTED, computedIdFor, computedIssues, computedUnit, type ComputedColumn, type ComputedOp,
 } from '../grid/computed';
@@ -18,8 +19,6 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 
 const SELECT = 'h-7 min-w-0 flex-1 rounded-sm border border-input bg-transparent px-1.5 text-xs text-foreground';
-const MEASURES = COLUMN_ORDER.filter((id) => COLUMN_META[id].kind === 'measure');
-const metaOf = (id: string): ColumnMeta | undefined => (COLUMN_META as Record<string, ColumnMeta>)[id];
 
 export function ComputedColumnEditor({
   existing, onAdd, onClose,
@@ -28,19 +27,22 @@ export function ComputedColumnEditor({
   onAdd: (spec: ComputedColumn) => void;
   onClose: () => void;
 }) {
+  const schema = useSchema();
+  const MEASURES = measuresOf(schema);
+  const metaOf = (id: string): ColumnMeta | undefined => schema.columns[id];
   const [label, setLabel] = useState('');
   const [op, setOp] = useState<ComputedOp>('ratio');
-  const [a, setA] = useState<string>('mtm');
-  const [b, setB] = useState<string>('notional');
+  const [a, setA] = useState<string>(MEASURES[0] ?? '');
+  const [b, setB] = useState<string>(MEASURES[1] ?? MEASURES[0] ?? '');
   const [kText, setKText] = useState('100');
   const arity = COMPUTED_ARITY[op];
   const k = parseSearchNumber(kText);
   const draft: ComputedColumn = { id: computedIdFor(label || 'calc'), label: label.trim(), op, of: arity === 2 ? [a, b] : [a], ...(op === 'scaled' ? { k } : {}) };
   const taken = existing.some((c) => c.id === draft.id);
-  const issues = label.trim() ? computedIssues(draft, metaOf, REGISTRY_IDS) : ['give the column a name'];
+  const issues = label.trim() ? computedIssues(draft, metaOf, idsOf(schema)) : ['give the column a name'];
   if (taken) issues.push(`a column named ${draft.id} already exists`);
   if (existing.length >= MAX_COMPUTED) issues.push(`${MAX_COMPUTED} calculated columns is the most; a ninth is a model`);
-  const unit = computedUnit(op, metaOf(a)!, arity === 2 ? metaOf(b) : undefined);
+  const unit = metaOf(a) ? computedUnit(op, metaOf(a)!, arity === 2 ? metaOf(b) : undefined) : { error: 'the source has no measures' };
 
   return (
     <form
@@ -60,14 +62,14 @@ export function ComputedColumnEditor({
       <div className="flex items-center gap-1">
         <span className="w-4 text-faint">A</span>
         <select aria-label="Operand A" className={SELECT} value={a} onChange={(e) => setA(e.target.value)}>
-          {MEASURES.map((id) => <option key={id} value={id}>{COLUMN_META[id].label}</option>)}
+          {MEASURES.map((id) => <option key={id} value={id}>{schema.columns[id]!.label}</option>)}
         </select>
       </div>
       {arity === 2 ? (
         <div className="flex items-center gap-1">
           <span className="w-4 text-faint">B</span>
           <select aria-label="Operand B" className={SELECT} value={b} onChange={(e) => setB(e.target.value)}>
-            {MEASURES.map((id) => <option key={id} value={id}>{COLUMN_META[id].label}</option>)}
+            {MEASURES.map((id) => <option key={id} value={id}>{schema.columns[id]!.label}</option>)}
           </select>
         </div>
       ) : (

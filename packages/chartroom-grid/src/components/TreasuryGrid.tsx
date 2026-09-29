@@ -18,7 +18,9 @@ import {
   useSensor, useSensors, type CollisionDetection, type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import type { Position } from '../data/mock';
+import { schemaFromColumns, type GridRecord, type GridSchema } from '../grid/schema';
+import { TREASURY_SCHEMA } from '../data/treasury';
+import { SchemaContext } from './SchemaContext';
 import type { DataSource, SourceDescription } from '../data/source';
 import { isGroupNode } from '../data/sqlSource';
 import { useTreasuryTable, type Applied, type GridRowData, type ViewUpdate } from '../grid/useTreasuryTable';
@@ -42,7 +44,7 @@ import { Badge } from './ui/badge';
 export { ROW_HEIGHT, ROW_HEIGHTS, DETAIL_HEIGHT, type Density } from './GridTable';
 
 export interface TreasuryGridProps {
-  source: DataSource<Position>;
+  source: DataSource<GridRecord>;
   /** Control the view from outside (a saved view, the URL, an agent); omit and the grid keeps its own. */
   view?: ViewState;
   onViewChange?: (update: ViewUpdate) => void;
@@ -98,6 +100,12 @@ export function TreasuryGrid({
   // those slices re-query — debounced, since a resize handle or a keystroke
   // can move the view many times a second.
   const [about, setAbout] = useState<SourceDescription | null>(null);
+  // The columns the source serves (ADR-82): the treasury book until the
+  // description arrives, then whatever it describes.
+  const schema = useMemo<GridSchema>(
+    () => (about ? schemaFromColumns(about.columns, about.rowId ?? about.columns[0]?.id ?? '') : TREASURY_SCHEMA),
+    [about],
+  );
   useEffect(() => {
     let live = true;
     setAbout(null);
@@ -110,9 +118,9 @@ export function TreasuryGrid({
     s: serves?.sort ? view.sorting : null,
     g: serves?.group ? view.grouping : null,
   });
-  const [rows, setRows] = useState<Position[] | null>(null);
+  const [rows, setRows] = useState<GridRecord[] | null>(null);
   const [pending, setPending] = useState(false);
-  const [children, setChildren] = useState<ReadonlyMap<string, Position[]>>(() => new Map());
+  const [children, setChildren] = useState<ReadonlyMap<string, GridRecord[]>>(() => new Map());
   // The table's manual modes follow what the source *serves*, not what the
   // last answer applied: between a served slice changing and the engine's
   // answer, the client row models must not group or sort the stale rows
@@ -146,9 +154,9 @@ export function TreasuryGrid({
   const data = useMemo<GridRowData[] | null>(() => {
     if (!rows) return null;
     if (children.size === 0) return rows;
-    const attach = (list: Position[]): GridRowData[] =>
+    const attach = (list: GridRecord[]): GridRowData[] =>
       list.map((row) => {
-        const kids = isGroupNode(row) ? children.get(row.tradeId) : undefined;
+        const kids = isGroupNode(row) ? children.get(String(row[schema.rowId])) : undefined;
         return kids ? { ...row, __children: attach(kids) } : row;
       });
     return attach(rows);
@@ -169,7 +177,10 @@ export function TreasuryGrid({
     return () => { live = false; };
   }, [source, pivotColumn, rows]);
 
-  const table = useTreasuryTable({ data, view, onViewChange: change, applied: manual , pivotValues: pivotValues && pivotValues.column === view.pivot.column ? pivotValues.values : undefined });
+  const table = useTreasuryTable({
+    data, view, onViewChange: change, applied: manual, schema,
+    pivotValues: pivotValues && pivotValues.column === view.pivot.column ? pivotValues.values : undefined,
+  });
 
   // A range is anchored to corner ids and would recompute across a reorder
   // or a pin into a scattered rectangle; the selection resets instead (ADR-71).
@@ -232,12 +243,13 @@ export function TreasuryGrid({
   // Lazy expansion: a node's children are asked for by its path, once.
   const onExpandGroup = useCallback((row: GridRow) => {
     const node = row.original;
-    if (isGroupNode(node) && !children.has(node.tradeId)) {
+    const nodeId = String(node[schema.rowId]);
+    if (isGroupNode(node) && !children.has(nodeId)) {
       void source.query(view, { groupPath: node.__group.path }).then((r) => {
         setChildren((prev) => {
-          if (prev.has(node.tradeId)) return prev;
+          if (prev.has(nodeId)) return prev;
           const next = new Map(prev);
-          next.set(node.tradeId, r.rows);
+          next.set(nodeId, r.rows);
           return next;
         });
       });
@@ -308,6 +320,7 @@ export function TreasuryGrid({
 
 
   return (
+    <SchemaContext.Provider value={schema}>
     <DndContext
       sensors={sensors}
       collisionDetection={collision}
@@ -385,5 +398,6 @@ export function TreasuryGrid({
         {dragLabel ? <Badge variant="secondary" className="cursor-grabbing shadow-md">{dragLabel}</Badge> : null}
       </DragOverlay>
     </DndContext>
+    </SchemaContext.Provider>
   );
 }

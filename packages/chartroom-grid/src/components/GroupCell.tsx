@@ -6,10 +6,10 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { Row } from '@tanstack/react-table';
 import type { Features } from '../grid/features';
-import type { Position } from '../data/mock';
+import type { GridRecord } from '../grid/schema';
 import type { GroupNode } from '../data/sqlSource';
 
-export type GridRow = Row<Features, Position>;
+export type GridRow = Row<Features, GridRecord>;
 
 /** Positions under a group: leaves, never the synthetic rows between. */
 export function leafCount(row: GridRow): number {

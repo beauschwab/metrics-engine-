@@ -4,15 +4,16 @@
  * and never measures (ADR-66).
  */
 
-import { COLUMN_META, COLUMN_ORDER } from '../grid/columns';
+import { useSchema } from './SchemaContext';
 import { formatValue } from '../grid/meta';
-import type { Position } from '../data/mock';
+import type { GridRecord } from '../grid/schema';
 
-export function DetailPanel({ position }: { position: Position }) {
+export function DetailPanel({ position }: { position: GridRecord }) {
+  const schema = useSchema();
   return (
     <dl data-slot="detail-panel" className="grid w-full grid-cols-5 gap-x-4 gap-y-1.5 px-8 py-2 text-[11px] leading-tight">
-      {COLUMN_ORDER.map((id) => {
-        const meta = COLUMN_META[id];
+      {schema.order.map((id) => {
+        const meta = schema.columns[id]!;
         return (
           <div key={id} className="flex min-w-0 flex-col">
             <dt className="text-[9.5px] font-semibold tracking-[0.06em] uppercase text-faint">{meta.label}</dt>

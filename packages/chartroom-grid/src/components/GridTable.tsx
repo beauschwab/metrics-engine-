@@ -23,7 +23,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Cell, Column, Header } from '@tanstack/react-table';
-import type { Position } from '../data/mock';
+import type { GridRecord } from '../grid/schema';
 import type { Features } from '../grid/features';
 import { aggregatedNumber } from '../grid/aggregations';
 import { SELECT_ID } from '../grid/columns';
@@ -75,7 +75,7 @@ export interface GridTableProps {
   onPivot?: (columnId: string | null) => void;
 }
 
-type GridColumn = Column<Features, Position, unknown>;
+type GridColumn = Column<Features, GridRecord, unknown>;
 type DisplayItem = { kind: 'row'; row: GridRow } | { kind: 'detail'; row: GridRow };
 
 /**
@@ -355,7 +355,7 @@ function BodyRow({
 function HeaderCell({
   header, table, sortCount, onAggChange, onFormatChange, onRemoveComputed, onPivot,
 }: {
-  header: Header<Features, Position, unknown>;
+  header: Header<Features, GridRecord, unknown>;
   table: TreasuryTable;
   sortCount: number;
   onAggChange?: (columnId: string, agg: Agg | null) => void;
@@ -499,7 +499,7 @@ function SelectAll({ table }: { table: TreasuryTable }) {
 function BodyCell({
   cell, table, first, heat, detailOpen, onToggleDetail, onExpandGroup,
 }: {
-  cell: Cell<Features, Position, unknown>;
+  cell: Cell<Features, GridRecord, unknown>;
   table: TreasuryTable;
   first: boolean;
   heat: Map<string, [number, number] | undefined>;

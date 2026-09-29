@@ -18,6 +18,7 @@ import ehModule from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url';
 import ehWorker from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url';
 import { DUCKDB } from './compileSql';
 import type { Position } from './mock';
+import type { GridRecord, GridSchema } from '../grid/schema';
 import type { DataSource } from './source';
 import { sqlSource, type SqlExecutor } from './sqlSource';
 
@@ -59,11 +60,12 @@ export async function createDuckDbExecutor(rows: Position[]): Promise<DuckDbExec
 }
 
 /** The book behind DuckDB-WASM, created on first use. */
-export function duckdbSource(rows: Position[], name = 'DuckDB-WASM'): DataSource<Position> {
-  let ready: Promise<DataSource<Position>> | null = null;
-  const inner = () => (ready ??= createDuckDbExecutor(rows).then((executor) => sqlSource({ executor, table: DUCKDB_TABLE, dialect: DUCKDB, name })));
+export function duckdbSource(rows: Position[], name = 'DuckDB-WASM', schema?: GridSchema): DataSource<GridRecord> {
+  let ready: Promise<DataSource<GridRecord>> | null = null;
+  const inner = () => (ready ??= createDuckDbExecutor(rows).then((executor) => sqlSource({ executor, table: DUCKDB_TABLE, dialect: DUCKDB, name, schema })));
   return {
     describe: () => inner().then((s) => s.describe()),
     query: (view, options) => inner().then((s) => s.query(view, options)),
+    distinct: (column) => inner().then((s) => s.distinct!(column)),
   };
 }
