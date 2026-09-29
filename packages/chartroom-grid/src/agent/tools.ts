@@ -66,7 +66,7 @@ export const VIEW_CONTRACT: ViewContract = {
     columnPinning: '{ start: string[], end: string[] } — logical start/end, not left/right',
     columnSizing: '{ [columnId]: px }',
     columnAggs: '{ [measureId]: one of that column’s aggs } — overrides the meta’s aggregation for subtotals, totals and the SQL the source runs',
-    columnFormats: '{ [measureId]: { dp?: 0–4, scale?: units|k|m|bn (dollar columns only), negatives?: minus|parens, negativeRed?, heatmap? } } — how the measure reads, never its unit (NUM-01)',
+    columnFormats: '{ [measureId]: { dp?: 0–4, scale?: units|k|m|bn (dollar columns only), negatives?: minus|parens, negativeRed?, heatmap?, rules?: [{ op: >|>=|<|<=|=|!=, value, emphasis: accent|strong|muted }] (max 4, first match wins) } } — how the measure reads, never its unit (NUM-01); a rule emphasises, it never colours red or green',
   },
   notes: [
     'Column ids must be ones the contract lists; unknown ids are refused with an issue naming them.',

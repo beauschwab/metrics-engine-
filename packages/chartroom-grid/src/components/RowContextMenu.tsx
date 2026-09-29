@@ -7,7 +7,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { ChevronsDownUp, ChevronsUpDown, Copy, EyeOff, Funnel, FunnelX, PanelLeft, PinOff, Rows3, Table2 } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, Copy, EyeOff, Funnel, FunnelX, PanelLeft, Pin, PinOff, Rows3, Table2 } from 'lucide-react';
 import { formatValue } from '../grid/meta';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { SELECT_ID } from '../grid/columns';
@@ -103,6 +103,13 @@ export function RowContextMenu({
                 <Table2 /> {detailOpen.has(row.id) ? 'Hide details' : 'Show details'}
               </ContextMenuItem>
             )}
+            {row.getCanPin() && (
+              row.getIsPinned() === 'top' ? (
+                <ContextMenuItem onSelect={() => row.pin(false)}><PinOff /> Unpin row</ContextMenuItem>
+              ) : (
+                <ContextMenuItem onSelect={() => row.pin('top')}><Pin /> Pin row to top</ContextMenuItem>
+              )
+            )}
           </>
         ) : (
           <ContextMenuLabel className="text-[10px] tracking-[0.06em] uppercase text-faint">Table</ContextMenuLabel>
@@ -116,6 +123,9 @@ export function RowContextMenu({
         <ContextMenuItem onSelect={() => { table.resetColumnFilters(true); table.setGlobalFilter(''); }}>
           <FunnelX /> Clear all filters
         </ContextMenuItem>
+        {table.getTopRows().length > 0 && (
+          <ContextMenuItem onSelect={() => table.resetRowPinning(true)}><PinOff /> Unpin all rows</ContextMenuItem>
+        )}
         {/* TODO(grid-deferred): "Chart selection" hands the selected leaf rows to a widget contract; range selection copies a block. */}
       </ContextMenuContent>
     </ContextMenu>

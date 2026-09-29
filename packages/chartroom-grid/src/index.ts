@@ -40,6 +40,7 @@ export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from './compon
 export { Input } from './components/ui/input';
 export { Separator } from './components/ui/separator';
 export { heatIntensity, heatBackground, HEAT_MAX_PERCENT } from './grid/heat';
+export { headerBands, hasBands, type HeaderBand, type BandColumn } from './grid/bands';
 export { rangesToTsv, selectedCellRanges, cellText, type CopyCell, type CopyOptions, type CopyTable } from './grid/copy';
 export {
   parseSearch, tokenizeSearch, parseSearchNumber, resolveSearchColumn, rowMatchesSearch, termMatches, describeSearchToken,
@@ -70,8 +71,9 @@ export {
   type ColumnAggs, type ColumnFormats,
 } from './grid/columns';
 export {
-  formatValue, alignOf, isScalable, MISSING, AGGS, AGG_LABELS, SCALES, SCALE_LABELS, NEGATIVES, NEGATIVE_LABELS, DECIMALS, FORMAT_KEYS,
-  type ColumnMeta, type ColumnFormat, type Unit, type Agg, type Scale, type Negatives,
+  formatValue, alignOf, isScalable, matchRule, MISSING, AGGS, AGG_LABELS, SCALES, SCALE_LABELS, NEGATIVES, NEGATIVE_LABELS, DECIMALS, FORMAT_KEYS,
+  RULE_OPS, EMPHASES, EMPHASIS_LABELS, MAX_RULES,
+  type ColumnMeta, type ColumnFormat, type Unit, type Agg, type Scale, type Negatives, type HighlightRule, type RuleOp, type Emphasis,
 } from './grid/meta';
 export {
   generatePositions, seeded, type Position,

@@ -115,6 +115,11 @@ export function useTreasuryTable({ data, view, onViewChange, applied }: Treasury
     manualGrouping: applied?.group ?? false,
     // A block of cells can be selected anywhere but the selection column.
     enableCellSelection: (cell) => cell.column.id !== SELECT_ID,
+    // A pinned row is one of the rows on screen: filter it out or collapse
+    // its group and it leaves the top too, rather than showing a row the
+    // view says is not there (ADR-77).
+    keepPinnedRows: false,
+    enableRowPinning: (row) => !row.getIsGrouped() && !isGroupNode(row.original),
     getSubRows: (row) => (row as GridRowData).__children,
     // A client-made group expands when it has sub-rows (the default rule);
     // an engine-made node expands before its children have been fetched.

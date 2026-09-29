@@ -15,7 +15,7 @@
 import ExcelJS from 'exceljs';
 import { aggregatedNumber } from '../grid/aggregations';
 import type { ColumnMeta } from '../grid/meta';
-import { excelFormat } from './formats';
+import { excelFormat, excelRules } from './formats';
 
 /**
  * What the export reads of a table — structurally, because v9's `Table`
@@ -98,6 +98,13 @@ export function buildWorkbook(table: ExportTable, options: ExportOptions = {}): 
     if (meta.kind === 'measure' && c.columnDef.aggregationFn) total[c.id] = aggregatedNumber(c.getAggregationValue());
   }
   const totalRow = ws.addRow(total);
+  // A reader's highlight rules travel as conditional formats over the data rows.
+  for (const c of columns) {
+    const rules = excelRules((c.columnDef.meta as ColumnMeta).rules);
+    if (rules.length === 0 || totalRow.number < 3) continue;
+    const letter = ws.getColumn(c.id).letter;
+    ws.addConditionalFormatting({ ref: `${letter}2:${letter}${totalRow.number - 1}`, rules });
+  }
   totalRow.font = { bold: true };
   totalRow.border = { top: { style: 'thin' } };
 

@@ -33,9 +33,9 @@ describe('compileSql', () => {
     const c = compileSql(view, { table: 'positions', limit: 10, offset: 5 });
     expect(c.shape).toBe('leaf');
     expect(c.sql).toBe(
-      'SELECT "desk", "legalEntity", "currency", "product", "tenorBucket", "counterparty", "book", "tradeId", "asOf", "notional", "mtm", "dv01", "cs01", "yield", "wal" FROM "positions"'
+      'SELECT "desk", "legalEntity", "book", "currency", "product", "tenorBucket", "counterparty", "tradeId", "asOf", "notional", "mtm", "dv01", "cs01", "yield", "wal" FROM "positions"'
       + ' WHERE "product" IN (?, ?) AND "notional" >= ?'
-      + ' AND (' + ['desk', 'legalEntity', 'currency', 'product', 'tenorBucket', 'counterparty', 'book', 'tradeId', 'asOf', 'notional', 'mtm', 'dv01', 'cs01', 'yield', 'wal']
+      + ' AND (' + ['desk', 'legalEntity', 'book', 'currency', 'product', 'tenorBucket', 'counterparty', 'tradeId', 'asOf', 'notional', 'mtm', 'dv01', 'cs01', 'yield', 'wal']
         .map((id) => `CAST("${id}" AS VARCHAR) ILIKE ?`).join(' OR ') + ')'
       + ' ORDER BY "mtm" DESC, "tradeId" ASC LIMIT 10 OFFSET 5',
     );
@@ -47,7 +47,7 @@ describe('compileSql', () => {
 
   it('compiles the quick filter\'s tokens: a word across columns, a term on its column, an unknown term to no row (ADR-73)', () => {
     const c = compileSql(parseView({ version: 2, globalFilter: 'Credit ccy:EUR desk=Rates desk!=FX notional>1bn yield<=3.5' }), { table: 'positions' });
-    const word = '(' + ['desk', 'legalEntity', 'currency', 'product', 'tenorBucket', 'counterparty', 'book', 'tradeId', 'asOf', 'notional', 'mtm', 'dv01', 'cs01', 'yield', 'wal']
+    const word = '(' + ['desk', 'legalEntity', 'book', 'currency', 'product', 'tenorBucket', 'counterparty', 'tradeId', 'asOf', 'notional', 'mtm', 'dv01', 'cs01', 'yield', 'wal']
       .map((id) => `CAST("${id}" AS VARCHAR) ILIKE ?`).join(' OR ') + ')';
     expect(c.sql).toContain(` WHERE ${word} AND CAST("currency" AS VARCHAR) ILIKE ? AND CAST("desk" AS VARCHAR) ILIKE ? AND NOT CAST("desk" AS VARCHAR) ILIKE ? AND "notional" > ? AND "yield" <= ?`);
     expect(c.params.slice(15)).toEqual(['%EUR%', 'Rates', 'FX', 1e9, 3.5]);

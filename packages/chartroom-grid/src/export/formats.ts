@@ -9,7 +9,33 @@
  * the meta says `negativeRed`, and in parentheses where it says so.
  */
 
-import type { ColumnMeta } from '../grid/meta';
+import type { ConditionalFormattingRule } from 'exceljs';
+import type { ColumnMeta, HighlightRule } from '../grid/meta';
+
+/** exceljs's names for a rule's comparison. */
+const CELL_IS: Record<HighlightRule['op'], 'greaterThan' | 'greaterThanOrEqual' | 'lessThan' | 'lessThanOrEqual' | 'equal' | 'notEqual'> = {
+  '>': 'greaterThan', '>=': 'greaterThanOrEqual', '<': 'lessThan', '<=': 'lessThanOrEqual', '=': 'equal', '!=': 'notEqual',
+};
+
+/**
+ * A highlight rule as an Excel conditional format (ADR-78): the same
+ * comparison, the same emphasis — bold, a faint font, a tinted fill —
+ * never a red or a green.
+ */
+export function excelRules(rules: readonly HighlightRule[] | undefined): ConditionalFormattingRule[] {
+  // exceljs's declarations list four cellIs operators; the OOXML set it
+  // writes verbatim has six, so the two "or equal" forms are cast through.
+  return (rules ?? []).map((r, i) => ({
+    type: 'cellIs' as const,
+    operator: CELL_IS[r.op],
+    formulae: [r.value],
+    priority: i + 1,
+    style:
+      r.emphasis === 'strong' ? { font: { bold: true } }
+      : r.emphasis === 'muted' ? { font: { color: { argb: 'FF8A8F98' } } }
+      : { fill: { type: 'pattern' as const, pattern: 'solid' as const, bgColor: { argb: 'FFDCE6F5' } } },
+  })) as unknown as ConditionalFormattingRule[];
+}
 
 const zeros = (dp: number) => (dp > 0 ? `.${'0'.repeat(dp)}` : '');
 

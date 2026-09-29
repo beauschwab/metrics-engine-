@@ -18,7 +18,9 @@ import { z } from 'zod';
 import type { ColumnFiltersState, TableState } from '@tanstack/table-core';
 import type { Features } from './features';
 import { COLUMN_META, COLUMN_ORDER, allowedAggs, allowedFormatKeys } from './columns';
-import { AGGS, DECIMALS, NEGATIVES, SCALES, type Agg, type ColumnFormat, type Negatives, type Scale } from './meta';
+import {
+  AGGS, DECIMALS, EMPHASES, MAX_RULES, NEGATIVES, RULE_OPS, SCALES, type Agg, type ColumnFormat, type Emphasis, type Negatives, type RuleOp, type Scale,
+} from './meta';
 import type { Position } from '../data/mock';
 
 /**
@@ -92,6 +94,11 @@ export const ViewStateSchema = z
           negatives: z.enum(NEGATIVES as [Negatives, ...Negatives[]]).optional(),
           negativeRed: z.boolean().optional(),
           heatmap: z.boolean().optional(),
+          rules: z.array(z.strictObject({
+            op: z.enum(RULE_OPS as [RuleOp, ...RuleOp[]]),
+            value: z.number().finite(),
+            emphasis: z.enum(EMPHASES as [Emphasis, ...Emphasis[]]),
+          })).max(MAX_RULES, `at most ${MAX_RULES} rules; a threshold belongs in the registry`).optional(),
         })
         .strict())
       .superRefine((rec, ctx) => {

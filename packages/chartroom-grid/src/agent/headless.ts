@@ -14,6 +14,7 @@ import { buildColumns } from '../grid/columns';
 import { features } from '../grid/features';
 import { toTableState, type ViewState } from '../grid/viewState';
 import type { Position } from '../data/mock';
+import { isGroupNode } from '../data/sqlSource';
 
 export const headlessFeatures = tableFeatures({ ...features, coreReactivityFeature: storeReactivityBindings() });
 export type HeadlessFeatures = typeof headlessFeatures;
@@ -26,6 +27,8 @@ export function headlessTable(rows: Position[], view: ViewState): HeadlessTable 
     data: rows,
     getRowId: (r) => r.tradeId,
     globalFilterFn: 'search',
+    keepPinnedRows: false,
+    enableRowPinning: (row) => !row.getIsGrouped() && !isGroupNode(row.original),
     state: toTableState(view),
   });
 }

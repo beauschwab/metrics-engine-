@@ -12,7 +12,7 @@
  * density, the cell under the pointer (ADR-68).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, pointerWithin,
   useSensor, useSensors, type CollisionDetection, type DragEndEvent, type DragStartEvent,
@@ -26,6 +26,7 @@ import type { GridRow } from './GroupCell';
 import type { Agg, ColumnFormat } from '../grid/meta';
 import { defaultView, type ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
+import { canRedo, canUndo, createHistory, pushHistory, redoHistory, undoHistory } from '../views/history';
 import { ColumnsSidebar, SIDE_PREFIX, orderedLeafColumns } from './ColumnsSidebar';
 import { GridTable, COLUMN_PREFIX, type ContextTarget, type Density } from './GridTable';
 import { FilterBar } from './FilterBar';
@@ -61,6 +62,29 @@ export function TreasuryGrid({
   const [ownView, setOwnView] = useState<ViewState>(defaultView);
   const view = controlled ?? ownView;
   const change = onViewChange ?? setOwnView;
+
+  // Undo and redo (ADR-76): every view that arrives — from a feature, a
+  // saved view, a link, an agent — is a step; undo hands the previous one
+  // back through the same write. The stack lives here, not in the view.
+  const history = useRef(createHistory(view));
+  const [steps, setSteps] = useState({ canUndo: false, canRedo: false });
+  useEffect(() => {
+    history.current = pushHistory(history.current, view as unknown as Record<string, unknown>) as typeof history.current;
+    const next = { canUndo: canUndo(history.current), canRedo: canRedo(history.current) };
+    setSteps((prev) => (prev.canUndo === next.canUndo && prev.canRedo === next.canRedo ? prev : next));
+  }, [view]);
+  const undo = useCallback(() => {
+    if (!canUndo(history.current)) return;
+    history.current = undoHistory(history.current);
+    const target = history.current.present;
+    change(() => target);
+  }, [change]);
+  const redo = useCallback(() => {
+    if (!canRedo(history.current)) return;
+    history.current = redoHistory(history.current);
+    const target = history.current.present;
+    change(() => target);
+  }, [change]);
 
   // The source describes itself once; the rows are asked for again only
   // when a slice the source *serves* changes (ADR-70). The in-memory source
@@ -245,7 +269,22 @@ export function TreasuryGrid({
       onDragEnd={onDragEnd}
       onDragCancel={() => setDragLabel(null)}
     >
-      <div className="flex h-full min-h-0 flex-col" data-slot="treasury-grid" data-testid="treasury-grid-shell" data-density={density}>
+      <div
+        className="flex h-full min-h-0 flex-col"
+        data-slot="treasury-grid"
+        data-testid="treasury-grid-shell"
+        data-density={density}
+        onKeyDownCapture={(e) => {
+          // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y anywhere in the shell but a text field.
+          const mod = e.ctrlKey || e.metaKey;
+          if (!mod) return;
+          const t = e.target as HTMLElement;
+          if (t.closest('input, textarea, [contenteditable="true"]')) return;
+          const key = e.key.toLowerCase();
+          if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+          else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo(); }
+        }}
+      >
         <GridToolbar
           table={table}
           view={view}
@@ -257,6 +296,7 @@ export function TreasuryGrid({
           onToggleDensity={() => setDensity((d) => (d === 'compact' ? 'comfortable' : 'compact'))}
           onExport={() => void onExport()}
           exporting={exporting}
+          history={{ ...steps, undo, redo }}
         />
         <FilterBar table={table} view={view} />
         <div className="flex min-h-0 flex-1">

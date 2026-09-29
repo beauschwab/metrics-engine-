@@ -17,7 +17,7 @@ test.describe('the treasury grid harness', () => {
 
     // Headers come from meta labels, in the declared order, after the
     // selection column the hook pins at the start.
-    const headers = grid.locator('thead th');
+    const headers = grid.locator('thead th[data-column]');
     await expect(headers.first()).toHaveAttribute('data-column', 'select');
     await expect(headers.nth(1)).toHaveText('Desk');
     await expect(headers.nth(10)).toHaveText('Notional');
@@ -128,7 +128,7 @@ test.describe('the treasury grid harness', () => {
     await expect(page.locator('[data-slot="group-chip"][data-column="product"]')).toBeVisible();
     await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(6);
     // The grouped column moved to the front of the header, after the selection column.
-    await expect(grid.locator('thead th').nth(1)).toHaveAttribute('data-column', 'product');
+    await expect(grid.locator('thead th[data-column]').nth(1)).toHaveAttribute('data-column', 'product');
   });
 
   test('sorts, filters by set and by range, quick-filters, and clears', async ({ page }) => {
@@ -205,7 +205,7 @@ test.describe('the treasury grid harness', () => {
     await page.getByRole('menuitem', { name: 'Pin to start' }).click();
     const pinned = grid.locator('th[data-column="counterparty"]');
     await expect(pinned).toHaveAttribute('data-pinned', 'start');
-    await expect(grid.locator('thead th').nth(1)).toHaveAttribute('data-column', 'counterparty');
+    await expect(grid.locator('thead th[data-column]').nth(1)).toHaveAttribute('data-column', 'counterparty');
     await expect(pinned).toHaveCSS('position', 'sticky');
     await expect(grid.locator('tbody tr').first().locator('td[data-column="counterparty"]')).toHaveCSS('position', 'sticky');
 
@@ -215,7 +215,7 @@ test.describe('the treasury grid harness', () => {
     await page.getByRole('menuitem', { name: 'Hide column' }).click();
     await expect(grid.locator('th[data-column="asOf"]')).toHaveCount(0);
     await expect(grid.locator('tbody tr').first().locator('td[data-column="asOf"]')).toHaveCount(0);
-    const headerCount = await grid.locator('thead th').count();
+    const headerCount = await grid.locator('thead th[data-column]').count();
     expect(await grid.locator('tbody tr').first().locator('td').count()).toBe(headerCount);
 
     // The sidebar shows it unchecked and brings it back.
@@ -339,16 +339,16 @@ test.describe('the treasury grid harness', () => {
     const rows = grid.locator('tbody tr');
     await expect(rows.first()).toBeVisible();
 
-    // Drag from the first row's desk to the third row's product: a 3×4 block.
+    // Drag from the first row's desk to the third row's currency: a 3×4 block.
     const from = (await rows.nth(0).locator('td[data-column="desk"]').boundingBox())!;
-    const to = (await rows.nth(2).locator('td[data-column="product"]').boundingBox())!;
+    const to = (await rows.nth(2).locator('td[data-column="currency"]').boundingBox())!;
     await page.mouse.move(from.x + 10, from.y + from.height / 2);
     await page.mouse.down();
     await page.mouse.move(to.x + 10, to.y + to.height / 2, { steps: 6 });
     await page.mouse.up();
     await expect(grid.locator('td[data-selected]')).toHaveCount(12);
     await expect(rows.nth(0).locator('td[data-column="desk"]')).toHaveAttribute('data-selected', 'true');
-    await expect(rows.nth(2).locator('td[data-column="product"]')).toHaveAttribute('data-selected', 'true');
+    await expect(rows.nth(2).locator('td[data-column="currency"]')).toHaveAttribute('data-selected', 'true');
     await expect(rows.nth(0).locator('td[data-column="tenorBucket"]')).not.toHaveAttribute('data-selected', 'true');
 
     // Ctrl+C writes the block as the screen shows it.
@@ -365,7 +365,7 @@ test.describe('the treasury grid harness', () => {
     await rows.nth(1).locator('td[data-column="currency"]').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Copy range with headers' }).click();
     const withHeaders = await page.evaluate(() => navigator.clipboard.readText());
-    expect(withHeaders.split('\n')[0]).toBe('Desk\tEntity\tCcy\tProduct');
+    expect(withHeaders.split('\n')[0]).toBe('Desk\tEntity\tBook\tCcy');
 
     // Escape clears; the selection column never selects.
     await grid.focus();
@@ -537,6 +537,145 @@ test.describe('the treasury grid harness', () => {
     const pct = page.locator('[data-slot="format-choices"][data-column="yield"]');
     await expect(pct.getByRole('menuitemradio', { name: '2 decimals' })).toHaveAttribute('aria-checked', 'true');
     await expect(pct.getByRole('menuitemradio', { name: 'Billions' })).toHaveCount(0);
+  });
+
+  test('draws header bands over column families; hiding narrows one and pinning splits one', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    await expect(grid.locator('tbody tr').first()).toBeVisible();
+    const bands = grid.locator('[data-slot="header-band"][data-band]');
+    await expect(bands).toHaveText(['Book', 'Instrument', 'Trade', 'Exposure', 'Risk', 'Return']);
+    const risk = grid.locator('[data-slot="header-band"][data-band="Risk"]');
+    await expect(risk).toHaveAttribute('data-columns', 'dv01 cs01');
+    const dv01 = (await grid.locator('th[data-column="dv01"]').boundingBox())!;
+    const cs01 = (await grid.locator('th[data-column="cs01"]').boundingBox())!;
+    const box = (await risk.boundingBox())!;
+    expect(Math.abs(box.x - dv01.x)).toBeLessThan(2);
+    expect(Math.abs(box.width - (dv01.width + cs01.width))).toBeLessThan(2);
+
+    // Hide CS01: the band narrows to DV01 alone.
+    await page.getByTestId('columns-sidebar').getByLabel('Show CS01').click();
+    await expect(risk).toHaveAttribute('data-columns', 'dv01');
+
+    // Pin Desk to the start: Book splits, and the pinned half sticks.
+    await grid.locator('th[data-column="desk"]').hover();
+    await page.getByRole('button', { name: 'Desk column menu' }).click();
+    await page.getByRole('menuitem', { name: 'Pin to start' }).click();
+    const book = grid.locator('[data-slot="header-band"][data-band="Book"]');
+    await expect(book).toHaveCount(2);
+    await expect(book.first()).toHaveAttribute('data-columns', 'desk');
+    await expect(book.first()).toHaveCSS('position', 'sticky');
+    await expect(book.nth(1)).toHaveAttribute('data-columns', 'legalEntity book');
+  });
+
+  test('undoes and redoes view changes with the keyboard and the toolbar', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    await expect(grid.locator('tbody tr').first()).toBeVisible();
+    const undo = page.getByRole('button', { name: 'Undo view change' });
+    const redo = page.getByRole('button', { name: 'Redo view change' });
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeDisabled();
+
+    // Two steps: group, then sort. Ctrl+Z takes the sort back, then the group.
+    await page.getByTestId('columns-sidebar').getByRole('button', { name: 'Group by Desk' }).click();
+    await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(5);
+    await grid.locator('th[data-column="notional"] [data-slot="column-header"]').click();
+    await expect(grid.locator('th[data-column="notional"]')).toHaveAttribute('aria-sort', 'descending');
+    await expect(undo).toBeEnabled();
+    await grid.focus();
+    await page.keyboard.press('Control+z');
+    await expect(grid.locator('th[data-column="notional"]')).not.toHaveAttribute('aria-sort', /.+/);
+    await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(5);
+    await page.keyboard.press('Control+z');
+    await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(0);
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeEnabled();
+
+    // Redo from the toolbar brings the group back; a new change drops the redo branch.
+    await redo.click();
+    await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(5);
+    await expect(redo).toBeEnabled();
+    await page.getByLabel('Quick filter').fill('desk:Credit');
+    await expect(page.locator('[data-slot="filter-bar"]')).toBeVisible();
+    await expect(redo).toBeDisabled();
+    // Undo takes the search token back and the link with it.
+    await grid.focus();
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('[data-slot="filter-bar"]')).toHaveCount(0);
+    await expect(page.getByLabel('Quick filter')).toHaveValue('');
+    await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(5);
+  });
+
+  test('pins a row to the top from the context menu, keeps it through a scroll, and unpins it', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    const rows = grid.locator('tbody tr');
+    await expect(rows.first()).toBeVisible();
+    const id = (await rows.first().getAttribute('data-row'))!;
+    await rows.first().locator('td[data-column="desk"]').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Pin row to top' }).click();
+    const pinned = grid.locator('thead tr[data-slot="pinned-row"]');
+    await expect(pinned).toHaveCount(1);
+    await expect(pinned).toHaveAttribute('data-row', id);
+    await expect(grid.locator(`tbody tr[data-row="${id}"]`)).toHaveCount(0);
+
+    // Scroll the body a long way: the pinned row is still in view under the header.
+    await grid.evaluate((table) => { table.closest('[data-slot="table-container"]')!.scrollTop = 20_000; });
+    await expect(pinned).toBeInViewport();
+    await expect(rows.first()).not.toHaveAttribute('data-row', id);
+
+    // A filter that excludes the pinned row takes it off the top; clearing brings it back.
+    await page.getByLabel('Quick filter').fill('desk:Nothing-here');
+    await expect(pinned).toHaveCount(0);
+    await page.locator('[data-slot="filter-bar"]').getByRole('button', { name: 'Clear all filters' }).click();
+    await expect(pinned).toHaveCount(1);
+
+    // Unpin from the pinned row's own menu.
+    await pinned.locator('td[data-column="desk"]').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Unpin row' }).click();
+    await expect(pinned).toHaveCount(0);
+    await expect(grid.locator(`tbody tr[data-row="${id}"]`)).toHaveCount(1);
+  });
+
+  test('highlights cells by a reader\'s rule from the header menu, and the link carries the rule', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    await expect(grid.locator('tbody tr').first()).toBeVisible();
+    await grid.locator('th[data-column="notional"]').hover();
+    await page.getByRole('button', { name: 'Notional column menu' }).click();
+    await page.locator('[data-slot="format-menu"]').hover();
+    await page.locator('[data-slot="format-choices"][data-column="notional"]').getByRole('menuitem', { name: /Highlight rules/ }).click();
+    const editor = page.locator('[data-slot="highlight-rules-editor"][data-column="notional"]');
+    await expect(editor).toBeVisible();
+    await editor.getByLabel('Comparison').selectOption('>');
+    await editor.getByLabel('Notional threshold').fill('3bn');
+    await editor.getByLabel('Emphasis').selectOption('accent');
+    await editor.getByRole('button', { name: 'Add' }).click();
+    await expect(editor.locator('[data-slot="highlight-rule"]')).toHaveText(/> \$3000\.0M\s*Highlight/);
+
+    // Sort descending so the big ones are on screen: they carry the emphasis, the small ones do not.
+    await editor.getByRole('button', { name: 'Close highlight rules' }).click();
+    await grid.locator('th[data-column="notional"] [data-slot="column-header"]').click();
+    await expect(grid.locator('th[data-column="notional"]')).toHaveAttribute('aria-sort', 'descending');
+    const first = grid.locator('tbody tr').first().locator('td[data-column="notional"] [data-slot="value"]');
+    await expect(first).toHaveAttribute('data-emphasis', 'accent');
+    await expect(first).toHaveText(/^\$[3-5]\d{3}\.\dM$/);
+    await grid.locator('th[data-column="notional"] [data-slot="column-header"]').click();
+    await expect(grid.locator('th[data-column="notional"]')).toHaveAttribute('aria-sort', 'ascending');
+    await expect(first).not.toHaveAttribute('data-emphasis', /.+/);
+    const hash = await page.evaluate(() => location.hash);
+    const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(decoded.columnFormats).toEqual({ notional: { rules: [{ op: '>', value: 3e9, emphasis: 'accent' }] } });
+
+    // Remove the rule: the format entry goes with it.
+    await grid.locator('th[data-column="notional"]').hover();
+    await page.getByRole('button', { name: 'Notional column menu' }).click();
+    await page.locator('[data-slot="format-menu"]').hover();
+    await page.locator('[data-slot="format-choices"][data-column="notional"]').getByRole('menuitem', { name: /Highlight rules · 1/ }).click();
+    await editor.getByRole('button', { name: 'Remove rule 1' }).click();
+    const cleared = JSON.parse(Buffer.from(new URL(`http://x/${(await page.evaluate(() => location.hash)).slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(cleared.columnFormats ?? {}).toEqual({});
   });
 
   test('serves the same book from DuckDB-WASM: filter, sort and grouping compiled to SQL, children fetched on expand', async ({ page }) => {

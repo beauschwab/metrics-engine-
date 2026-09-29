@@ -30,7 +30,7 @@ describe('range copy', () => {
     const rawTsv = rangesToTsv(ranges, { formatted: false });
     expect(rawTsv.split('\n')[0]!.split('\t')[9]).toBe(String(BOOK[0]!.notional));
     const withHeaders = rangesToTsv(ranges, { headers: true });
-    expect(withHeaders.split('\n')[0]).toBe('Desk\tEntity\tCcy\tProduct\tTenor\tCounterparty\tBook\tTrade\tAs of\tNotional');
+    expect(withHeaders.split('\n')[0]).toBe('Desk\tEntity\tBook\tCcy\tProduct\tTenor\tCounterparty\tTrade\tAs of\tNotional');
     expect(withHeaders.split('\n').length).toBe(4);
   });
 

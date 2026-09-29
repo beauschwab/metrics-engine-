@@ -63,6 +63,10 @@ describe('the view state contract', () => {
       [{ notional: { dp: 7 } }, /decimals/],
       [{ notional: { scale: 'trillions' } }, /invalid/i],
       [{ pnl: { dp: 1 } }, /unknown column: pnl/],
+      [{ notional: { rules: [{ op: '>', value: 1, emphasis: 'red' }] } }, /invalid/i],
+      [{ notional: { rules: [{ op: '~', value: 1, emphasis: 'accent' }] } }, /invalid/i],
+      [{ notional: { rules: Array(5).fill({ op: '>', value: 1, emphasis: 'accent' }) } }, /at most 4 rules/],
+      [{ desk: { rules: [{ op: '>', value: 1, emphasis: 'accent' }] } }, /dimension/],
     ] as const) {
       const r = safeParseView({ version: 3, columnFormats: bad });
       expect(r.ok).toBe(false);

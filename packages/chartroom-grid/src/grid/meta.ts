@@ -33,6 +33,42 @@ export const NEGATIVE_LABELS: Record<Negatives, string> = { minus: '-1,234', par
 export const DECIMALS: readonly number[] = [0, 1, 2, 3, 4];
 
 /**
+ * A highlight rule (ADR-78): a comparison on the cell's number and the
+ * emphasis it earns. Emphasis, never a semantic colour — red, amber and
+ * green belong to governed thresholds (COL-03), and a reader's "show me
+ * the big ones" is not one.
+ */
+export type RuleOp = '>' | '>=' | '<' | '<=' | '=' | '!=';
+export const RULE_OPS: readonly RuleOp[] = ['>', '>=', '<', '<=', '=', '!='];
+export type Emphasis = 'accent' | 'strong' | 'muted';
+export const EMPHASES: readonly Emphasis[] = ['accent', 'strong', 'muted'];
+export const EMPHASIS_LABELS: Record<Emphasis, string> = { accent: 'Highlight', strong: 'Bold', muted: 'Fade' };
+export interface HighlightRule {
+  op: RuleOp;
+  value: number;
+  emphasis: Emphasis;
+}
+/** At most this many rules per column: a fifth rule is a threshold, and belongs in the registry. */
+export const MAX_RULES = 4;
+
+/** The first rule a number satisfies, in the order the reader wrote them. */
+export function matchRule(rules: readonly HighlightRule[] | undefined, value: unknown): HighlightRule | undefined {
+  if (!rules || typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  for (const r of rules) {
+    switch (r.op) {
+      case '>': if (value > r.value) return r; break;
+      case '>=': if (value >= r.value) return r; break;
+      case '<': if (value < r.value) return r; break;
+      case '<=': if (value <= r.value) return r; break;
+      case '=': if (value === r.value) return r; break;
+      case '!=': if (value !== r.value) return r; break;
+      default: break;
+    }
+  }
+  return undefined;
+}
+
+/**
  * A reader's formatting of one measure (ADR-74): the readings a unit
  * allows, never the unit itself. A percent stays a percent, dollars stay
  * dollars; what changes is decimals, the scale dollars are read at, how a
@@ -44,8 +80,10 @@ export interface ColumnFormat {
   negatives?: Negatives;
   negativeRed?: boolean;
   heatmap?: boolean;
+  /** Highlight rules, first match wins (ADR-78). */
+  rules?: HighlightRule[];
 }
-export const FORMAT_KEYS: readonly (keyof ColumnFormat)[] = ['dp', 'scale', 'negatives', 'negativeRed', 'heatmap'];
+export const FORMAT_KEYS: readonly (keyof ColumnFormat)[] = ['dp', 'scale', 'negatives', 'negativeRed', 'heatmap', 'rules'];
 export type Agg = 'sum' | 'wavg' | 'mean' | 'median' | 'min' | 'max' | 'count' | 'uniqueCount';
 export const AGGS: readonly Agg[] = ['sum', 'wavg', 'mean', 'median', 'min', 'max', 'count', 'uniqueCount'];
 export const AGG_LABELS: Record<Agg, string> = {
@@ -55,6 +93,8 @@ export const AGG_LABELS: Record<Agg, string> = {
 export interface ColumnMeta {
   /** The header label — what a reader calls the column. */
   label: string;
+  /** The family the column belongs to, drawn as a band above contiguous headers (ADR-75). */
+  band?: string;
   /** A dimension is grouped and filtered by; a measure is aggregated. */
   kind: 'dimension' | 'measure';
   /**
@@ -72,6 +112,10 @@ export interface ColumnMeta {
   scale?: Scale;
   /** How a negative is written; a leading minus by default. */
   negatives?: Negatives;
+  /** A reader's highlight rules for the view (ADR-78). */
+  rules?: HighlightRule[];
+  /** A calculated column (ADR-79): a draft the view defines, not a registry measure. */
+  computed?: boolean;
   /** Dimensions only: may this column be a grouping level? */
   groupable?: boolean;
   /** Measures only: how the column rolls up under grouping. */

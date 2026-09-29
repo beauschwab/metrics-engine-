@@ -8,16 +8,25 @@
  */
 
 import type { ColumnMeta } from '../grid/meta';
-import { alignOf, formatValue } from '../grid/meta';
+import { alignOf, formatValue, matchRule } from '../grid/meta';
 import { cn } from '../lib/utils';
 
 export function ValueCell({ value, meta }: { value: unknown; meta: ColumnMeta }) {
   const negative = meta.negativeRed && typeof value === 'number' && value < 0;
+  // A highlight rule earns emphasis, never a semantic colour (ADR-78).
+  const rule = matchRule(meta.rules, value);
   return (
     <span
       data-slot="value"
       data-negative={negative || undefined}
-      className={cn(alignOf(meta) === 'right' && 'tabular-nums', negative && 'text-breach-text')}
+      data-emphasis={rule?.emphasis}
+      className={cn(
+        alignOf(meta) === 'right' && 'tabular-nums',
+        negative && 'text-breach-text',
+        rule?.emphasis === 'accent' && '-mx-1 rounded-sm bg-selected px-1',
+        rule?.emphasis === 'strong' && 'font-semibold',
+        rule?.emphasis === 'muted' && 'text-faint',
+      )}
     >
       {formatValue(value, meta)}
     </span>

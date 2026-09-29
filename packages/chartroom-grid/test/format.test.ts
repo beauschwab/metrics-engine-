@@ -10,7 +10,7 @@ import { headlessTable } from '../src/agent/headless';
 import { generatePositions } from '../src/data/mock';
 import { COLUMN_META, allowedFormatKeys, buildColumns, effectiveMeta } from '../src/grid/columns';
 import { cellText } from '../src/grid/copy';
-import { formatValue } from '../src/grid/meta';
+import { formatValue, matchRule } from '../src/grid/meta';
 import { parseView } from '../src/grid/viewState';
 
 describe('formatValue with a reader\'s format', () => {
@@ -34,9 +34,25 @@ describe('formatValue with a reader\'s format', () => {
   it('a percent stays a percent: decimals change, the unit does not', () => {
     expect(formatValue(3.456, { ...COLUMN_META.yield, dp: 0 })).toBe('3%');
     expect(formatValue(3.456, { ...COLUMN_META.yield, dp: 4 })).toBe('3.4560%');
-    expect(allowedFormatKeys('yield')).toEqual(['dp', 'negatives', 'negativeRed', 'heatmap']);
-    expect(allowedFormatKeys('notional')).toEqual(['dp', 'scale', 'negatives', 'negativeRed', 'heatmap']);
+    expect(allowedFormatKeys('yield')).toEqual(['dp', 'negatives', 'negativeRed', 'heatmap', 'rules']);
+    expect(allowedFormatKeys('notional')).toEqual(['dp', 'scale', 'negatives', 'negativeRed', 'heatmap', 'rules']);
     expect(allowedFormatKeys('desk')).toEqual([]);
+  });
+});
+
+describe('highlight rules (ADR-78)', () => {
+  it('the first matching rule wins, a non-number matches nothing, and the column carries the rules', () => {
+    const rules = [{ op: '>' as const, value: 1e9, emphasis: 'accent' as const }, { op: '<' as const, value: 0, emphasis: 'muted' as const }];
+    expect(matchRule(rules, 2e9)?.emphasis).toBe('accent');
+    expect(matchRule(rules, -5)?.emphasis).toBe('muted');
+    expect(matchRule(rules, 5)).toBeUndefined();
+    expect(matchRule(rules, 'x')).toBeUndefined();
+    expect(matchRule(rules, Number.NaN)).toBeUndefined();
+    expect(matchRule(undefined, 5)).toBeUndefined();
+    expect(matchRule([{ op: '>=', value: 3, emphasis: 'strong' }, { op: '=', value: 3, emphasis: 'muted' }], 3)?.emphasis).toBe('strong');
+    expect(matchRule([{ op: '!=', value: 3, emphasis: 'strong' }, { op: '<=', value: 3, emphasis: 'muted' }], 3)?.emphasis).toBe('muted');
+    expect(effectiveMeta('notional', { notional: { rules } }).rules).toEqual(rules);
+    expect(effectiveMeta('desk', { desk: { rules } as never }).rules).toBeUndefined();
   });
 });
 

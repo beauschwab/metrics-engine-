@@ -13,6 +13,7 @@ import { heatBackground, heatIntensity } from '../src/grid/heat';
 import { parseView, type ViewState } from '../src/grid/viewState';
 import { excelFormat } from '../src/export/formats';
 import { buildWorkbook, workbookBytes } from '../src/export/xlsx';
+import { headlessTable } from '../src/agent/headless';
 import { DESKS, generatePositions, type Position } from '../src/data/mock';
 
 const headless = tableFeatures({ ...features, coreReactivityFeature: storeReactivityBindings() });
@@ -30,6 +31,24 @@ const build = (view: ViewState) =>
       columnOrder: view.columnOrder, columnPinning: view.columnPinning, columnSizing: view.columnSizing,
     },
   });
+
+describe('highlight rules travel as conditional formats (ADR-78)', () => {
+  it('writes one cellIs rule per highlight rule over the data rows, emphasis only', () => {
+    const view = parseView({ version: 3, columnFormats: { notional: { rules: [{ op: '>', value: 1e9, emphasis: 'accent' }, { op: '<=', value: 1e6, emphasis: 'muted' }] } } });
+    const RULE_BOOK = generatePositions(120);
+    const wb = buildWorkbook(headlessTable(RULE_BOOK, view));
+    const ws = wb.getWorksheet('Positions')!;
+    const cfs = (ws as unknown as { conditionalFormattings: Array<{ ref: string; rules: Array<{ type: string; priority: number; style?: unknown }> }> }).conditionalFormattings;
+    expect(cfs.length).toBe(1);
+    const letter = ws.getColumn('notional').letter;
+    expect(cfs[0]!.ref).toBe(`${letter}2:${letter}${RULE_BOOK.length + 1}`);
+    expect(cfs[0]!.rules.map((r) => [r.type, (r as { operator?: string }).operator, r.priority])).toEqual([
+      ['cellIs', 'greaterThan', 1], ['cellIs', 'lessThanOrEqual', 2],
+    ]);
+    const styles = cfs[0]!.rules.map((r) => JSON.stringify(r.style));
+    expect(styles.join(' ')).not.toMatch(/FF0000|00FF00|red|green/i);
+  });
+});
 
 describe('Excel formats from meta', () => {
   it('keeps percent units literal and scales millions in the format, not the cell', () => {

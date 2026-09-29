@@ -5,7 +5,8 @@
  * column def set from meta or, for the selection column, switched off.
  */
 
-import { ArrowDown, ArrowUp, ArrowDownUp, EllipsisVertical, EyeOff, Hash, PanelLeft, PanelRight, PinOff, Rows3, Sigma } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowDown, ArrowUp, ArrowDownUp, EllipsisVertical, EyeOff, Hash, Highlighter, PanelLeft, PanelRight, PinOff, Rows3, Sigma } from 'lucide-react';
 import type { Column } from '@tanstack/react-table';
 import type { Position } from '../data/mock';
 import { COLUMN_META, allowedAggs, allowedFormatKeys } from '../grid/columns';
@@ -14,7 +15,9 @@ import {
   AGG_LABELS, DECIMALS, NEGATIVES, NEGATIVE_LABELS, SCALES, SCALE_LABELS, type Agg, type ColumnFormat, type Negatives, type Scale,
 } from '../grid/meta';
 import { cn } from '../lib/utils';
+import { HighlightRulesEditor } from './HighlightRulesEditor';
 import { Button } from './ui/button';
+import { Popover, PopoverAnchor, PopoverContent } from './ui/popover';
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
   DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
@@ -44,13 +47,18 @@ export function HeaderMenu({
   const scale = meta?.scale ?? (meta?.unit === 'mm' ? 'm' : 'units');
   const dp = meta?.dp ?? (meta?.unit === 'pct' || meta?.unit === 'years' ? 2 : meta?.unit === 'bps' || scale !== 'units' ? 1 : 0);
   const formatted = !!declared && (['dp', 'scale', 'negatives', 'negativeRed', 'heatmap'] as const).some((k) => meta?.[k] !== declared[k]);
+  const ruleCount = meta?.rules?.length ?? 0;
+  const [rulesOpen, setRulesOpen] = useState(false);
   return (
+    <Popover open={rulesOpen} onOpenChange={setRulesOpen}>
     <DropdownMenu>
+      <PopoverAnchor asChild>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-xs" aria-label={`${label} column menu`} className={cn('text-faint', className)}>
+        <Button variant="ghost" size="icon-xs" aria-label={`${label} column menu`} className={cn('text-faint', className)} data-state={rulesOpen ? 'open' : undefined}>
           <EllipsisVertical />
         </Button>
       </DropdownMenuTrigger>
+      </PopoverAnchor>
       <DropdownMenuContent align="end" className="w-48 text-xs" data-slot="header-menu" data-column={column.id}>
         <DropdownMenuLabel className="text-[10px] tracking-[0.06em] uppercase text-faint">{label}</DropdownMenuLabel>
         {column.getCanSort() && (
@@ -154,6 +162,12 @@ export function HeaderMenu({
                 <DropdownMenuCheckboxItem checked={!!meta.heatmap} onCheckedChange={(c) => onFormatChange(column.id, { heatmap: !!c })}>
                   Heatmap
                 </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                {/* Opened after the menu has closed: a popover raised while
+                    the menu's dismiss is still settling is dismissed with it. */}
+                <DropdownMenuItem onSelect={() => { setTimeout(() => setRulesOpen(true), 0); }} data-slot="highlight-rules">
+                  <Highlighter className="mr-2 size-4" /> Highlight rules{ruleCount ? ` · ${ruleCount}` : '…'}
+                </DropdownMenuItem>
                 {formatted && (
                   <>
                     <DropdownMenuSeparator />
@@ -180,5 +194,17 @@ export function HeaderMenu({
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+    {meta && onFormatChange && (
+      <PopoverContent align="end" className="w-72 p-2 text-xs" data-slot="highlight-rules-editor" data-column={column.id} onOpenAutoFocus={(e) => e.preventDefault()}>
+        <HighlightRulesEditor
+          label={label}
+          meta={meta}
+          rules={meta.rules ?? []}
+          onChange={(rules) => onFormatChange(column.id, { rules: rules.length ? rules : undefined })}
+          onClose={() => setRulesOpen(false)}
+        />
+      </PopoverContent>
+    )}
+    </Popover>
   );
 }

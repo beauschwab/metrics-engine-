@@ -38,7 +38,7 @@ import {
   filterFn_greaterThan, filterFn_inNumberRange, filterFn_includesString,
   filterFn_lessThan, filterFn_weakEquals,
   globalFilteringFeature, metaHelper, rowAggregationFeature, rowExpandingFeature,
-  rowSelectionFeature, rowSortingFeature, sortFn_alphanumeric, sortFn_basic, sortFn_datetime,
+  rowPinningFeature, rowSelectionFeature, rowSortingFeature, sortFn_alphanumeric, sortFn_basic, sortFn_datetime,
   tableFeatures,
 } from '@tanstack/table-core';
 import { wavg } from './aggregations';
@@ -108,6 +108,8 @@ export const features = tableFeatures({
   // likewise: a block to copy, never a view (ADR-71).
   rowSelectionFeature,
   cellSelectionFeature,
+  // A row held at the top while the rest scrolls — a reader's hand too (ADR-77).
+  rowPinningFeature,
 
   columnVisibilityFeature,
   columnOrderingFeature,

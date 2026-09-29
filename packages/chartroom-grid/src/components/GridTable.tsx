@@ -31,6 +31,7 @@ import { rangesToTsv, selectedCellRanges } from '../grid/copy';
 import { copyText } from './clipboard';
 import { heatBackground, heatIntensity } from '../grid/heat';
 import { alignOf, type Agg, type ColumnFormat } from '../grid/meta';
+import { hasBands, headerBands } from '../grid/bands';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { cn } from '../lib/utils';
 import { ValueCell } from './CellRenderers';
@@ -73,6 +74,44 @@ export interface GridTableProps {
 type GridColumn = Column<Features, Position, unknown>;
 type DisplayItem = { kind: 'row'; row: GridRow } | { kind: 'detail'; row: GridRow };
 
+/**
+ * The band row (ADR-75): one cell per contiguous run of visible columns
+ * that share a `meta.band`, sized to their summed widths and pinned the way
+ * they are, so the row reads as a family line above the headers and never
+ * disagrees with them on where a column sits.
+ */
+function BandRow({ columns }: { columns: GridColumn[] }) {
+  const described = columns.map((c) => ({ id: c.id, band: c.columnDef.meta?.band, size: c.getSize(), pinned: c.getIsPinned() }));
+  if (!hasBands(described)) return null;
+  const byId = new Map(columns.map((c) => [c.id, c]));
+  return (
+    <TableRow className="flex w-full border-0 bg-card hover:bg-card" data-slot="header-bands">
+      {headerBands(described).map((band) => {
+        const first = byId.get(band.columns[0]!)!;
+        const last = byId.get(band.columns[band.columns.length - 1]!)!;
+        const anchor = band.pinned === 'end' ? last : first;
+        return (
+          <TableHead
+            key={band.columns.join('|')}
+            scope="colgroup"
+            data-slot="header-band"
+            data-band={band.band ?? undefined}
+            data-columns={band.columns.join(' ')}
+            aria-colspan={band.columns.length}
+            style={{ width: band.size, ...pinnedStyle(anchor) }}
+            className={cn(
+              'flex h-5 items-center overflow-hidden border-b border-border-subtle bg-card px-2.5 text-[9px] font-semibold tracking-[0.08em] text-faint/80 uppercase whitespace-nowrap',
+              band.band && band.columns.length > 0 && 'border-l border-l-border-subtle first:border-l-0',
+            )}
+          >
+            {band.band}
+          </TableHead>
+        );
+      })}
+    </TableRow>
+  );
+}
+
 /** The renderer owns sticky positioning; the feature only computes offsets. */
 function pinnedStyle(column: GridColumn): CSSProperties {
   const pinned = column.getIsPinned();
@@ -89,7 +128,10 @@ export function GridTable({
   table, pending = false, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup, onAggChange, onFormatChange,
 }: GridTableProps) {
   const rowHeight = ROW_HEIGHTS[density];
-  const model = table.getRowModel().rows;
+  // The rows the body scrolls are the centre rows: a pinned row leaves the
+  // body for the sticky block under the header (ADR-77).
+  const model = table.getCenterRows();
+  const pinnedRows = table.getTopRows();
   const items = useMemo<DisplayItem[]>(() => {
     const out: DisplayItem[] = [];
     for (const row of model) {
@@ -129,6 +171,7 @@ export function GridTable({
   // The first data column carries the tree indent and the footer's label,
   // whatever order pinning and grouping put the columns in.
   const firstDataId = visible.find((c) => c.id !== SELECT_ID)?.id;
+  const rowProps = { table, firstDataId, heat, detailOpen, onToggleDetail, onExpandGroup } as const;
 
   return (
     <Table
@@ -166,12 +209,24 @@ export function GridTable({
       }}
     >
       <TableHeader className="sticky top-0 z-10 grid bg-card">
+        <BandRow columns={visible} />
         {table.getHeaderGroups().map((group) => (
           <TableRow key={group.id} className="flex w-full bg-card hover:bg-card">
             {group.headers.map((header) => (
               <HeaderCell key={header.id} header={header} table={table} sortCount={sortCount} onAggChange={onAggChange} onFormatChange={onFormatChange} />
             ))}
           </TableRow>
+        ))}
+        {pinnedRows.map((row, i) => (
+          <BodyRow
+            key={`pinned:${row.id}`}
+            row={row}
+            index={i}
+            pinned
+            className={cn('relative font-normal', i === pinnedRows.length - 1 && 'border-b-2 border-b-border shadow-[0_2px_4px_-2px_rgb(0_0_0/0.15)]')}
+            style={{ height: rowHeight }}
+            {...rowProps}
+          />
         ))}
       </TableHeader>
       <TableBody className={cn('relative grid transition-opacity', pending && 'opacity-50')} style={{ height: Math.max(virtualizer.getTotalSize(), items.length ? 0 : ROW_HEIGHTS[density]) }}>
@@ -200,36 +255,15 @@ export function GridTable({
               </TableRow>
             );
           }
-          const grouped = row.getIsGrouped() || isGroupNode(row.original);
-          const selected = row.getIsSelected();
           return (
-            <TableRow
+            <BodyRow
               key={row.id}
-              data-row={row.id}
-              data-index={item.index}
-              data-depth={row.depth}
-              data-grouped={grouped || undefined}
-              data-state={selected ? 'selected' : undefined}
-              className={cn(
-                'absolute flex w-full border-0 transition-none',
-                grouped ? 'bg-muted font-medium hover:bg-muted' : 'bg-card hover:bg-muted',
-                selected && 'bg-selected hover:bg-selected',
-              )}
+              row={row}
+              index={item.index}
+              className="absolute"
               style={{ height: rowHeight, transform: `translateY(${item.start}px)` }}
-            >
-              {row.getVisibleCells().map((cell) => (
-                <BodyCell
-                  key={cell.id}
-                  cell={cell}
-                  table={table}
-                  first={cell.column.id === firstDataId}
-                  heat={heat}
-                  detailOpen={detailOpen.has(row.id)}
-                  onToggleDetail={onToggleDetail}
-                  onExpandGroup={onExpandGroup}
-                />
-              ))}
-            </TableRow>
+              {...rowProps}
+            />
           );
         })}
       </TableBody>
@@ -260,6 +294,57 @@ export function GridTable({
         </TableRow>
       </TableFooter>
     </Table>
+  );
+}
+
+/** One body row: in the virtualized body, or held at the top (ADR-77). */
+function BodyRow({
+  row, index, pinned = false, className, style, table, firstDataId, heat, detailOpen, onToggleDetail, onExpandGroup,
+}: {
+  row: GridRow;
+  index: number;
+  pinned?: boolean;
+  className?: string;
+  style?: CSSProperties;
+  table: TreasuryTable;
+  firstDataId: string | undefined;
+  heat: Map<string, [number, number] | undefined>;
+  detailOpen: ReadonlySet<string>;
+  onToggleDetail: (rowId: string) => void;
+  onExpandGroup: (row: GridRow) => void;
+}) {
+  const grouped = row.getIsGrouped() || isGroupNode(row.original);
+  const selected = row.getIsSelected();
+  return (
+    <TableRow
+      data-row={row.id}
+      data-index={index}
+      data-depth={row.depth}
+      data-grouped={grouped || undefined}
+      data-pinned={pinned ? 'top' : undefined}
+      data-slot={pinned ? 'pinned-row' : undefined}
+      data-state={selected ? 'selected' : undefined}
+      className={cn(
+        'flex w-full border-0 transition-none',
+        grouped ? 'bg-muted font-medium hover:bg-muted' : 'bg-card hover:bg-muted',
+        selected && 'bg-selected hover:bg-selected',
+        className,
+      )}
+      style={style}
+    >
+      {row.getVisibleCells().map((cell) => (
+        <BodyCell
+          key={cell.id}
+          cell={cell}
+          table={table}
+          first={cell.column.id === firstDataId}
+          heat={heat}
+          detailOpen={detailOpen.has(row.id)}
+          onToggleDetail={onToggleDetail}
+          onExpandGroup={onExpandGroup}
+        />
+      ))}
+    </TableRow>
   );
 }
 

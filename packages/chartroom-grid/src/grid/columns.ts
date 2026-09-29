@@ -16,26 +16,26 @@ const helper = createColumnHelper<Features, Position>();
 
 /** The meta by column id — the registry `describe_view()` reports in Phase 4. */
 export const COLUMN_META: Record<keyof Position, ColumnMeta> = {
-  tradeId: { label: 'Trade', kind: 'dimension', width: 84 },
-  asOf: { label: 'As of', kind: 'dimension', unit: 'date', width: 96 },
-  desk: { label: 'Desk', kind: 'dimension', groupable: true, width: 92 },
-  legalEntity: { label: 'Entity', kind: 'dimension', groupable: true, width: 84 },
-  currency: { label: 'Ccy', kind: 'dimension', groupable: true, width: 60 },
-  product: { label: 'Product', kind: 'dimension', groupable: true, width: 80 },
-  tenorBucket: { label: 'Tenor', kind: 'dimension', groupable: true, width: 64 },
-  counterparty: { label: 'Counterparty', kind: 'dimension', groupable: true, width: 104 },
-  book: { label: 'Book', kind: 'dimension', groupable: true, width: 68 },
-  notional: { label: 'Notional', kind: 'measure', unit: 'mm', agg: 'sum', heatmap: true, width: 104 },
-  mtm: { label: 'MTM', kind: 'measure', unit: 'mm', dp: 2, agg: 'sum', negativeRed: true, width: 96 },
-  dv01: { label: 'DV01', kind: 'measure', unit: 'ccy', agg: 'sum', negativeRed: true, width: 104 },
-  cs01: { label: 'CS01', kind: 'measure', unit: 'ccy', agg: 'sum', negativeRed: true, width: 104 },
-  yield: { label: 'Yield', kind: 'measure', unit: 'pct', dp: 2, agg: 'wavg', weightBy: 'notional', width: 76 },
-  wal: { label: 'WAL', kind: 'measure', unit: 'years', agg: 'wavg', weightBy: 'notional', width: 72 },
+  tradeId: { label: 'Trade', kind: 'dimension', band: 'Trade', width: 84 },
+  asOf: { label: 'As of', kind: 'dimension', unit: 'date', band: 'Trade', width: 96 },
+  desk: { label: 'Desk', kind: 'dimension', groupable: true, band: 'Book', width: 92 },
+  legalEntity: { label: 'Entity', kind: 'dimension', groupable: true, band: 'Book', width: 84 },
+  currency: { label: 'Ccy', kind: 'dimension', groupable: true, band: 'Instrument', width: 60 },
+  product: { label: 'Product', kind: 'dimension', groupable: true, band: 'Instrument', width: 80 },
+  tenorBucket: { label: 'Tenor', kind: 'dimension', groupable: true, band: 'Instrument', width: 64 },
+  counterparty: { label: 'Counterparty', kind: 'dimension', groupable: true, band: 'Instrument', width: 104 },
+  book: { label: 'Book', kind: 'dimension', groupable: true, band: 'Book', width: 68 },
+  notional: { label: 'Notional', kind: 'measure', unit: 'mm', agg: 'sum', heatmap: true, band: 'Exposure', width: 104 },
+  mtm: { label: 'MTM', kind: 'measure', unit: 'mm', dp: 2, agg: 'sum', negativeRed: true, band: 'Exposure', width: 96 },
+  dv01: { label: 'DV01', kind: 'measure', unit: 'ccy', agg: 'sum', negativeRed: true, band: 'Risk', width: 104 },
+  cs01: { label: 'CS01', kind: 'measure', unit: 'ccy', agg: 'sum', negativeRed: true, band: 'Risk', width: 104 },
+  yield: { label: 'Yield', kind: 'measure', unit: 'pct', dp: 2, agg: 'wavg', weightBy: 'notional', band: 'Return', width: 76 },
+  wal: { label: 'WAL', kind: 'measure', unit: 'years', agg: 'wavg', weightBy: 'notional', band: 'Return', width: 72 },
 };
 
 /** Display order: the dimensions a reader scans by, then the measures. */
 export const COLUMN_ORDER: Array<keyof Position> = [
-  'desk', 'legalEntity', 'currency', 'product', 'tenorBucket', 'counterparty', 'book',
+  'desk', 'legalEntity', 'book', 'currency', 'product', 'tenorBucket', 'counterparty',
   'tradeId', 'asOf', 'notional', 'mtm', 'dv01', 'cs01', 'yield', 'wal',
 ];
 

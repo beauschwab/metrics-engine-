@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ChevronsDownUp, ChevronsUpDown, Download, PanelRight, Rows2, Rows4, Search } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, Download, PanelRight, Redo2, Rows2, Rows4, Search, Undo2 } from 'lucide-react';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import type { ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
@@ -18,7 +18,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 
 export function GridToolbar({
-  table, view, viewStore, onLoadView, sidebarOpen, onToggleSidebar, density, onToggleDensity, onExport, exporting,
+  table, view, viewStore, onLoadView, sidebarOpen, onToggleSidebar, density, onToggleDensity, onExport, exporting, history,
 }: {
   table: TreasuryTable;
   view: ViewState;
@@ -30,6 +30,8 @@ export function GridToolbar({
   onToggleDensity: () => void;
   onExport: () => void;
   exporting: boolean;
+  /** Undo and redo over the view (ADR-76): whether each is possible, and the actions. */
+  history?: { canUndo: boolean; canRedo: boolean; undo(): void; redo(): void };
 }) {
   const [quick, setQuick] = useState(view.globalFilter);
   useEffect(() => {
@@ -61,6 +63,12 @@ export function GridToolbar({
         <>
           <Button variant="ghost" size="icon-xs" aria-label="Expand all groups" onClick={() => table.toggleAllRowsExpanded(true)}><ChevronsUpDown /></Button>
           <Button variant="ghost" size="icon-xs" aria-label="Collapse all groups" onClick={() => table.toggleAllRowsExpanded(false)}><ChevronsDownUp /></Button>
+        </>
+      )}
+      {history && (
+        <>
+          <Button variant="ghost" size="icon-xs" aria-label="Undo view change" data-slot="undo" disabled={!history.canUndo} onClick={() => history.undo()}><Undo2 /></Button>
+          <Button variant="ghost" size="icon-xs" aria-label="Redo view change" data-slot="redo" disabled={!history.canRedo} onClick={() => history.redo()}><Redo2 /></Button>
         </>
       )}
       <Button

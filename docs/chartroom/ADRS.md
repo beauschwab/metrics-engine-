@@ -2097,6 +2097,211 @@ parenthesised Excel formats. The studio's `grid.spec.ts` reads Notional in
 billions to two decimals from the header menu, sees the footer and the
 link follow, puts a negative MTM in parentheses and restores it.
 
+## ADR-75 — a header band is a reading of the columns, not a node in the tree
+
+**Pinned:** the owner's request after Phase 6 for AG Grid's column header
+groups.
+
+**Decision.** Every column's meta names the family it belongs to (`band`:
+Book, Instrument, Trade, Exposure, Risk, Return), and the table draws a
+row above the headers with one cell per contiguous run of visible columns
+that share a family, sized to their summed widths and pinned the way they
+are. Nothing else changes: the leaf columns keep their ids, their order,
+their pinning and their drag handles, the view carries no band state, and
+an agent's `describe_view` says nothing new.
+
+*Why not v9's column groups.* A group column would make the band a parent
+in the column tree, which is what `columnOrder`, `columnPinning` and the
+drag-and-drop all operate on. A reader who drags DV01 next to Desk, or
+pins it, would then be moving a column out of its parent, and every one
+of those features would need a rule for what that means. Read as a run
+of leaves instead, the band simply follows: hide a column and the band
+narrows, drag one away and the band splits, pin one and the pinned half
+sticks while the rest scrolls, because a sticky cell cannot span into the
+scrolling middle and the run ends at the pinning boundary.
+
+*The display order follows the families.* `book` moved from after
+`counterparty` to after `legalEntity`, so the Book family is contiguous
+by default; the SQL projection, the copied header row and the range test
+moved with it.
+
+**What now fails if this regresses.** `bands.test.ts` runs contiguous
+columns together, splits at a pinning boundary, never merges bandless
+columns, and asserts every declared column names a family. The studio's
+`grid.spec.ts` reads the six bands in order, measures the Risk band
+against DV01 and CS01, hides CS01 and sees the band narrow, pins Desk and
+sees Book split with the pinned half sticky.
+
+## ADR-76 — undo is a stack of views, not a set of inverse operations
+
+**Pinned:** the owner's request after Phase 6 for Excel's Ctrl+Z over the
+grid.
+
+**Decision.** The grid shell keeps a history of the views it has rendered:
+every view that arrives — from a header click, a drop on the group zone, a
+filter chip, a format choice, a saved view loaded, a link followed, an
+agent's `set_view` — is one step, and undo hands the previous view back
+through the same `onViewChange` every other write uses. Nothing in the
+grid knows how to invert a sort or a filter, because it does not need to:
+the view is one JSON object (ADR-66) and a step is a whole one. The stack
+is transient, like row selection (ADR-68); it is not in the view, a saved
+view or a link.
+
+*Two readings keep the stack honest.* A change that leaves the view equal
+is not a step, so a click that writes the same JSON costs nothing to
+undo. A column resize writes one view per pointer move, so a sizing-only
+change within six hundred milliseconds of the last one replaces the
+present rather than pushing it: Ctrl+Z undoes the drag, not one pixel.
+The depth is bounded at a hundred steps.
+
+*The keyboard is Excel's.* Ctrl+Z (Cmd on a Mac) undoes and Ctrl+Shift+Z
+or Ctrl+Y redoes anywhere in the shell except a text field, where the
+browser's own undo of typing must keep working. The toolbar carries the
+two arrows with their enabled state, so the affordance is visible.
+
+**What now fails if this regresses.** `history.test.ts` pushes, undoes
+and redoes through the same views, drops the redo branch on a new push,
+ignores an equal view, coalesces a resize run and splits it at a pause or
+another change, and bounds the depth. The studio's `grid.spec.ts` groups,
+sorts, undoes both with Ctrl+Z, redoes from the toolbar, sees a new
+search drop the redo branch, and undoes the search.
+
+## ADR-77 — a pinned row is one of the rows on screen, held still
+
+**Pinned:** the owner's request after Phase 6 for AG Grid's row pinning.
+
+**Decision.** v9's `rowPinningFeature` joins the registry. A leaf row's
+context menu pins it to the top or unpins it; the pinned rows render in
+the sticky header block, under the column headers, in the order they were
+pinned, and leave the virtualized body, which scrolls the centre rows
+only. Like row selection and cell ranges (ADR-68, ADR-71) the pins are a
+reader's hand on the book, transient, never in the view, a saved view or
+a link.
+
+*A pinned row is one of the rows on screen.* `keepPinnedRows` is off:
+filter the row out, or collapse the group it sits in, and it leaves the
+top as it leaves the body, and comes back when the view shows it again.
+The alternative, holding a row the view says is not there, would put a
+number on screen the filter bar cannot explain. A group row cannot be
+pinned; its subtotal is the group's, and a subtotal held away from its
+children would be a figure with no reading.
+
+*The row is the same row.* The pinned block renders through the same
+`BodyRow` the body does, so a pinned row's cells format, heat, select and
+open their detail exactly as they did a moment earlier in the body, and
+its context menu offers to unpin it.
+
+**What now fails if this regresses.** `rowPinning.test.ts` moves rows from
+the centre to the top and back in pin order, refuses a group row, and
+sees a leaf under a collapsed group stay off the top. The studio's
+`grid.spec.ts` pins the first row from the context menu, scrolls the body
+far and finds the row still in view, filters it out and back, and unpins
+it from its own menu.
+
+## ADR-78 — a highlight rule earns emphasis, never a verdict
+
+**Pinned:** the owner's request after Phase 6 for AG Grid's conditional
+formatting; COL-03, which reserves semantic colour for a governed
+threshold.
+
+**Decision.** A measure's format (ADR-74) may carry up to four highlight
+rules: a comparison, a number, and the emphasis a matching cell earns —
+*highlight* (the selection tint), *bold*, or *fade*. The first matching
+rule wins. Rules live in `columnFormats`, so the link, a saved view and
+an agent's `set_view` carry them, the parser refuses them on a dimension,
+and the column's meta delivers them to every reader: the cell, the
+subtotal, the grand total, and the xlsx as conditional formats with the
+same emphasis.
+
+*Why emphasis only.* Red, amber and green on this platform say breach,
+warning and within limit, and each of those is a governed threshold with
+a citation and a review (COL-03, ADR-48). A reader's "show me the ones
+over three billion" is a question about size, not a judgement about
+safety; dressing it in the breach colour would let a scratch rule
+impersonate a limit. So the editor offers no colour, and the export
+writes bold, a grey font or a tinted fill, never a red or a green.
+
+*Why four.* A fifth rule is a banding scheme, and a banding scheme with a
+meaning is a threshold table; that belongs in the registry where it can
+be cited and reviewed, and the editor says so when the fourth is in.
+
+*Numbers read as the search does.* The threshold field takes `3bn`,
+`-2.5m`, `250k` through the same grammar the quick filter uses (ADR-73),
+so a reader learns one way to write a number.
+
+**What now fails if this regresses.** `format.test.ts` matches first-wins
+over the six comparisons and ignores non-numbers; `viewState.test.ts`
+refuses a fifth rule, a colour that is not an emphasis, an unknown
+comparison and a rule on a dimension; `export.test.ts` reads one cellIs
+rule per highlight rule over the data rows and finds no red or green in
+their styles. The studio's `grid.spec.ts` adds a rule from the header
+menu, sees the large notionals emphasised and the small ones not, reads
+the rule in the link, and removes it.
+
+## ADR-79 — a calculated column is a closed operation over governed measures, and a draft
+
+**Pinned:** the owner's question after Phase 6, "can we add custom
+calculation fields?"; NUM-01 (units belong to the function), GOV-02 (no
+ungoverned metric beyond draft), ADR-67 (never a mean of means).
+
+**Decision.** The view gains a `computedColumns` slice (view version 4;
+older views migrate): each entry an id under the `c:` prefix, a label, an
+operation from a closed vocabulary — `ratio`, `delta`, `sum`,
+`pct_change`, `scaled` — and its operands, which are registry measures.
+The grid builds a real column for each: an accessor that evaluates the
+operation on the row, a meta derived from the operands', an aggregation
+that applies the operation to the operands' aggregates, a range filter, a
+numeric sort, and a place in every other slice — order, visibility,
+pinning, sizing, formats — under the same validation, so a link cannot
+name a calculated column the view does not define.
+
+*Why not a formula.* A formula string can say `mtm + yield`, and the grid
+would have to either print a number that means nothing or parse the
+string to find out. The vocabulary makes the unit a property of the
+operation, as NUM-01 wants it to be: a difference or a sum of two columns
+in one unit keeps that unit (dollars in either reading count as one), a
+ratio or a change of two columns in one unit reads as a percent of the
+second, a scaling keeps the first's, and two units that differ are
+refused before the column exists — in the editor, which says why, and in
+the parser, which says the same.
+
+*A ratio of sums, never a sum of ratios.* A group's value is the
+operation applied to the operands' aggregates over the group's rows, each
+operand by its own rule, so a weighted average stays weighted inside a
+delta and a share at desk level is the desk's MTM over the desk's
+notional. The client aggregation asks the operand columns for their
+aggregate over the same rows; the SQL compiler composes the operands'
+aggregate expressions the same way for an engine-served sort, and the
+leaf expression for an engine-served filter. The grouped SELECT needs no
+new column: a group node carries the operands' aggregates, and the
+accessor derives the calculated value from them on the client, which is
+the same arithmetic.
+
+*A draft, marked as one.* A calculated column is a reader's scratch
+figure. The header carries a *calc* badge and the Calculated band, the
+xlsx header says *(calculated)*, and the agent contract lists the slice
+as the view's, not a metric: it has no citation and no review, and
+promoting it means writing it into the registry through the existing
+path. Eight is the most a view carries; a ninth is a model. An operand is
+always a registry measure, never another calculated column, so a chain
+cannot launder a draft into an input. The quick filter's grammar does not
+name calculated columns yet — TODO(grid-computed-search).
+
+**What now fails if this regresses.** `computed.test.ts` derives the unit
+for each operation and refuses a mixed one, evaluates each operation and
+its no-answer cases, builds a table whose calculated cells equal the
+arithmetic on the row, whose subtotals equal the operation on the
+operands' subtotals against brute force, and whose grand total does the
+same; `viewState.test.ts` migrates version 3, refuses a bad id, a
+registry id, a computed operand, a ninth column, a unit mismatch, a
+grouping on a calculated column and an aggregation choice for one, and a
+sort naming a calculated column the view does not define; `sql.test.ts`
+sorts and filters by a calculated column through SQLite and matches the
+client. The studio's `grid.spec.ts` adds an MTM-share column from the
+sidebar, reads its cells and its badge, groups by desk and checks the
+subtotal against the operands' subtotals, sees the link carry it, and
+removes it.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the
