@@ -1674,6 +1674,89 @@ the rows that remain. The studio's `grid.spec.ts` groups from the sidebar,
 expands a group, stacks a second grouping, ungroups from the chips, and
 drags a header onto the zone.
 
+## ADR-68 — the AG Grid surface is a set of feature APIs with a face, and the export is the screen
+
+**Pinned:** the grid plan's Phase 3 — set filter, number filters, pinning,
+resizing, a header menu, conditional formatting, master-detail, a context
+menu, row selection, a status bar, density, xlsx export and a quick
+filter; deferred by the plan and left as marked seams: range selection,
+undo/redo, charts and the pivot UI.
+
+**Decision.**
+
+*Every control is a feature API with a face.* A header click is
+`column.toggleSorting()`; the header menu's items are `pin`, `toggleGrouping`,
+`toggleVisibility`, `resetSize`; the filter popover writes
+`column.setFilterValue()` in the two shapes Phase 2 proved — a set for a
+dimension, an open-ended range for a measure; the quick filter is the
+global filter, debounced; the context menu's "filter to this value" is the
+set filter with one value; the resize handle is `header.getResizeHandler()`
+wired to both mouse and touch, as the shipped skill insists. Each of them
+therefore writes the view (ADR-66) and each appears only where the column
+says it may (`getCanSort`, `getCanPin`, `getCanFilter`, `getCanHide`,
+`getCanResize`), which the column def set from meta. The selection column
+is the one exception: structural, not a field, composed in the hook and
+never in the view — pinned at the start by the hook, stripped from any
+pinning or order update before it reaches the view, so a saved view never
+names a column it cannot validate.
+
+*The renderer owns positioning.* v9 computes pinned regions and offsets and
+nothing else; the cells take `position: sticky` with `getStart('start')` and
+`getAfter('end')`, a solid background (`bg-inherit` from a row that is
+never translucent), and a rule on the pinned edge. A selected row is the
+accent mixed into the panel, solid, for the same reason: a pinned cell must
+hide what scrolls beneath it.
+
+*Conditional formatting reads meta and the facets.* A `heatmap` column
+mixes the accent token by the value's place in `getFacetedMinMaxValues()`
+— logarithmic when the range is positive, since notional spans three
+orders of magnitude and a linear ramp lights only the top decile; a
+`negativeRed` value takes the breach text token. No colour is named
+(ADR-48). Selection and detail state are transient and stay in the shell.
+
+*Master-detail is a row, not a measurement.* The body is windowed and never
+measures, so a detail panel is a second virtual item of declared height
+under its leaf row, a `<tr>` with one full-width cell, and the virtualizer
+is told when the declaration changes. Row density is the same mechanism:
+two declared heights.
+
+*The export is the screen, with the meta's number formats.* The workbook
+carries the visible columns in order, the current row model — a collapsed
+group as its subtotal row, indented by depth — and the grand total. Every
+number stays raw; the format is derived from the same meta the cell used
+(ADR-29): `mm` scales by a million in the format (`,,`) so a SUM in the
+sheet still adds dollars, and `pct` takes a literal "%" suffix because the
+value is already in percent units — Excel's `%` type would multiply by a
+hundred. exceljs loads lazily, on the first export. The export module is
+typed structurally against what it reads, because v9's `Table` is
+invariant in its registry and the React table and the headless test table
+are two registries.
+
+*The status bar aggregates the selection by the meta's own aggregation.* A
+selection's notional is a sum and its yield a weighted average — the same
+`wavg` (ADR-67), over the selected leaf rows through
+`column.getAggregationValue({ rows })` — so the number in the bar is the
+number the footer would show for those rows alone.
+
+**Deferred, with the seam named.** Range selection would be v9's
+`cellSelectionFeature` in the registry and a drag on the body cell; undo
+and redo a history of view states in the shell, which the contract makes
+trivial and the plan defers; charts the selected rows handed to a widget
+contract; the pivot UI `columnGroupingFeature`'s pivot mode. Each is a
+`TODO(grid-deferred)` where it would plug in, and none is started.
+
+**What now fails if this regresses.** `Excel formats from meta` pins each
+unit's format; `the workbook` reads a sheet back and asserts the visible
+headers, raw values with their formats, the total row, and a collapsed
+grouping exported as bold, indented subtotal rows with blank dimensions;
+`the heat ramp` asserts the logarithmic ramp, the clamps and that only the
+accent token is mixed. The studio's `grid.spec.ts` sorts from the header,
+filters by set and by range and by the quick filter, pins with sticky
+positioning, hides from the menu and restores from the sidebar with the
+body following the header, resizes by drag with the cells following,
+selects into the status bar, opens and closes a detail panel, switches
+density, filters from the context menu, and downloads the export.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

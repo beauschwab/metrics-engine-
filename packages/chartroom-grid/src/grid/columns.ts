@@ -39,6 +39,24 @@ export const COLUMN_ORDER: Array<keyof Position> = [
   'tradeId', 'asOf', 'notional', 'mtm', 'dv01', 'cs01', 'yield', 'wal',
 ];
 
+/**
+ * The selection column: structural, not a field, so it lives beside the
+ * data columns rather than in `COLUMN_META` — the view never names it (it
+ * cannot be hidden, ordered, grouped, pinned or sized), and the hook pins
+ * it at the start (ADR-68). Its cell is the checkbox `GridTable` renders.
+ */
+export const SELECT_ID = 'select';
+export const selectColumn = helper.display({
+  id: SELECT_ID,
+  header: '',
+  size: 32,
+  enableSorting: false,
+  enableGrouping: false,
+  enableHiding: false,
+  enableResizing: false,
+  enablePinning: false,
+});
+
 export const columns = helper.columns(
   COLUMN_ORDER.map((id) => {
     const meta = COLUMN_META[id];

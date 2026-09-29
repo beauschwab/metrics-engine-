@@ -10,6 +10,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Rows3 } from 'lucide-react';
 import type { Column } from '@tanstack/react-table';
+import { SELECT_ID } from '../grid/columns';
 import type { Features } from '../grid/features';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import type { Position } from '../data/mock';
@@ -21,9 +22,9 @@ export const SIDE_PREFIX = 'side:';
 
 type GridColumn = Column<Features, Position>;
 
-/** Every leaf column, hidden ones included, in the view's order. */
+/** Every data column, hidden ones included, in the view's order; never the selection column. */
 export function orderedLeafColumns(table: TreasuryTable, columnOrder: string[]): GridColumn[] {
-  const all = table.getAllLeafColumns();
+  const all = table.getAllLeafColumns().filter((c) => c.id !== SELECT_ID);
   const byId = new Map(all.map((c) => [c.id, c]));
   const first = columnOrder.map((id) => byId.get(id)).filter((c): c is GridColumn => !!c);
   const rest = all.filter((c) => !columnOrder.includes(c.id));

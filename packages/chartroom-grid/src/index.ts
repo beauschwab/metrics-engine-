@@ -11,13 +11,27 @@
  * variables to the studio's Aperture Risk aliases.
  */
 
-export { TreasuryGrid, ROW_HEIGHT, type TreasuryGridProps } from './components/TreasuryGrid';
+export { TreasuryGrid, ROW_HEIGHT, ROW_HEIGHTS, DETAIL_HEIGHT, type TreasuryGridProps, type Density } from './components/TreasuryGrid';
 export { ValueCell } from './components/CellRenderers';
 export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption } from './components/ui/table';
 export { Button, buttonVariants } from './components/ui/button';
 export { Checkbox } from './components/ui/checkbox';
 export { Badge, badgeVariants } from './components/ui/badge';
-export { GridTable } from './components/GridTable';
+export { GridTable, type ContextTarget } from './components/GridTable';
+export { HeaderMenu } from './components/HeaderMenu';
+export { FilterPopover } from './components/FilterPopover';
+export { DetailPanel } from './components/DetailPanel';
+export { RowContextMenu } from './components/RowContextMenu';
+export { StatusBar } from './components/StatusBar';
+export { GridToolbar } from './components/GridToolbar';
+export * from './components/ui/dropdown-menu';
+export * from './components/ui/context-menu';
+export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from './components/ui/popover';
+export { Input } from './components/ui/input';
+export { Separator } from './components/ui/separator';
+export { heatIntensity, heatBackground, HEAT_MAX_PERCENT } from './grid/heat';
+export { excelFormat } from './export/formats';
+export { buildWorkbook, workbookBytes, type ExportOptions } from './export/xlsx';
 export { GroupByDropZone } from './components/GroupByDropZone';
 export { ColumnsSidebar } from './components/ColumnsSidebar';
 export { GroupCell, leafCount } from './components/GroupCell';
@@ -31,7 +45,7 @@ export {
 export type { DataSource, SourceDescription, SourceColumn, QueryOptions, QueryResult } from './data/source';
 export { inMemorySource } from './data/inMemorySource';
 export { features, type Features } from './grid/features';
-export { columns, COLUMN_META, COLUMN_ORDER } from './grid/columns';
+export { columns, selectColumn, SELECT_ID, COLUMN_META, COLUMN_ORDER } from './grid/columns';
 export { formatValue, alignOf, MISSING, type ColumnMeta, type Unit, type Agg } from './grid/meta';
 export {
   generatePositions, seeded, type Position,

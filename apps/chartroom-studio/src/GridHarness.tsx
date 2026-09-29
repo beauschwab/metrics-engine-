@@ -25,7 +25,7 @@ export function GridHarness() {
       <header className="cr-header">
         <span className="cr-brand">Chartroom</span>
         <span className="cr-header-title" data-testid="grid-harness-title">
-          treasury grid — phase 2, {about ? `${about.rowCount.toLocaleString('en-US')} positions as of ${about.asOf}` : 'describing the source…'}
+          treasury grid — phase 3, {about ? `${about.rowCount.toLocaleString('en-US')} positions as of ${about.asOf}` : 'describing the source…'}
         </span>
         <span className="cr-header-spacer" />
         <a className="cr-link" href="#/widgets">widget states</a>

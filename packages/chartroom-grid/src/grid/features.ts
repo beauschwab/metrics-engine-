@@ -30,7 +30,7 @@ import {
   filterFn_greaterThan, filterFn_inNumberRange, filterFn_includesString,
   filterFn_lessThan, filterFn_weakEquals,
   globalFilteringFeature, metaHelper, rowAggregationFeature, rowExpandingFeature,
-  rowSortingFeature, sortFn_alphanumeric, sortFn_basic, sortFn_datetime,
+  rowSelectionFeature, rowSortingFeature, sortFn_alphanumeric, sortFn_basic, sortFn_datetime,
   tableFeatures,
 } from '@tanstack/react-table';
 import { wavg } from './aggregations';
@@ -86,6 +86,10 @@ export const features = tableFeatures({
     // Decomposable Σ(x·w) / Σ(w), weighted by the meta's column (ADR-67).
     wavg,
   },
+
+  // Selection is transient — a reader's hand on the book, not part of the
+  // saved view — so its slice stays inside the table (ADR-68).
+  rowSelectionFeature,
 
   columnVisibilityFeature,
   columnOrderingFeature,
