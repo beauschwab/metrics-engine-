@@ -71,6 +71,14 @@ export interface WidgetContract {
   /** Rules this widget's own defaults already enforce — cited, not re-checked. */
   guide_rules: string[];
   description?: string;
+  /**
+   * Who draws it (ADR-83): the widgets package by default, or the host —
+   * the studio — for a widget whose renderer lives outside the widgets
+   * package, as the grid's does (`spec ← grid ← studio`, and the widgets
+   * never import the grid). A host-rendered contract is still a contract:
+   * the linter reads it, the catalog lists it, a proposal cites it.
+   */
+  renderer?: 'widgets' | 'host';
 }
 
 export const widgetTypeRef = (c: WidgetContract): WidgetTypeRef => `${c.widget}@${c.version}`;

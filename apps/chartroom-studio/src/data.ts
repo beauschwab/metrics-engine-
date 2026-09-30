@@ -43,6 +43,8 @@ export interface ContractSummary {
   unit: string;
   precision: number;
   format: string;
+  /** How the measure re-aggregates (ADR-83): a grid sums only what sums. */
+  allowed_aggregations?: string[];
   denominator_of: string | null;
   dims: Array<{ name: string; type: string; ordinal: boolean }>;
   owner: string;

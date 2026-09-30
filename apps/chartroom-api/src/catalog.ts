@@ -44,6 +44,7 @@ export const WidgetContractSchema = z.strictObject({
   }),
   guide_rules: z.array(z.string()),
   description: z.string().min(20, 'a catalog entry needs a description a reviewer can read'),
+  renderer: z.enum(['widgets', 'host']).optional(),
 });
 
 export interface CatalogEvidence {

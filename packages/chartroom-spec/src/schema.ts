@@ -139,6 +139,15 @@ const WidgetInstanceSchema = z.strictObject({
    * metric's revision moves, the upgrade notice names the commentary too.
    */
   note: z.string().max(600).optional(),
+  /**
+   * Renderer-owned state (ADR-83): what a widget lets its reader arrange —
+   * the grid's view (grouping, sorting, filters, formats) — carried in the
+   * spec so a saved dashboard opens as it was left, opaque to the spec and
+   * validated by the renderer against the columns it actually has. A key
+   * the renderer refuses falls back to its default; it never blocks a
+   * dashboard from opening.
+   */
+  state: z.record(z.string(), z.unknown()).optional(),
 });
 export type WidgetInstance = z.infer<typeof WidgetInstanceSchema>;
 

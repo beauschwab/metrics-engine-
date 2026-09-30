@@ -583,6 +583,15 @@ function Studio({ mode }: { mode: 'read' | 'author' }) {
                 onExplain={setExplain}
                 attached={new Set(pointers.map((x) => x.id))}
                 onAsk={askWidget}
+                onWidgetState={(id, state) => {
+                  // The reader arranged a grid: the arrangement is the widget's
+                  // state, an edit like any other (ADR-83).
+                  const next = structuredClone(spec);
+                  const target = next.widgets.find((x) => x.id === id);
+                  if (!target) return;
+                  target.state = state;
+                  editSpec(next);
+                }}
               />
             )
             : (

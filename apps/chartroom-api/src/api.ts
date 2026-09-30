@@ -171,6 +171,7 @@ const truncate = (set: ContractSet) =>
   set.contracts.map((c) => ({
     ref: c.ref, doc: c.doc, measure: c.measure, version: c.version, status: c.status,
     grain: c.grain, unit: c.unit, precision: c.precision, format: c.format,
+    allowed_aggregations: c.allowed_aggregations,
     denominator_of: c.denominator_of ?? null,
     dims: c.dims.map((d) => ({ name: d.name, type: d.type, ordinal: d.ordinal ?? false })),
     owner: c.owner, description: c.description ?? null,

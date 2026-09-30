@@ -2442,6 +2442,50 @@ grammar naming its columns by label on the client and in SQL, and the
 agent contract and tools speaking it. Every earlier test runs unchanged
 against the treasury default.
 
+## ADR-83 — the grid is a dashboard widget the host draws, and its view is the widget's state
+
+**Pinned:** the owner's original ask — the standard grid component in the
+dashboard builder — and the boundary rule that the widgets package never
+imports the grid.
+
+**Decision.** `grid@1` joins the widget catalog as a contract of family
+`grid` with `renderer: 'host'`: the catalog carries it, the linter reads
+it (GRID-01 demands its cell ceiling, AGG-01 keeps a ratio off it, NUM-01
+its units), a proposal can cite it, and the studio — not the widgets
+package — draws it, because the renderer lives in `chartroom-grid` and
+`spec ← widgets` must not grow an arrow to the grid. The widget's binding
+resolves to the same group query every other widget runs; the answer's
+rows become grid records and its dims and format become a grid schema
+(ADR-82) — one groupable dimension per bound dim, the value, the prior and
+the move as measures in the unit the contract's format names, and a key
+column that identifies a group — over an in-memory source, so the reader
+gets the whole grid: grouping, sorting, filters, pivot, calculated
+columns, highlight rules, range copy.
+
+*The arrangement is the widget's.* `WidgetInstance` gains an optional
+`state`, opaque to the spec: renderer-owned, validated by the renderer
+against the columns it actually has. The grid writes its view there on
+every change through the same spec edit the inspector uses, so grouping
+by entity is an edit — undoable, saved with the dashboard, visible in the
+source tab — and a state the grid refuses (a column the binding no
+longer has) falls back to the default view rather than blocking the
+frame.
+
+*Totals sum only what sums.* A measure aggregates by sum where the
+contract's `allowed_aggregations` says it may; otherwise its subtotals
+stay blank, the same refusal ADR-67 made for the book. The contract
+summary the studio receives now carries `allowed_aggregations` for
+exactly this.
+
+**What now fails if this regresses.** `metricGroups.test.ts` builds the
+schema from a contract and dims, maps each catalog format to a grid
+unit, leaves a non-additive measure without an aggregation, and rolls the
+interpreter's rows into a table whose subtotal is the group's sum. The
+widgets' catalog test lists `grid@1` as host-rendered with no component.
+The studio's `studio.spec.ts` finds the seeded working table with dollar
+rows, groups it by entity from the header menu, and reads the arrangement
+back in the source tab.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

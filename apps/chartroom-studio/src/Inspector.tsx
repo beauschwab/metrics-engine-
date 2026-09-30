@@ -104,7 +104,7 @@ function WidgetForm({ spec, selected, contracts, onSpec }: Props) {
   // that crosses dims into cells takes a ceiling, anything judged against a
   // reference takes a comparison.
   const is = (...names: string[]) => names.some((n) => w.type.startsWith(`${n}@`));
-  const isGrid = is('perspective-grid', 'heatmap');
+  const isGrid = is('perspective-grid', 'heatmap', 'grid');
   const isBar = is('bar');
   const isSeries = is('timeseries', 'stacked-area', 'small-multiples');
   const isKpi = is('kpi-tile', 'bullet');

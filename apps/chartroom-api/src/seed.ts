@@ -69,6 +69,16 @@ function lcrMonitor(rev: (doc: string) => number): DashboardSpec {
           max_cells: 50_000,
         },
       },
+      {
+        // The working table (ADR-83): the same outflows as rows a reader can
+        // group, sort, filter and pivot; the arrangement rides in `state`.
+        id: 'outflow-table', type: 'grid@1', title: 'Outflows · working table',
+        pos: { x: 0, y: 7, w: 12, h: 4 },
+        bind: {
+          metric: of('weighted_outflows_30d'), dims: ['entity_id', 'maturity_bucket'],
+          max_cells: 50_000,
+        },
+      },
     ],
     interactions: [],
   };
