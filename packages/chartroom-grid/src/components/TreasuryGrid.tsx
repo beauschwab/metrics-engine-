@@ -58,6 +58,11 @@ export interface TreasuryGridProps {
 
 const idOf = (dnd: string) => dnd.slice(dnd.indexOf(':') + 1);
 
+/** A window of rows (ADR-85): what one answer holds, how far the screen may drift before the next is asked for, and the grain offsets snap to. */
+const WINDOW = 1000;
+const MARGIN = 200;
+const BLOCK = 100;
+
 // A header dragged over the zone lands where the pointer is; chips and
 // sidebar items sort by the nearest centre.
 const collision: CollisionDetection = (args) =>
@@ -120,6 +125,12 @@ export function TreasuryGrid({
   });
   const [rows, setRows] = useState<GridRecord[] | null>(null);
   const [pending, setPending] = useState(false);
+  // A source that serves windows (ADR-85) answers a leaf view one window at
+  // a time: the rows held are the window, the total and the grand totals
+  // come from the engine, and the body asks for another window as it scrolls.
+  const windowed = !!serves?.window && view.grouping.length === 0;
+  const [win, setWin] = useState<{ offset: number; total: number; totals?: Record<string, number> } | null>(null);
+  const wanted = useRef<number | null>(null);
   const [children, setChildren] = useState<ReadonlyMap<string, GridRecord[]>>(() => new Map());
   // The table's manual modes follow what the source *serves*, not what the
   // last answer applied: between a served slice changing and the engine's
@@ -139,16 +150,39 @@ export function TreasuryGrid({
     setChildren((prev) => (prev.size ? new Map() : prev));
     let live = true;
     setPending(true);
+    wanted.current = null;
     const t = setTimeout(() => {
-      void source.query(view).then((r) => {
+      void source.query(view, windowed ? { window: { offset: 0, limit: WINDOW }, totals: true } : {}).then((r) => {
         if (!live) return;
         setRows(r.rows);
+        setWin(r.applied.window ? { offset: r.offset ?? 0, total: r.total, totals: r.totals } : null);
         setPending(false);
       });
     }, rows === null ? 0 : 120);
     return () => { live = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the served slices, by design
   }, [source, about, servedKey]);
+
+  // The body says which rows are on screen; when they leave the window's
+  // safe middle, the next window is centred on them — aligned to a block so
+  // a slow scroll does not ask for a fresh window every few rows.
+  const held = rows?.length ?? 0;
+  const onRange = useCallback((first: number, last: number) => {
+    if (!windowed || !win) return;
+    const start = win.offset;
+    const end = win.offset + held;
+    const inside = (start === 0 || first >= start + MARGIN) && (end >= win.total || last < end - MARGIN);
+    if (inside) return;
+    const centre = Math.floor((first + last) / 2);
+    const offset = Math.max(0, Math.min(Math.max(0, win.total - WINDOW), Math.floor((centre - WINDOW / 2) / BLOCK) * BLOCK));
+    if (wanted.current === offset) return;
+    wanted.current = offset;
+    void source.query(view, { window: { offset, limit: WINDOW } }).then((r) => {
+      if (wanted.current !== offset) return;
+      setRows(r.rows);
+      setWin((prev) => (prev ? { ...prev, offset: r.offset ?? offset, total: r.total } : prev));
+    });
+  }, [windowed, win, held, source, view]);
 
   // Group nodes the source made carry the children the shell has fetched.
   const data = useMemo<GridRowData[] | null>(() => {
@@ -377,6 +411,11 @@ export function TreasuryGrid({
                   onAggChange={onAggChange}
                   onRemoveComputed={onRemoveComputed}
                   onPivot={onPivot}
+                  window={win ? { offset: win.offset, total: win.total } : undefined}
+                  onRange={win ? onRange : undefined}
+                  totals={win?.totals}
+                  servedTotal={win?.total}
+                  resetKey={win ? servedKey : undefined}
                 />
               )}
             </div>
@@ -392,7 +431,7 @@ export function TreasuryGrid({
             />
           )}
         </div>
-        <StatusBar table={table} about={about} applied={manual} pending={pending} />
+        <StatusBar table={table} about={about} applied={manual} pending={pending} servedTotal={win?.total} />
       </div>
       <DragOverlay dropAnimation={null}>
         {dragLabel ? <Badge variant="secondary" className="cursor-grabbing shadow-md">{dragLabel}</Badge> : null}

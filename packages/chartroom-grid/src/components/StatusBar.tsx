@@ -12,21 +12,22 @@ import type { SourceDescription } from '../data/source';
 import { isGroupNode } from '../data/sqlSource';
 
 export function StatusBar({
-  table, about, applied, pending = false,
-}: { table: TreasuryTable; about: SourceDescription | null; applied?: Applied; pending?: boolean }) {
+  table, about, applied, pending = false, servedTotal,
+}: { table: TreasuryTable; about: SourceDescription | null; applied?: Applied; pending?: boolean; servedTotal?: number }) {
   // With a source that serves a stage, the client model passes rows through:
   // the count shown is what the source answered, against its whole book.
   // When the engine grouped, the rows are nodes; the positions they stand
   // for are their counts, summed at the top level.
+  // A windowed answer (ADR-85) says how many rows it was cut from.
   const core = table.getCoreRowModel().rows;
-  const filtered = core.some((r) => isGroupNode(r.original))
+  const filtered = servedTotal ?? (core.some((r) => isGroupNode(r.original))
     ? core.reduce((n, r) => n + (isGroupNode(r.original) ? r.original.__group.count : 1), 0)
-    : table.getFilteredRowModel().rows.length;
+    : table.getFilteredRowModel().rows.length);
   const total = applied ? (about?.rowCount ?? filtered) : table.getCoreRowModel().rows.length;
   // What the source *serves* is a capability of the source; what the last
   // answer *applied* depends on the view (a leaf answer groups nothing).
   // The bar names the capability.
-  const served = about?.serves ? (['filter', 'sort', 'group'] as const).filter((k) => about.serves[k]) : [];
+  const served = about?.serves ? (['filter', 'sort', 'group', 'window'] as const).filter((k) => about.serves[k]) : [];
   const selected = table.getSelectedRowModel().rows.filter((r) => !r.getIsGrouped());
   const measures = table.getVisibleLeafColumns().filter((c) => c.columnDef.meta?.kind === 'measure' && c.columnDef.aggregationFn);
   return (

@@ -28,8 +28,12 @@ export interface SourceDescription {
   asOf: string | null;
   rowCount: number;
   columns: SourceColumn[];
-  /** What this source will do server-side when asked. */
-  serves: { filter: boolean; sort: boolean; group: boolean; groupPath: boolean };
+  /**
+   * What this source will do server-side when asked. `window`: it answers a
+   * leaf query one window of rows at a time, with the total and the grand
+   * totals over everything the view matches (ADR-85).
+   */
+  serves: { filter: boolean; sort: boolean; group: boolean; groupPath: boolean; window?: boolean };
   /** The column whose value identifies a row (ADR-82); `tradeId` for a position book. */
   rowId?: string;
 }
@@ -37,6 +41,10 @@ export interface SourceDescription {
 export interface QueryOptions {
   /** The rows under one group node: values for `view.grouping[0..n]`, in order. */
   groupPath?: string[];
+  /** A window of the leaf rows the view matches, in the view's order (ADR-85); a source that serves it answers only these. */
+  window?: { offset: number; limit: number };
+  /** Also answer the grand totals over every row the view matches — each measure by its aggregation, pivot buckets included. */
+  totals?: boolean;
 }
 
 export interface QueryResult<Row> {
@@ -44,7 +52,11 @@ export interface QueryResult<Row> {
   /** Rows the view matches in total, whether or not all of them were returned. */
   total: number;
   /** Which stages the source already applied; the rest are the client's. */
-  applied: { filter: boolean; sort: boolean; group: boolean };
+  applied: { filter: boolean; sort: boolean; group: boolean; window?: boolean };
+  /** Where the answered rows start in the view's order, when a window was served. */
+  offset?: number;
+  /** The grand totals asked for, keyed by column id — a measure's aggregate, a pivot column's within its bucket. */
+  totals?: Record<string, number>;
 }
 
 export interface DataSource<Row> {

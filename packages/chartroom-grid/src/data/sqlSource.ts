@@ -63,7 +63,7 @@ function blankRecord(schema: GridSchema): GridRecord {
 }
 
 export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${dialect.name})`, schema = TREASURY_SCHEMA }: SqlSourceOptions): DataSource<GridRecord> {
-  const serves = { filter: true, sort: true, group: true, groupPath: true };
+  const serves = { filter: true, sort: true, group: true, groupPath: true, window: true };
   return {
     async describe(): Promise<SourceDescription> {
       const q = dialect.quote;
@@ -87,10 +87,30 @@ export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${di
       const raw = await executor.run(`SELECT DISTINCT ${col} AS ${q('v')} FROM ${table.split('.').map(q).join('.')} WHERE ${col} IS NOT NULL ORDER BY ${col}`, []);
       return raw.map((r) => String(r.v ?? '')).filter((v) => v !== '');
     },
-    async query(view: ViewState, { groupPath = [] }: QueryOptions = {}): Promise<QueryResult<GridRecord>> {
-      // A pivot's buckets (ADR-80) need the dimension's values before the level compiles.
-      const pivotValues = view.pivot.column && view.grouping.length > groupPath.length ? await this.distinct!(view.pivot.column) : undefined;
-      const compiled = compileSql(view, { table, groupPath, pivotValues }, dialect, schema);
+    async query(view: ViewState, { groupPath = [], window, totals }: QueryOptions = {}): Promise<QueryResult<GridRecord>> {
+      // A pivot's buckets (ADR-80) need the dimension's values before a level or the totals compile.
+      const pivotValues = view.pivot.column && (totals || view.grouping.length > groupPath.length) ? await this.distinct!(view.pivot.column) : undefined;
+      const leaf = view.grouping.length <= groupPath.length;
+      // The grand totals (ADR-85): one aggregate scan, which also counts the
+      // rows a window is cut from; without them a window still needs its count.
+      let total: number | undefined;
+      let grand: Record<string, number> | undefined;
+      if (totals) {
+        const c = compileSql(view, { table, groupPath, pivotValues, totals: true }, dialect, schema);
+        const [row] = await executor.run(c.sql, c.params);
+        total = num(row?.__count) || 0;
+        grand = {};
+        for (const k of Object.keys(row ?? {})) {
+          if (k === '__count' || k.startsWith('__')) continue;
+          const n = num(row![k]);
+          if (Number.isFinite(n)) grand[k] = n;
+        }
+      } else if (window && leaf) {
+        const c = compileSql(view, { table, groupPath, count: true }, dialect, schema);
+        const [row] = await executor.run(c.sql, c.params);
+        total = num(row?.__count) || 0;
+      }
+      const compiled = compileSql(view, { table, groupPath, pivotValues, ...(window && leaf ? { limit: window.limit, offset: window.offset } : {}) }, dialect, schema);
       const raw = await executor.run(compiled.sql, compiled.params);
       if (compiled.shape === 'group') {
         const dim = compiled.groupColumn!;
@@ -108,14 +128,17 @@ export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${di
           node.__group = { column: dim, value, path, depth: groupPath.length, count: num(r.__count) || 0 };
           return node;
         });
-        return { rows, total: rows.length, applied: { filter: true, sort: true, group: true } };
+        return { rows, total: rows.length, applied: { filter: true, sort: true, group: true }, ...(grand ? { totals: grand } : {}) };
       }
       const rows = raw.map((r) => {
         const p: GridRecord = {};
         for (const id of schema.order) p[id] = schema.columns[id]?.kind === 'measure' ? num(r[id]) : cellText(schema, id, r[id]);
         return p;
       });
-      return { rows, total: rows.length, applied: { filter: true, sort: true, group: false } };
+      if (window) {
+        return { rows, total: total ?? rows.length, offset: window.offset, applied: { filter: true, sort: true, group: false, window: true }, ...(grand ? { totals: grand } : {}) };
+      }
+      return { rows, total: total ?? rows.length, applied: { filter: true, sort: true, group: false }, ...(grand ? { totals: grand } : {}) };
     },
   };
 }

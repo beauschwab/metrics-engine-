@@ -129,8 +129,8 @@ export interface QueryViewResult {
   offset: number;
   truncated: boolean;
   totals: { values: Record<string, unknown>; display?: Record<string, string> };
-  /** What the source itself already applied; the rest was done here. */
-  applied: { filter: boolean; sort: boolean; group: boolean };
+  /** What the source itself already applied; the rest was done here. `window`: the rows are the source's window (ADR-85). */
+  applied: { filter: boolean; sort: boolean; group: boolean; window?: boolean };
 }
 
 const MAX_LIMIT = 1000;
@@ -143,12 +143,17 @@ export async function queryView(
   const limit = Math.max(1, Math.min(MAX_LIMIT, Math.floor(options.limit ?? 100)));
   const offset = Math.max(0, Math.floor(options.offset ?? 0));
   const display = options.display ?? true;
-  const answer = await source.query(view);
+  const about = await source.describe();
+  // A source that serves windows (ADR-85) is asked for exactly this one, and
+  // for the totals over everything the view matches; the rest is answered
+  // whole and cut here.
+  const windowed = !!about.serves.window && view.grouping.length === 0;
+  const answer = windowed ? await source.query(view, { window: { offset, limit }, totals: true }) : await source.query(view);
   const effective: ViewState = options.expandAll ? { ...view, expanded: true } : view;
-  const table = headlessTable(answer.rows, effective, schemaFromDescription(await source.describe()));
+  const table = headlessTable(answer.rows, effective, schemaFromDescription(about));
   const columnsOut = table.getVisibleLeafColumns().map((c) => c.id);
   const model = table.getRowModel().rows;
-  const window = model.slice(offset, offset + limit);
+  const window = answer.applied.window ? model : model.slice(offset, offset + limit);
 
   const rows: QueryRow[] = window.map((row) => {
     const grouped = row.getIsGrouped();
@@ -183,20 +188,22 @@ export async function queryView(
   for (const c of table.getVisibleLeafColumns()) {
     const meta = c.columnDef.meta;
     if (!meta || !c.columnDef.aggregationFn) continue;
-    const n = aggregatedNumber(c.getAggregationValue());
+    const n = answer.totals ? answer.totals[c.id] : aggregatedNumber(c.getAggregationValue());
     if (n === undefined) continue;
     totals.values[c.id] = n;
     if (totals.display) totals.display[c.id] = formatValue(n, aggregateMeta(meta, c.columnDef.aggregationFn));
   }
 
+  const total = answer.applied.window ? answer.total : table.getFilteredRowModel().rows.length;
+  const modelRows = answer.applied.window ? answer.total : model.length;
   return {
     view: effective,
     columns: columnsOut,
     rows,
-    total: table.getFilteredRowModel().rows.length,
-    modelRows: model.length,
+    total,
+    modelRows,
     offset,
-    truncated: offset + window.length < model.length,
+    truncated: offset + window.length < modelRows,
     totals,
     applied: answer.applied,
   };

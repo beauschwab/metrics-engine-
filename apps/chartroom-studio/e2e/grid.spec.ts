@@ -854,8 +854,23 @@ test.describe('the treasury grid harness', () => {
     // The engine and the book arrive as assets; give them time.
     await expect(page.getByTestId('grid-harness-title')).toHaveText(/50,000 positions as of 2026-09-28 · DuckDB-WASM/, { timeout: 120_000 });
     await expect(grid.locator('tbody tr').first()).toBeVisible({ timeout: 60_000 });
-    await expect(status.locator('[data-slot="status-served"]')).toHaveText(/serves filter, sort, group/);
+    await expect(status.locator('[data-slot="status-served"]')).toHaveText(/serves filter, sort, group, window/);
     await expect(grid.locator('tbody tr').first().locator('td[data-column="tradeId"]')).toHaveText('T000001');
+
+    // The book arrives a window at a time (ADR-85): the footer's count and
+    // totals are the engine's over the whole book, the scrollbar spans it,
+    // and the last row is there once its window lands.
+    await expect(status.locator('[data-slot="status-rows"]')).toHaveText(/^50,000 rows$/);
+    const footer = grid.locator('tfoot [data-slot="grand-total"]');
+    await expect(footer.locator('td[data-column="notional"]')).toHaveText(/^\$[\d,]+\.\d[MB]$/);
+    const wholeBookNotional = await footer.locator('td[data-column="notional"]').textContent();
+    const scroller = page.locator('[data-slot="table-container"]', { has: grid });
+    await scroller.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    const lastLeaf = grid.locator('tbody tr:not([data-slot="placeholder-row"]) td[data-column="tradeId"]', { hasText: 'T050000' });
+    await expect(lastLeaf).toBeVisible({ timeout: 30_000 });
+    await expect(footer.locator('td[data-column="notional"]')).toHaveText(wholeBookNotional!);
+    await scroller.evaluate((el) => { el.scrollTop = 0; });
+    await expect(grid.locator('tbody tr:not([data-slot="placeholder-row"]) td[data-column="tradeId"]', { hasText: 'T000001' })).toBeVisible({ timeout: 30_000 });
 
     // A sort is served: the engine orders, the client passes rows through.
     await grid.locator('th[data-column="notional"] [data-slot="column-header"]').click();

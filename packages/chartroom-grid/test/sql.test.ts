@@ -192,7 +192,7 @@ describe('the SQL source answers as the in-memory path does', () => {
     const about = await sql.describe();
     expect(about.rowCount).toBe(3000);
     expect(about.asOf).toBe('2026-09-28');
-    expect(about.serves).toEqual({ filter: true, sort: true, group: true, groupPath: true });
+    expect(about.serves).toEqual({ filter: true, sort: true, group: true, groupPath: true, window: true });
   });
 
   it('filters and sorts leaves identically, and says it did', async () => {

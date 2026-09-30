@@ -73,6 +73,19 @@ export interface GridTableProps {
   onRemoveComputed?: (columnId: string) => void;
   /** Pivot by a dimension, or stop (ADR-80). */
   onPivot?: (columnId: string | null) => void;
+  /**
+   * The rows are one window of a larger answer (ADR-85): `offset` rows
+   * precede them and `total` rows exist; the body draws placeholders for the
+   * rest and reports the range on screen so the shell can fetch it.
+   */
+  window?: { offset: number; total: number };
+  onRange?: (first: number, last: number) => void;
+  /** The grand totals the source answered (ADR-85); with them the footer never sums a window. */
+  totals?: Record<string, number>;
+  /** The rows the view matches, when the source counted them. */
+  servedTotal?: number;
+  /** Changes when the served slices did: the body scrolls back to the top. */
+  resetKey?: string;
 }
 
 type GridColumn = Column<Features, GridRecord, unknown>;
@@ -130,6 +143,7 @@ function pinnedStyle(column: GridColumn): CSSProperties {
 
 export function GridTable({
   table, pending = false, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup, onAggChange, onFormatChange, onRemoveComputed, onPivot,
+  window: served, onRange, totals, servedTotal, resetKey,
 }: GridTableProps) {
   const rowHeight = ROW_HEIGHTS[density];
   // The rows the body scrolls are the centre rows: a pinned row leaves the
@@ -145,17 +159,31 @@ export function GridTable({
     return out;
   }, [model, detailOpen]);
 
+  // A window (ADR-85): the rows before it and after it are placeholders of
+  // the same height, so the scrollbar spans the whole answer and a row keeps
+  // its place while the window it sits in is fetched.
+  const before = served ? served.offset : 0;
+  const after = served ? Math.max(0, served.total - served.offset - table.getCoreRowModel().rows.length) : 0;
+  const count = before + items.length + after;
+  const itemAt = (i: number): DisplayItem | null => (i < before || i >= before + items.length ? null : items[i - before]!);
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
-    count: items.length,
+    count,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => (items[i]!.kind === 'detail' ? DETAIL_HEIGHT : rowHeight),
+    estimateSize: (i) => (itemAt(i)?.kind === 'detail' ? DETAIL_HEIGHT : rowHeight),
     overscan: 12,
-    getItemKey: (i) => `${items[i]!.kind}:${items[i]!.row.id}`,
+    getItemKey: (i) => { const it = itemAt(i); return it ? `${it.kind}:${it.row.id}` : `ph:${i}`; },
   });
   // Heights are declared, never measured; tell the virtualizer when the
   // declaration changed (a detail opened, the density switched).
-  useEffect(() => { virtualizer.measure(); }, [items, rowHeight, virtualizer]);
+  useEffect(() => { virtualizer.measure(); }, [items, rowHeight, virtualizer, before, after]);
+  // The range on screen, reported when it moves; the shell decides whether it needs a new window.
+  const virtualItems = virtualizer.getVirtualItems();
+  const firstIndex = virtualItems[0]?.index ?? 0;
+  const lastIndex = virtualItems[virtualItems.length - 1]?.index ?? 0;
+  useEffect(() => { onRange?.(firstIndex, lastIndex); }, [firstIndex, lastIndex, onRange]);
+  // A served slice changed: the answer starts over, and so does the scroll.
+  useEffect(() => { if (resetKey !== undefined) virtualizer.scrollToOffset(0); }, [resetKey, virtualizer]);
 
   const heat = useMemo(() => {
     const ranges = new Map<string, [number, number] | undefined>();
@@ -167,9 +195,9 @@ export function GridTable({
   // The positions the footer totals: when the engine grouped, the rows are
   // nodes and the positions are their counts (ADR-70).
   const coreRows = table.getCoreRowModel().rows;
-  const filtered = coreRows.some((r) => isGroupNode(r.original))
+  const filtered = servedTotal ?? (coreRows.some((r) => isGroupNode(r.original))
     ? coreRows.reduce((n, r) => n + (isGroupNode(r.original) ? r.original.__group.count : 1), 0)
-    : table.getFilteredRowModel().rows.length;
+    : table.getFilteredRowModel().rows.length);
   const visible = table.getVisibleLeafColumns();
   const sortCount = visible.filter((c) => c.getIsSorted()).length;
   // The first data column carries the tree indent and the footer's label,
@@ -241,8 +269,31 @@ export function GridTable({
             <TableCell className="flex items-center p-3 text-xs text-faint" data-slot="empty" colSpan={visible.length}>no positions match</TableCell>
           </TableRow>
         )}
-        {virtualizer.getVirtualItems().map((item) => {
-          const entry = items[item.index]!;
+        {virtualItems.map((item) => {
+          const entry = itemAt(item.index);
+          if (!entry) {
+            return (
+              <TableRow
+                key={item.key}
+                data-slot="placeholder-row"
+                data-index={item.index}
+                aria-hidden="true"
+                className="absolute flex w-full border-0 bg-card hover:bg-card"
+                style={{ height: rowHeight, transform: `translateY(${item.start}px)` }}
+              >
+                {visible.map((column) => (
+                  <TableCell
+                    key={column.id}
+                    data-column={column.id}
+                    style={{ width: column.getSize(), ...pinnedStyle(column) }}
+                    className="flex items-center border-b border-border-subtle bg-inherit px-2.5 py-0"
+                  >
+                    {column.id !== SELECT_ID && <span className="h-2 w-2/3 animate-pulse rounded-sm bg-muted" />}
+                  </TableCell>
+                ))}
+              </TableRow>
+            );
+          }
           const row = entry.row;
           if (entry.kind === 'detail') {
             return (
@@ -276,7 +327,10 @@ export function GridTable({
           {visible.map((column) => {
             const meta = column.columnDef.meta;
             const align = meta ? alignOf(meta) : 'left';
-            const total = meta?.kind === 'measure' && column.columnDef.aggregationFn ? aggregatedNumber(column.getAggregationValue()) : undefined;
+            // With the source's grand totals (ADR-85) the footer never sums a window; without them it aggregates the rows it has.
+            const total = totals
+              ? (meta?.kind === 'measure' && column.columnDef.aggregationFn && totals[column.id] !== undefined ? totals[column.id] : undefined)
+              : meta?.kind === 'measure' && column.columnDef.aggregationFn ? aggregatedNumber(column.getAggregationValue()) : undefined;
             return (
               <TableCell
                 key={column.id}

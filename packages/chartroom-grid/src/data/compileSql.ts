@@ -66,8 +66,8 @@ export const DREMIO: SqlDialect = {
 export interface CompiledSql {
   sql: string;
   params: Array<string | number>;
-  /** 'group' when the statement aggregates the next grouping level, else 'leaf'. */
-  shape: 'leaf' | 'group';
+  /** 'group' when the statement aggregates the next grouping level, 'totals' when it aggregates everything the view matches, else 'leaf'. */
+  shape: 'leaf' | 'group' | 'totals';
   /** For a group statement, the dimension it groups by. */
   groupColumn?: string;
 }
@@ -81,6 +81,8 @@ export interface CompileOptions {
   offset?: number;
   /** For a leaf query: count the matching rows instead of selecting them. */
   count?: boolean;
+  /** The grand totals over every row the view matches (ADR-85): the count and each measure's aggregate, pivot buckets included; no grouping. */
+  totals?: boolean;
   /** The pivot dimension's distinct values (ADR-80), for a grouping level's bucketed aggregates. */
   pivotValues?: readonly string[];
 }
@@ -294,6 +296,21 @@ export function compileSql(view: ViewState, opts: CompileOptions, dialect: SqlDi
   const from = tableRef(dialect, opts.table);
   const path = opts.groupPath ?? [];
   const nextGroup = view.grouping[path.length];
+
+  if (opts.totals) {
+    // The grand total row (ADR-85): the same aggregates a grouping level
+    // takes, over everything the WHERE keeps, with no dimension to group by.
+    const select = [
+      `COUNT(*) AS ${dialect.quote('__count')}`,
+      ...schema.order.filter((id) => schema.columns[id]!.kind === 'measure').flatMap((id) =>
+        aggregate(id, dialect, view, schema).map((a) => `${a.expr} AS ${dialect.quote(a.alias)}`)),
+      ...(view.pivot.column ? (opts.pivotValues ?? []).flatMap((value) =>
+        pivotMeasures(view.pivot, schema).flatMap((m) => pivotAggregate(pivotId(m, value), dialect, view, params, schema).map((a) => `${a.expr} AS ${dialect.quote(a.alias)}`))) : []),
+    ];
+    const clauses = where(view, opts, dialect, params, schema);
+    const whereSql = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
+    return { sql: `SELECT ${select.join(', ')} FROM ${from}${whereSql}`, params: params.values, shape: 'totals' };
+  }
 
   if (nextGroup !== undefined) {
     const dim = columnId(schema, nextGroup);

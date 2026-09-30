@@ -2537,6 +2537,59 @@ finds the maturity ladder on the summary. The grid e2e reads the tenor
 set filter in ladder order and walks the header sort from `O/N` to
 `10Y+`.
 
+## ADR-85 — a source that serves windows answers a leaf view one window at a time, with the engine's totals
+
+**Pinned:** the TODO every phase since 5 admitted — server-side row
+windowing — and the seam's rule that no SQL crosses it.
+
+**Decision.** `serves.window` joins the source description. A source that
+serves it (every `sqlSource`: DuckDB-WASM, Dremio, the tests' SQLite) is
+asked for a leaf view as `query(view, { window: { offset, limit },
+totals? })` and answers only those rows, in the view's order, with
+`offset`, the `total` they were cut from and, when asked, `totals`: the
+grand total of every measure by its aggregation, pivot buckets included,
+over everything the view's filters keep. `compileSql` gains the `totals`
+shape — the same aggregates a grouping level takes, with no dimension —
+and the leaf query takes its `LIMIT` and `OFFSET` from the window. A
+grouped view is untouched: a level is answered whole, as ADR-70 left it,
+because groups fan out at far fewer rows than the leaves do.
+
+*The body draws the whole answer.* The grid holds one window of a
+thousand rows and the virtualizer counts the total: rows before and after
+the window are placeholders of the same height, so the scrollbar spans
+the book and a row keeps its place while the window it sits in arrives.
+The body reports the range on screen; when it leaves the window's middle
+the shell asks for the next, centred on it and snapped to a block of a
+hundred, and drops any answer that is no longer the one wanted. A served
+slice changing (a filter, a sort) starts the answer over at the top.
+
+*The footer never sums a window.* With `totals` from the engine the grand
+total row reads them and nothing else; the status bar's count is the
+engine's `total`. The agent's `query_view` maps its own `offset` and
+`limit` onto the window and reads the same totals, so an agent asking
+for rows 20 to 27 of a Dremio table moves eight rows, not the table.
+
+*What a window does not carry.* A block copied across a window's edge
+copies the rows the grid holds; a pinned row leaves when its window does;
+the in-memory source serves no window, since a source that filters and
+sorts nothing has nothing to cut.
+
+**Not chosen.** A block cache of many windows (more to invalidate when a
+served slice changes, for a scroll pattern — jump, read, jump — that a
+single window centred on the reader serves as well). Driving the window
+from the view's `pagination` slice (the window is the screen's, not the
+reader's; a saved view must not remember how far someone scrolled).
+Client-side totals over the window (a sum of a thousand rows presented
+as the book's would be exactly the wrong number ADR-44 forbids).
+
+**What now fails if this regresses.** `window.test.ts` compiles the
+totals shape, reads a window from SQLite with its offset, total and
+grand totals equal to brute force, sees a grouped view ignore the window,
+and proves the agent's query over the SQL source answers the rows and
+totals the in-memory path does. The DuckDB-WASM e2e reads the served
+capabilities, the whole book's count and notional in the footer, scrolls
+to the last trade and back to the first through placeholder rows.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

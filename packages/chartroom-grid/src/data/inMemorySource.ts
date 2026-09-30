@@ -22,7 +22,7 @@ export function inMemorySource<R extends GridRecord>(rows: R[], name = 'in-memor
     rowCount: rows.length,
     columns: schema.order.map((id) => ({ id, meta: schema.columns[id]! })),
     rowId: schema.rowId,
-    serves: { filter: false, sort: false, group: false, groupPath: true },
+    serves: { filter: false, sort: false, group: false, groupPath: true, window: false },
   };
 
   return {

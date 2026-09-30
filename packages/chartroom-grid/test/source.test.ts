@@ -32,7 +32,7 @@ describe('the in-memory source', () => {
     expect(about.asOf).toBe('2026-09-28');
     expect(about.columns.map((c) => c.id)).toEqual(COLUMN_ORDER);
     for (const c of about.columns) expect(c.meta).toBe(COLUMN_META[c.id as keyof typeof COLUMN_META]);
-    expect(about.serves).toEqual({ filter: false, sort: false, group: false, groupPath: true });
+    expect(about.serves).toEqual({ filter: false, sort: false, group: false, groupPath: true, window: false });
   });
 
   it('answers a view with everything and says it applied nothing', async () => {
