@@ -18,7 +18,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 
 export function GridToolbar({
-  table, view, viewStore, onLoadView, sidebarOpen, onToggleSidebar, density, onToggleDensity, onExport, exporting, history, onPivot,
+  table, view, viewStore, onLoadView, sidebarOpen, onToggleSidebar, density, onToggleDensity, onExport, exporting, history, onPivot, pivotValues, onPivotBuckets,
 }: {
   table: TreasuryTable;
   view: ViewState;
@@ -34,6 +34,9 @@ export function GridToolbar({
   history?: { canUndo: boolean; canRedo: boolean; undo(): void; redo(): void };
   /** The pivot dimension (ADR-80) and the write that sets or clears it. */
   onPivot?: (column: string | null) => void;
+  /** The pivot dimension's values from the source, and the write that picks which become columns (ADR-86). */
+  pivotValues?: readonly string[];
+  onPivotBuckets?: (buckets: string[]) => void;
 }) {
   const [quick, setQuick] = useState(view.globalFilter);
   useEffect(() => {
@@ -49,7 +52,7 @@ export function GridToolbar({
   return (
     <div data-slot="grid-toolbar" className="flex items-center gap-2 border-b border-border bg-card px-2 py-1.5">
       <GroupByDropZone table={table} grouping={view.grouping} />
-      {onPivot && <PivotDropZone table={table} pivot={view.pivot.column} onPivot={onPivot} />}
+      {onPivot && <PivotDropZone table={table} pivot={view.pivot.column} onPivot={onPivot} values={pivotValues} buckets={view.pivot.buckets} onBuckets={onPivotBuckets} />}
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-faint" />
         <Input

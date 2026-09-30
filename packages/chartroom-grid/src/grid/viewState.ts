@@ -32,7 +32,7 @@ import {
  * empty slice more per step — so every saved view and every link written
  * before it still parses.
  */
-export const VIEW_VERSION = 5 as const;
+export const VIEW_VERSION = 6 as const;
 
 export function migrateView(input: unknown): unknown {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) return input;
@@ -41,6 +41,11 @@ export function migrateView(input: unknown): unknown {
   if (v.version === 2) v = { ...v, version: 3, columnFormats: v.columnFormats ?? {} };
   if (v.version === 3) v = { ...v, version: 4, computedColumns: v.computedColumns ?? [] };
   if (v.version === 4) v = { ...v, version: 5, pivot: v.pivot ?? { column: null, values: [] } };
+  // Version 6 (ADR-86): the pivot names which of the dimension's values become columns; none named means every value.
+  if (v.version === 5) {
+    const pivot = (v.pivot ?? { column: null, values: [] }) as Record<string, unknown>;
+    v = { ...v, version: 6, pivot: { ...pivot, buckets: pivot.buckets ?? [] } };
+  }
   return v;
 }
 
@@ -113,7 +118,12 @@ return z
     version: z.literal(VIEW_VERSION),
     grouping: z.array(groupableId).default([]),
     // Pivot mode (ADR-80): a groupable dimension across the top, measures under each value.
-    pivot: z.strictObject({ column: groupableId.nullable(), values: z.array(measureId) }).default({ column: null, values: [] }),
+    pivot: z.strictObject({
+      column: groupableId.nullable(),
+      values: z.array(measureId),
+      // The values across the top (ADR-86): named ones in this order, or every value the source has when none are named.
+      buckets: z.array(z.string().min(1)).default([]),
+    }).default({ column: null, values: [], buckets: [] }),
     // A reader's calculated columns (ADR-79): a closed operation over registry measures.
     computedColumns: z.array(ComputedColumnSchema).max(MAX_COMPUTED, `at most ${MAX_COMPUTED} calculated columns; a ninth is a model`).default([]),
     columnFilters: z.array(z.object({ id: columnId, value: z.unknown() })).default([]),

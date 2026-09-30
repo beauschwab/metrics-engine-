@@ -2590,6 +2590,47 @@ totals the in-memory path does. The DuckDB-WASM e2e reads the served
 capabilities, the whole book's count and notional in the footer, scrolls
 to the last trade and back to the first through placeholder rows.
 
+## ADR-86 — a pivot names which of the dimension's values become columns
+
+**Pinned:** ADR-80's rule that the values across the top come from the
+whole source, so a filter never removes a column under the reader's eye,
+and the owner's ask for a picker over them.
+
+**Decision.** The view's `pivot` slice gains `buckets: string[]` — the
+dimension's values that become columns, in that order — and the view is
+version 6; a version-5 view migrates with `buckets: []`, which means what
+it meant before: every value the source has. The column builder, the SQL
+source's bucketed aggregates and totals, and the headless table all read
+the same rule through `pivotBuckets`: the chosen values, else every
+distinct one, in the dimension's own order where it has one (ADR-84). A
+source asked for chosen buckets compiles them straight in and skips the
+`DISTINCT` query.
+
+*The picker sits on the chip.* The pivot chip carries a list button
+opening the dimension's values from the source with a checkbox each,
+"All" and "First only"; the count of chosen values shows on the button.
+Every value ticked is written as no choice at all, so a view that pivots
+over everything stays as small as it was. Changing the pivot dimension
+clears the buckets — they were the old dimension's values.
+
+*A bucket the data lacks stays.* A saved view that names `HKD` keeps an
+HKD band of blanks when the book has no HKD today, so a layout survives
+the data under it, as ADR-80 asked; the picker only lists what the source
+has, so a reader cannot choose a value that is not there.
+
+**Not chosen.** Buckets on the filter (a pivot that hides USD is not a
+book without USD: the Total band still sums it). A "top n by value"
+rule (which n, by which measure, as of when — a view should say what it
+shows, not a rule that shows something else tomorrow).
+
+**What now fails if this regresses.** `viewState.test.ts` migrates a
+version-5 pivot to 6 and refuses an empty bucket name; `pivot.test.ts`
+restricts the headless table to the chosen buckets in the dimension's
+order; `sql.test.ts` serves a level and the totals with only the chosen
+buckets, equal to brute force; the pivot e2e unticks USD and watches its
+band go, reads the nine buckets off the link, and clears the choice with
+All.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

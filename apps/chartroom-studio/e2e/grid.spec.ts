@@ -786,10 +786,27 @@ test.describe('the treasury grid harness', () => {
     expect(eur).toBeLessThan(total);
     await expect(group.locator('td[data-column="p:yield:EUR"]')).toHaveText(/^\d+\.\d{2}%$/);
 
+    // The picker on the chip (ADR-86): unticking USD drops its bucket and
+    // keeps EUR; the link names the buckets; "All" clears the choice.
+    await page.getByRole('button', { name: 'Choose Ccy values to pivot' }).click();
+    const picker = page.locator('[data-slot="pivot-values-popover"]');
+    await expect(picker.locator('[data-slot="pivot-values-list"] li')).toHaveCount(10);
+    await picker.locator('li[data-value="USD"]').getByRole('checkbox').click();
+    await expect(bands.filter({ hasText: 'USD' })).toHaveCount(0);
+    await expect(bands.filter({ hasText: 'EUR' })).toHaveCount(1);
+    await expect(page.locator('[data-slot="pivot-values"]')).toHaveAttribute('data-chosen', '9');
+    const chosenHash = await page.evaluate(() => location.hash);
+    const chosen = JSON.parse(Buffer.from(new URL(`http://x/${chosenHash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(chosen.pivot.buckets).toHaveLength(9);
+    expect(chosen.pivot.buckets).not.toContain('USD');
+    await picker.getByRole('button', { name: 'All' }).click();
+    await expect(bands.filter({ hasText: 'USD' })).toHaveCount(1);
+    await page.keyboard.press('Escape');
+
     // The link carries the pivot; the chip's cross stops it and the registry columns return.
     const hash = await page.evaluate(() => location.hash);
     const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
-    expect(decoded.pivot).toEqual({ column: 'currency', values: [] });
+    expect(decoded.pivot).toEqual({ column: 'currency', values: [], buckets: [] });
     await page.getByRole('button', { name: 'Stop pivoting by Ccy' }).click();
     await expect(grid.locator('th[data-column="p:notional:EUR"]')).toHaveCount(0);
     await expect(grid.locator('[data-slot="header-band"][data-band="Exposure"]')).toHaveCount(1);

@@ -72,7 +72,7 @@ export function viewContract(schema: GridSchema): ViewContract {
     columnPinning: '{ start: string[], end: string[] } — logical start/end, not left/right',
     columnSizing: '{ [columnId]: px }',
     columnAggs: '{ [measureId]: one of that column’s aggs } — overrides the meta’s aggregation for subtotals, totals and the SQL the source runs',
-    pivot: '{ column: groupable dimension id | null, values: measure ids ([] = every measure) } — the dimension across the top, one column per value per measure (ids p:<measure>:<value>), each aggregating as its measure does within the value; the pivoted measures follow under a Total band',
+    pivot: '{ column: groupable dimension id | null, values: measure ids ([] = every measure), buckets: dimension values ([] = every value the source has) } — the dimension across the top, one column per bucket per measure (ids p:<measure>:<value>), each aggregating as its measure does within the value; the pivoted measures follow under a Total band',
     computedColumns: '[{ id: "c:<slug>", label, op: ratio|delta|sum|pct_change|scaled, of: [measureId, measureId?], k? }] — a reader\'s calculated column over registry measures (max 8, no calculated operands); ratio and pct_change read as a percent of the second operand, delta and sum keep a shared unit, scaled keeps the first\'s; a draft, never a metric (GOV-02)',
     columnFormats: '{ [measureId]: { dp?: 0–4, scale?: units|k|m|bn (dollar columns only), negatives?: minus|parens, negativeRed?, heatmap?, rules?: [{ op: >|>=|<|<=|=|!=, value, emphasis: accent|strong|muted }] (max 4, first match wins) } } — how the measure reads, never its unit (NUM-01); a rule emphasises, it never colours red or green',
   },

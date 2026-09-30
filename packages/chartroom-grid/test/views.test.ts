@@ -67,7 +67,7 @@ describe('the view in a URL', () => {
     expect(readViewFromHash('#/grid')).toBeNull();
     const bad = readViewFromHash('#/grid?v=not-json');
     expect(bad?.ok).toBe(false);
-    const wrong = readViewFromHash(writeViewToHash('#/grid', { ...v, version: 6 as 5 }));
+    const wrong = readViewFromHash(writeViewToHash('#/grid', { ...v, version: 99 as 6 }));
     expect(wrong?.ok).toBe(false);
   });
 });

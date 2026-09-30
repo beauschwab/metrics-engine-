@@ -43,15 +43,17 @@ describe('the view state contract', () => {
     expect(v1.version).toBe(VIEW_VERSION);
     expect(v1.columnAggs).toEqual({});
     expect(v1.grouping).toEqual(['desk']);
-    expect(() => parseView({ version: 6 })).toThrow();
+    expect(() => parseView({ version: 7 })).toThrow();
     expect(() => parseView({ version: 0 })).toThrow();
   });
 
   it('migrates a version-2 view to 3 with an empty columnFormats, and 1 all the way', () => {
-    expect(parseView({ version: 2, grouping: ['desk'] })).toMatchObject({ version: 5, grouping: ['desk'], columnAggs: {}, columnFormats: {}, computedColumns: [], pivot: { column: null, values: [] } });
-    expect(parseView({ version: 1 })).toMatchObject({ version: 5, columnAggs: {}, columnFormats: {}, computedColumns: [], pivot: { column: null, values: [] } });
-    expect(parseView({ version: 3, columnFormats: { notional: { dp: 1 } } })).toMatchObject({ version: 5, columnFormats: { notional: { dp: 1 } }, computedColumns: [] });
-    expect(parseView({ version: 4, computedColumns: [] })).toMatchObject({ version: 5, pivot: { column: null, values: [] } });
+    expect(parseView({ version: 2, grouping: ['desk'] })).toMatchObject({ version: 6, grouping: ['desk'], columnAggs: {}, columnFormats: {}, computedColumns: [], pivot: { column: null, values: [], buckets: [] } });
+    expect(parseView({ version: 1 })).toMatchObject({ version: 6, columnAggs: {}, columnFormats: {}, computedColumns: [], pivot: { column: null, values: [], buckets: [] } });
+    expect(parseView({ version: 3, columnFormats: { notional: { dp: 1 } } })).toMatchObject({ version: 6, columnFormats: { notional: { dp: 1 } }, computedColumns: [] });
+    expect(parseView({ version: 4, computedColumns: [] })).toMatchObject({ version: 6, pivot: { column: null, values: [], buckets: [] } });
+    // A version-5 pivot keeps its column and measures and gains every value as its buckets (ADR-86).
+    expect(parseView({ version: 5, pivot: { column: 'currency', values: ['notional'] } })).toMatchObject({ version: 6, pivot: { column: 'currency', values: ['notional'], buckets: [] } });
     expect(safeParseView({ version: 2, columnFormats: { notional: { scale: 'bn' } } })).toMatchObject({ ok: true, view: { columnFormats: { notional: { scale: 'bn' } } } });
   });
 
@@ -78,7 +80,9 @@ describe('the view state contract', () => {
 
   it('accepts a pivot on a groupable dimension over measures and refuses the rest (ADR-80)', () => {
     const ok = parseView({ version: 5, pivot: { column: 'currency', values: ['notional'] }, sorting: [{ id: 'p:notional:EUR', desc: true }], columnVisibility: { 'p:mtm:EUR': false } });
-    expect(ok.pivot).toEqual({ column: 'currency', values: ['notional'] });
+    expect(ok.pivot).toEqual({ column: 'currency', values: ['notional'], buckets: [] });
+    expect(parseView({ version: 6, pivot: { column: 'currency', values: [], buckets: ['EUR', 'USD'] } }).pivot.buckets).toEqual(['EUR', 'USD']);
+    expect(safeParseView({ version: 6, pivot: { column: 'currency', values: [], buckets: [''] } })).toMatchObject({ ok: false });
     for (const [bad, why] of [
       [{ pivot: { column: 'tradeId', values: [] } }, /not groupable/],
       [{ pivot: { column: 'currency', values: ['desk'] } }, /not a measure/],

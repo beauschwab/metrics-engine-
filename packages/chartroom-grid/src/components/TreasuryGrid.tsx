@@ -199,7 +199,12 @@ export function TreasuryGrid({
   // Pivot mode (ADR-80): the dimension across the top, and its values from
   // the source — the whole source, so a filter never removes a column.
   const onPivot = useCallback((column: string | null) => {
-    change((prev) => ({ ...prev, pivot: { ...prev.pivot, column } }));
+    // A new dimension starts with every value; the buckets were the old one's.
+    change((prev) => ({ ...prev, pivot: { ...prev.pivot, column, buckets: column === prev.pivot.column ? prev.pivot.buckets : [] } }));
+  }, [change]);
+  // Which of the dimension's values become columns (ADR-86); none named means all.
+  const onPivotBuckets = useCallback((buckets: string[]) => {
+    change((prev) => ({ ...prev, pivot: { ...prev.pivot, buckets } }));
   }, [change]);
   const pivotColumn = view.pivot.column;
   const [pivotValues, setPivotValues] = useState<{ column: string; values: string[] } | null>(null);
@@ -391,6 +396,8 @@ export function TreasuryGrid({
           exporting={exporting}
           history={{ ...steps, undo, redo }}
           onPivot={onPivot}
+          pivotValues={pivotValues && pivotValues.column === view.pivot.column ? pivotValues.values : undefined}
+          onPivotBuckets={onPivotBuckets}
         />
         <FilterBar table={table} view={view} />
         <div className="flex min-h-0 flex-1">

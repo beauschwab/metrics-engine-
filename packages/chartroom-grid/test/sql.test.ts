@@ -151,6 +151,18 @@ describe('the SQL source answers as the in-memory path does', () => {
     for (let i = 1; i < shares.length; i++) expect(shares[i]!).toBeLessThanOrEqual(shares[i - 1]!);
   });
 
+  it('serves only the chosen buckets when the view names them (ADR-86)', async () => {
+    const view = parseView({ version: 6, grouping: ['desk'], pivot: { column: 'currency', values: ['notional'], buckets: ['EUR', 'JPY'] } });
+    const level = await sql.query(view);
+    const keys = Object.keys(level.rows[0]!).filter((k) => k.startsWith('p:'));
+    expect(keys).toEqual(['p:notional:EUR', 'p:notional:JPY']);
+    const desk = String(level.rows[0]!.desk);
+    const expected = BOOK.filter((b) => b.desk === desk && b.currency === 'JPY').reduce((a, b) => a + b.notional, 0);
+    expect(level.rows[0]!['p:notional:JPY']).toBeCloseTo(expected, 3);
+    const totals = await sql.query(view, { totals: true });
+    expect(Object.keys(totals.totals!).filter((k) => k.startsWith('p:'))).toEqual(['p:notional:EUR', 'p:notional:JPY']);
+  });
+
   it('serves a pivoted grouping level as bucketed aggregates the client reads back (ADR-80)', async () => {
     const view = parseView({ version: 5, grouping: ['desk'], pivot: { column: 'currency', values: ['notional', 'yield'] }, sorting: [{ id: 'p:notional:EUR', desc: true }] });
     const values = await sql.distinct!('currency');

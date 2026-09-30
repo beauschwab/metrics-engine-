@@ -8,7 +8,7 @@ import { headlessTable } from '../src/agent/headless';
 import { generatePositions, type Position } from '../src/data/mock';
 import { weightedAverage } from '../src/grid/aggregations';
 import { buildColumns, pivotMeasures } from '../src/grid/columns';
-import { distinctValues, parsePivotId, pivotId, pivotValue } from '../src/grid/pivot';
+import { distinctValues, parsePivotId, pivotBuckets, pivotId, pivotValue } from '../src/grid/pivot';
 import { parseView } from '../src/grid/viewState';
 
 const BOOK = generatePositions(2000);
@@ -81,5 +81,20 @@ describe('a pivot column aggregates as its measure does, within the bucket', () 
     const row = t.getRowModel().rows.find((r) => (r.original as Position).currency !== 'EUR')!;
     expect(row.getValue('p:notional:EUR')).toBeUndefined();
     expect(row.getValue(pivotId('notional', (row.original as Position).currency))).toBe((row.original as Position).notional);
+  });
+});
+
+describe('the buckets a pivot lays across the top (ADR-86)', () => {
+  it('are the chosen values, else every value, in the dimension\'s order', () => {
+    expect(pivotBuckets({ column: 'currency', values: [], buckets: [] }, ['USD', 'EUR'])).toEqual(['USD', 'EUR']);
+    expect(pivotBuckets({ column: 'currency', values: [], buckets: ['EUR'] }, ['USD', 'EUR'])).toEqual(['EUR']);
+    expect(pivotBuckets({ column: 'tenorBucket', values: [], buckets: ['10Y+', 'O/N'] }, ['1M'], ['O/N', '1M', '10Y+'])).toEqual(['O/N', '10Y+']);
+  });
+
+  it('restrict the table to those columns and leave the totals under the Total band', () => {
+    const t = headlessTable(BOOK, parseView({ version: 6, pivot: { column: 'currency', values: ['notional'], buckets: ['GBP', 'EUR'] } }));
+    const ids = t.getAllLeafColumns().map((c) => c.id).filter((id) => id.startsWith('p:'));
+    expect(ids).toEqual(['p:notional:GBP', 'p:notional:EUR']);
+    expect(t.getColumn('notional')!.columnDef.meta?.band).toBe('Total');
   });
 });

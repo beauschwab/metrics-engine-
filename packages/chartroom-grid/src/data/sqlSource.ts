@@ -88,8 +88,11 @@ export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${di
       return raw.map((r) => String(r.v ?? '')).filter((v) => v !== '');
     },
     async query(view: ViewState, { groupPath = [], window, totals }: QueryOptions = {}): Promise<QueryResult<GridRecord>> {
-      // A pivot's buckets (ADR-80) need the dimension's values before a level or the totals compile.
-      const pivotValues = view.pivot.column && (totals || view.grouping.length > groupPath.length) ? await this.distinct!(view.pivot.column) : undefined;
+      // A pivot's buckets (ADR-80) need the dimension's values before a level or the totals compile:
+      // the ones the view names (ADR-86), else every value the table holds.
+      const pivotValues = view.pivot.column && (totals || view.grouping.length > groupPath.length)
+        ? (view.pivot.buckets?.length ? view.pivot.buckets : await this.distinct!(view.pivot.column))
+        : undefined;
       const leaf = view.grouping.length <= groupPath.length;
       // The grand totals (ADR-85): one aggregate scan, which also counts the
       // rows a window is cut from; without them a window still needs its count.

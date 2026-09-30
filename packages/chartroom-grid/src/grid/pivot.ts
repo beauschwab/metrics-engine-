@@ -20,6 +20,7 @@ import { constructAggregationFn, type Row } from '@tanstack/table-core';
 import type { GridRecord } from './schema';
 import { isGroupNode } from '../data/groupNode';
 import { Wavg, type WavgParts } from './aggregations';
+import { sortByOrder } from './ordinal';
 import type { Agg, ColumnMeta } from './meta';
 
 export interface PivotState {
@@ -27,6 +28,13 @@ export interface PivotState {
   column: string | null;
   /** The measures spread under each value; empty means every visible measure. */
   values: string[];
+  /** The dimension's values that become columns, in this order (ADR-86); empty means every value the source has. */
+  buckets?: string[];
+}
+
+/** The values a pivot lays across the top: the chosen buckets, else every distinct value; in the dimension's own order where it has one (ADR-84). */
+export function pivotBuckets(pivot: PivotState, distinct: readonly string[], order?: readonly string[]): string[] {
+  return sortByOrder(pivot.buckets?.length ? pivot.buckets : distinct, order);
 }
 
 export const PIVOT_PREFIX = 'p:';

@@ -11,8 +11,7 @@ import { createColumnHelper } from '@tanstack/table-core';
 import type { Features } from './features';
 import { AGGS, FORMAT_KEYS, isScalable, type Agg, type ColumnFormat, type ColumnMeta } from './meta';
 import { computedAggregation, computedMeta, computedValue, isComputedId, type ComputedColumn } from './computed';
-import { sortByOrder } from './ordinal';
-import { pivotAggregation, pivotId, pivotMeta, pivotValue, type PivotState } from './pivot';
+import { pivotAggregation, pivotBuckets, pivotId, pivotMeta, pivotValue, type PivotState } from './pivot';
 import { TREASURY_META, TREASURY_ORDER, TREASURY_SCHEMA } from '../data/treasury';
 import { idsOf, measuresOf, type GridRecord, type GridSchema } from './schema';
 
@@ -119,8 +118,8 @@ export function pivotMeasures(pivot: PivotState | undefined, schema: GridSchema 
 
 export function buildColumns(aggs: ColumnAggs = {}, formats: ColumnFormats = {}, computed: readonly ComputedColumn[] = [], pivot?: PivotBuild, schema: GridSchema = TREASURY_SCHEMA) {
   const pivoted = pivot?.column ? pivotMeasures(pivot, schema) : [];
-  // The buckets read in the dimension's own order where it has one (ADR-84).
-  const buckets = pivot?.column ? sortByOrder(pivot.distinct, schema.columns[pivot.column]?.order) : [];
+  // The chosen buckets, else every value (ADR-86), in the dimension's own order where it has one (ADR-84).
+  const buckets = pivot?.column ? pivotBuckets(pivot, pivot.distinct, schema.columns[pivot.column]?.order) : [];
   const pivotColumns = pivot?.column
     ? buckets.flatMap((value) =>
       pivoted.flatMap((m) => {
