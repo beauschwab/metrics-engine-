@@ -2709,6 +2709,67 @@ block, and finds the same book read-only once the grant is off. The
 studio e2e double-clicks a value in the seeded grid widget and finds no
 editor.
 
+## ADR-88 — a served answer owes every reader the whole answer, and a view says only what it can mean
+
+**Pinned:** the post-merge review of ADR-82 to ADR-87. Twelve findings,
+all confirmed against the code; one rule covers most of them. When the
+source serves a stage, the rows the grid holds are a window or
+engine-made groups, not the answer, and anything that reads those rows
+as the answer is wrong.
+
+**Decision.**
+
+- *Totals.* The shell asks the source for grand totals whenever the rows
+  it holds are not the answer: a window (ADR-85) or engine-made groups.
+  The footer reads them. A mean of desk means and a count of desks were
+  both on screen before this.
+- *The sheet.* An export over a served source asks for the whole leaf
+  answer and builds the workbook from it, grouped and totalled by the
+  same view, so a sheet never presents a window as the book.
+- *A set filter's list.* Over a served answer it comes from the source:
+  `distinct(column, view)` lists a dimension's values under the view's
+  other filters, never its own, without counts. The range hint, which
+  would describe only the window, is not shown.
+- *The agent's query.* `query_view` over a source that grouped reads the
+  engine's nodes as groups rather than grouping them again, expands them
+  by asking for each node's children by its path, and reports the
+  engine's counts and totals.
+- *A generic schema over SQL.* A leaf answer breaks ties by the schema's
+  row id, and `describe` reads an as-of only where the schema has a date
+  column.
+- *A view says only what it can mean.* A column filter's value is
+  checked against its column's kind: a list of strings on a dimension, a
+  two-ended range of finite numbers or null on a measure. The range
+  filter writes an unreadable end as open, never as NaN.
+- *Saved views belong to a schema.* A store lists the views that parse
+  against the grid's schema, and its writes keep every other entry, so
+  one grid never discards another grid's saved views.
+- *Basis points, once.* The catalog's `bps` format holds a percent and
+  multiplies as it renders; a grid `bps` column holds basis points. A
+  `bps` metric's rows are scaled on the way into the grid, and a chart
+  drawn from the block is handed the percent back, so every surface
+  shows the same number. The format wins over the stored unit.
+- *One query per widget.* A host-rendered widget runs its binding's
+  query itself, so the frame does not run it too; the widget reports its
+  status and as-of to the frame.
+- *Writes build on each other.* The grid widget applies a view update to
+  the latest view it wrote, not the one the render read, so "Clear all
+  filters" clears the column filters and the quick filter both.
+- *A source can be let go.* `DataSource.close` releases what a source
+  holds; the DuckDB source closes its worker, and the harness closes a
+  source when it stops using it.
+
+**What now fails if this regresses.** `followups.test.ts` compiles a
+generic schema's tiebreak, describes a table with no as-of, refuses each
+malformed filter value, keeps a second schema's saved view through
+another grid's writes, scales a `bps` metric and charts it back, lists a
+dimension's values under the other filters, and checks the agent's
+grouped query against brute force, totals included. The DuckDB-WASM e2e
+exports the whole book from a windowed grid, lists all five desks under
+a CDS filter, and keeps the footer's total when the engine groups. The
+studio e2e reads the grid widget's status and as-of off its frame and
+clears a column filter and the quick filter with one click.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

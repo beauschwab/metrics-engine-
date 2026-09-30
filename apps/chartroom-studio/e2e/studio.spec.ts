@@ -64,6 +64,28 @@ test.describe('the interpreter renders real data', () => {
     await expect(page.getByTestId('source-editor')).toContainText('"grouping"');
   });
 
+  test('the grid widget runs its own query, tells its frame what it got, and clears every filter at once', async ({ page }) => {
+    const frame = page.getByTestId('widget-outflow-table');
+    const table = frame.getByTestId('treasury-grid');
+    await expect(table.locator('tbody tr').first()).toBeVisible();
+    // The frame reads the grid's answer: its status and the date it was evaluated at.
+    await expect(frame).toHaveAttribute('data-status', 'fresh');
+    await expect(frame.locator('.cr-frame-asof')).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
+    // A column filter and a quick filter, then one "Clear all": both go, not just the last written.
+    await table.locator('th[data-column="entity_id"]').hover();
+    await page.getByRole('button', { name: 'Filter Entity id' }).click();
+    const popover = page.locator('[data-slot="filter-popover"][data-column="entity_id"]');
+    await popover.locator('[data-slot="set-filter-values"] li').first().getByRole('checkbox').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Filter Entity id' })).toHaveAttribute('data-active', 'true');
+    await frame.getByLabel('Quick filter').fill('WF');
+    // The quick filter reaches the view after its debounce; the filter bar shows it when it has.
+    await expect(frame.locator('[data-slot="filter-bar"]')).toContainText('WF');
+    await frame.getByRole('button', { name: 'Clear all filters' }).click();
+    await expect(frame.getByLabel('Quick filter')).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Filter Entity id' })).not.toHaveAttribute('data-active', 'true');
+  });
+
   test('the frame shows the pinned function and the draft watermark shows over drafts', async ({ page }) => {
     await expect(page.getByTestId('widget-lcr-tile').locator('.cr-frame-ref'))
       .toHaveText(/lcr_pct@\d+/);

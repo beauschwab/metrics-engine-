@@ -8,6 +8,7 @@
  */
 
 import { safeParseView, type ViewState } from '../grid/viewState';
+import type { GridSchema } from '../grid/schema';
 
 export interface SavedView {
   id: string;
@@ -17,7 +18,12 @@ export interface SavedView {
 }
 
 export interface ViewStore {
-  list(): Promise<SavedView[]>;
+  /**
+   * The saved views that parse against a grid's schema (ADR-82): the
+   * treasury book's by default. A view saved for another schema is not
+   * listed here, and not lost either — it stays for the grid it was saved for.
+   */
+  list(schema?: GridSchema): Promise<SavedView[]>;
   /** Save under a name; with `id`, replace that saved view. */
   save(name: string, view: ViewState, id?: string): Promise<SavedView>;
   remove(id: string): Promise<void>;
@@ -29,7 +35,12 @@ const newId = () =>
 export function memoryViewStore(seed: SavedView[] = []): ViewStore {
   let views = [...seed];
   return {
-    async list() { return views.map((v) => ({ ...v })); },
+    async list(schema) {
+      return views.flatMap((v) => {
+        const parsed = safeParseView(v.view, schema);
+        return parsed.ok ? [{ ...v, view: parsed.view }] : [];
+      });
+    },
     async save(name, view, id) {
       const saved: SavedView = { id: id ?? newId(), name, view, savedAt: new Date().toISOString() };
       views = [...views.filter((v) => v.id !== saved.id), saved];
@@ -54,36 +65,40 @@ export interface StorageViewStore extends ViewStore {
 
 export function storageViewStore(storage: KeyValueStorage, key = VIEW_STORE_KEY): StorageViewStore {
   let droppedCount = 0;
-  const read = (): SavedView[] => {
-    let raw: unknown;
+  // The stored entries as they are: a save or a delete rewrites only the
+  // entry it names, so a view saved for another grid's schema — which this
+  // grid cannot parse — is never lost by this grid's writes.
+  const readRaw = (): unknown[] => {
     try {
-      raw = JSON.parse(storage.getItem(key) ?? '[]');
+      const raw: unknown = JSON.parse(storage.getItem(key) ?? '[]');
+      return Array.isArray(raw) ? raw : [];
     } catch {
-      raw = [];
+      return [];
     }
-    if (!Array.isArray(raw)) return [];
-    const out: SavedView[] = [];
-    droppedCount = 0;
-    for (const item of raw) {
-      const r = item as Partial<SavedView>;
-      const parsed = safeParseView(r?.view);
-      if (typeof r?.id === 'string' && typeof r?.name === 'string' && parsed.ok) {
-        out.push({ id: r.id, name: r.name, view: parsed.view, savedAt: typeof r.savedAt === 'string' ? r.savedAt : '' });
-      } else {
-        droppedCount++;
-      }
-    }
-    return out;
   };
-  const write = (views: SavedView[]) => storage.setItem(key, JSON.stringify(views));
+  const idOf = (item: unknown) => (item && typeof item === 'object' ? (item as Partial<SavedView>).id : undefined);
+  const write = (items: unknown[]) => storage.setItem(key, JSON.stringify(items));
   return {
-    async list() { return read(); },
+    async list(schema) {
+      const out: SavedView[] = [];
+      droppedCount = 0;
+      for (const item of readRaw()) {
+        const r = item as Partial<SavedView>;
+        const parsed = safeParseView(r?.view, schema);
+        if (typeof r?.id === 'string' && typeof r?.name === 'string' && parsed.ok) {
+          out.push({ id: r.id, name: r.name, view: parsed.view, savedAt: typeof r.savedAt === 'string' ? r.savedAt : '' });
+        } else {
+          droppedCount++;
+        }
+      }
+      return out;
+    },
     async save(name, view, id) {
       const saved: SavedView = { id: id ?? newId(), name, view, savedAt: new Date().toISOString() };
-      write([...read().filter((v) => v.id !== saved.id), saved]);
+      write([...readRaw().filter((item) => idOf(item) !== saved.id), saved]);
       return saved;
     },
-    async remove(id) { write(read().filter((v) => v.id !== id)); },
+    async remove(id) { write(readRaw().filter((item) => idOf(item) !== id)); },
     dropped: () => droppedCount,
   };
 }

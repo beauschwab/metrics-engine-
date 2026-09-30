@@ -958,6 +958,20 @@ test.describe('the treasury grid harness', () => {
     await scroller.evaluate((el) => { el.scrollTop = 0; });
     await expect(grid.locator('tbody tr:not([data-slot="placeholder-row"]) td[data-column="tradeId"]', { hasText: 'T000001' })).toBeVisible({ timeout: 30_000 });
 
+    // The sheet is the whole answer, not the window the grid holds: every
+    // position, totalled by the engine's rules over all of them.
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export to Excel' }).click();
+    const file = await download;
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile((await file.path())!);
+    const sheet = wb.worksheets[0]!;
+    const texts: string[] = [];
+    sheet.eachRow((row) => { const v = row.getCell(1).value; if (typeof v === 'string') texts.push(v); });
+    expect(texts).toContain('Total · 50,000 rows');
+    expect(sheet.rowCount).toBe(50_002);
+
     // A sort is served: the engine orders, the client passes rows through.
     await grid.locator('th[data-column="notional"] [data-slot="column-header"]').click();
     await expect(grid.locator('th[data-column="notional"]')).toHaveAttribute('aria-sort', 'descending');
@@ -973,11 +987,25 @@ test.describe('the treasury grid harness', () => {
     await expect(status.locator('[data-slot="status-rows"]')).toHaveText(/^[\d,]+ of 50,000 rows$/, { timeout: 30_000 });
     await expect(grid.locator('tbody tr').first().locator('td[data-column="product"]')).toHaveText('CDS');
 
+    // Over a served answer a set filter lists what the source holds under the
+    // other filters, not the thousand rows in the window: every desk trades CDS.
+    await grid.locator('th[data-column="desk"]').hover();
+    await page.getByRole('button', { name: 'Filter Desk' }).click();
+    const deskFilter = page.locator('[data-slot="filter-popover"][data-column="desk"]');
+    await expect(deskFilter.locator('[data-slot="set-filter-values"] li')).toHaveCount(5);
+    await page.keyboard.press('Escape');
+    const footerNotional = grid.locator('tfoot [data-slot="grand-total"] td[data-column="notional"]');
+    await expect(footerNotional).toHaveText(/^\$[\d,]+\.\d[MB]$/);
+    const cdsTotal = await footerNotional.textContent();
+
     // Grouping is served a level at a time: five desk nodes with subtotals,
     // and a node's children fetched by its path when it expands.
     await page.getByTestId('columns-sidebar').getByRole('button', { name: 'Group by Desk' }).click();
     const groups = grid.locator('tbody tr[data-grouped]');
     await expect(groups).toHaveCount(5, { timeout: 30_000 });
+    // Grouped by the engine, the footer is still the engine's total over the
+    // filtered book — not a re-aggregation of the five desk nodes.
+    await expect(footerNotional).toHaveText(cdsTotal!);
     const first = groups.first();
     await expect(first.locator('td[data-column="desk"]')).toHaveText(/\(\d{1,2},\d{3}\)$|\(\d{3}\)$/);
     await expect(first.locator('td[data-column="notional"]')).toHaveText(/^\$[\d,]+\.\dM$/);

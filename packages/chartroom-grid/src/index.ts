@@ -50,7 +50,7 @@ export { compareByOrder, ordinalRank, sortByOrder, orderFromRows } from './grid/
 export { parseEditText, canEditColumn, parseClipboardBlock, pasteEdits, applyEdits, editKey, type CellEdit, type EditPolicy, type ParsedEdit, type PasteOutcome, type PasteRow } from './grid/edit';
 export { schemaFromColumns, schemaFromDescription, measuresOf, idsOf, type GridSchema, type GridRecord } from './grid/schema';
 export { TREASURY_SCHEMA, TREASURY_META, TREASURY_ORDER } from './data/treasury';
-export { metricGroupsSchema, metricGroupRows, metricUnit, dimLabel, GROUP_KEY, type MetricShape } from './data/metricGroups';
+export { metricGroupsSchema, metricGroupRows, metricUnit, metricScale, dimLabel, GROUP_KEY, type MetricShape } from './data/metricGroups';
 export { SchemaContext, useSchema } from './components/SchemaContext';
 export { rangesToTsv, selectedCellRanges, cellText, type CopyCell, type CopyOptions, type CopyTable } from './grid/copy';
 export {

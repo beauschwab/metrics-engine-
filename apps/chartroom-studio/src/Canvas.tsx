@@ -17,6 +17,7 @@
  * floating above the tiles.
  */
 
+import { useState } from 'react';
 import type { DashboardSpec, FilterExpr, WidgetInstance } from 'chartroom-spec';
 import { parseMetricRef } from 'chartroom-spec';
 import { COMPONENTS } from 'chartroom-widgets';
@@ -24,7 +25,7 @@ import type { AnalystEnv } from './bindings';
 import type { CrossFilter } from './analyst/ContextBar';
 import type { ContractSummary } from './data';
 import { useWidgetData } from './useWidgetData';
-import { GridWidget } from './GridWidget';
+import { GridWidget, type GridFrameState } from './GridWidget';
 
 /**
  * Host-rendered widgets (ADR-83): contracts the widgets package carries but
@@ -57,7 +58,14 @@ function Frame({
   w, spec, contracts, selected, onSelect, extraFilters, pickDim, picked, onPick,
   unrenderable, env, onExplain, attached, onAsk, onWidgetState,
 }: FrameProps) {
-  const { data, status, error } = useWidgetData(w, spec, contracts, extraFilters, env);
+  // A host-rendered widget runs the binding's query itself (ADR-83), so the
+  // frame does not run it a second time; the widget reports what it got.
+  const host = HOST_RENDERED.has(w.type);
+  const query = useWidgetData(w, spec, contracts, extraFilters, env, !host);
+  const [hostFrame, setHostFrame] = useState<GridFrameState>({ status: 'loading', asOf: null });
+  const { data, error } = query;
+  const status = host ? hostFrame.status : query.status;
+  const asOf = host ? hostFrame.asOf : data?.asOf ?? null;
   const Component = COMPONENTS[w.type];
   const ref = parseMetricRef(w.bind.metric);
   const contract = contracts.get(w.bind.metric);
@@ -85,8 +93,8 @@ function Frame({
         </span>
       </header>
       <div className="cr-frame-body">
-        {HOST_RENDERED.has(w.type)
-          ? <GridWidget w={w} spec={spec} contracts={contracts} extraFilters={extraFilters} env={env} onState={onWidgetState} />
+        {host
+          ? <GridWidget w={w} spec={spec} contracts={contracts} extraFilters={extraFilters} env={env} onState={onWidgetState} onFrame={setHostFrame} />
           : Component
           ? (
             <Component
@@ -120,10 +128,10 @@ function Frame({
       <footer className="cr-frame-foot">
         <span
           className="cr-frame-asof"
-          data-stale={(data?.asOf && env.asOf && data.asOf !== env.asOf) || undefined}
+          data-stale={(asOf && env.asOf && asOf !== env.asOf) || undefined}
           title="the date this frame was evaluated at"
         >
-          {data?.asOf ?? '—'}
+          {asOf ?? '—'}
         </span>
         <span className="cr-context-spacer" />
         {ref && (

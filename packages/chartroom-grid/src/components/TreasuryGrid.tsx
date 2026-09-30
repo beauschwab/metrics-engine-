@@ -21,6 +21,7 @@ import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { schemaFromColumns, type GridRecord, type GridSchema } from '../grid/schema';
 import { TREASURY_SCHEMA } from '../data/treasury';
 import { SchemaContext } from './SchemaContext';
+import { FacetContext, type Facets } from './FacetContext';
 import type { DataSource, SourceDescription } from '../data/source';
 import { groupNodePath, isGroupNode } from '../data/sqlSource';
 import { useTreasuryTable, type Applied, type GridRowData, type ViewUpdate } from '../grid/useTreasuryTable';
@@ -137,6 +138,10 @@ export function TreasuryGrid({
   // come from the engine, and the body asks for another window as it scrolls.
   const windowed = !!serves?.window && view.grouping.length === 0;
   const [win, setWin] = useState<{ offset: number; total: number; totals?: Record<string, number> } | null>(null);
+  // The engine's grand totals (ADR-85): asked for whenever the rows held are
+  // not the whole answer — a window, or engine-made groups — because a sum of
+  // those rows is not the book's, and a mean of group means is no mean at all.
+  const [grand, setGrand] = useState<Record<string, number> | undefined>(undefined);
   const wanted = useRef<number | null>(null);
   // Editing (ADR-87): a committed edit lies over the rows until the source
   // answers again, and the cells it touched keep a mark for the session.
@@ -180,7 +185,8 @@ export function TreasuryGrid({
     wanted.current = null;
     const offset = isRefresh && win ? win.offset : 0;
     const t = setTimeout(() => {
-      const main = source.query(view, windowed ? { window: { offset, limit: WINDOW }, totals: true } : {});
+      const servedGroups = !!serves?.group && view.grouping.length > 0;
+      const main = source.query(view, windowed ? { window: { offset, limit: WINDOW }, totals: true } : servedGroups ? { totals: true } : {});
       const kids = isRefresh
         ? Promise.all([...childrenRef.current.keys()].map((id) => source.query(view, { groupPath: groupNodePath(id) }).then((r) => [id, r.rows] as const)))
         : Promise.resolve([]);
@@ -188,6 +194,7 @@ export function TreasuryGrid({
         if (!live) return;
         setRows(r.rows);
         setWin(r.applied.window ? { offset: r.offset ?? 0, total: r.total, totals: r.totals } : null);
+        setGrand(r.totals);
         if (isRefresh) setChildren(new Map(fetched));
         // What the source now holds replaces every settled edit; one still being written stays over the rows.
         setOverlay((prev) => prev.filter((e) => inFlight.current.has(e)));
@@ -382,7 +389,16 @@ export function TreasuryGrid({
     try {
       // exceljs rides in only when a reader asks for a sheet.
       const { workbookBytes } = await import('../export/xlsx');
-      const bytes = await workbookBytes(table, { title: about ? `${about.name} · as of ${about.asOf ?? '—'}` : undefined });
+      // When the source serves a stage the table holds a window or engine-made
+      // groups, not the book: the sheet is built from the whole answer instead
+      // — every leaf the view keeps, grouped and totalled by the same columns.
+      let sheet: Parameters<typeof workbookBytes>[0] = table;
+      if (manual) {
+        const { headlessTable } = await import('../agent/headless');
+        const answer = await source.query({ ...view, grouping: [] });
+        sheet = headlessTable(answer.rows, view, schema) as unknown as Parameters<typeof workbookBytes>[0];
+      }
+      const bytes = await workbookBytes(sheet, { title: about ? `${about.name} · as of ${about.asOf ?? '—'}` : undefined });
       const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -393,7 +409,14 @@ export function TreasuryGrid({
     } finally {
       setExporting(false);
     }
-  }, [table, about]);
+  }, [table, about, manual, source, view, schema]);
+
+  // A set filter's list over a served answer comes from the source, under
+  // the view's other filters; over the client's rows, from its facets.
+  const facets = useMemo<Facets>(() => ({
+    served: !!manual?.filter,
+    values: manual?.filter && source.distinct ? (columnId: string) => source.distinct!(columnId, view) : undefined,
+  }), [manual, source, view]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -428,6 +451,7 @@ export function TreasuryGrid({
 
   return (
     <SchemaContext.Provider value={schema}>
+    <FacetContext.Provider value={facets}>
     <DndContext
       sensors={sensors}
       collisionDetection={collision}
@@ -488,7 +512,7 @@ export function TreasuryGrid({
                   onPivot={onPivot}
                   window={win ? { offset: win.offset, total: win.total } : undefined}
                   onRange={win ? onRange : undefined}
-                  totals={win?.totals}
+                  totals={grand}
                   servedTotal={win?.total}
                   resetKey={win ? servedKey : undefined}
                   edit={editing}
@@ -513,6 +537,7 @@ export function TreasuryGrid({
         {dragLabel ? <Badge variant="secondary" className="cursor-grabbing shadow-md">{dragLabel}</Badge> : null}
       </DragOverlay>
     </DndContext>
+    </FacetContext.Provider>
     </SchemaContext.Provider>
   );
 }

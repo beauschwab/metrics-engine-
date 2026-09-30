@@ -67,6 +67,8 @@ export function GridHarness() {
     () => (kind === 'duckdb' ? duckdbSource(book, 'DuckDB-WASM') : inMemorySource(book, 'seeded book')),
     [book, kind],
   );
+  // A source the harness lets go is closed: DuckDB's worker goes with it.
+  useEffect(() => () => { void source.close?.(); }, [source]);
   const store = useMemo(() => localStorageViewStore(), []);
   const [about, setAbout] = useState<SourceDescription | null>(null);
   useEffect(() => {

@@ -10,17 +10,23 @@
  * to the default view rather than blocking the frame.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardSpec, FilterExpr, WidgetInstance } from 'chartroom-spec';
 import {
-  TreasuryGrid, VIEW_VERSION, defaultView, inMemorySource, metricGroupRows, metricGroupsSchema, orderFromRows, safeParseView,
+  TreasuryGrid, VIEW_VERSION, defaultView, inMemorySource, metricGroupRows, metricGroupsSchema, metricScale, orderFromRows, safeParseView,
   type ViewUpdate,
 } from 'chartroom-grid';
 import { DEFAULT_ENV, requestsFor, type AnalystEnv, type GroupResult } from './bindings';
 import { runQuery, type ContractSummary } from './data';
 
+/** What the frame shows about the answer: its status and the date it was evaluated at. */
+export interface GridFrameState {
+  status: 'loading' | 'fresh' | 'empty' | 'error';
+  asOf: string | null;
+}
+
 export function GridWidget({
-  w, spec, contracts, extraFilters = [], env = DEFAULT_ENV, onState,
+  w, spec, contracts, extraFilters = [], env = DEFAULT_ENV, onState, onFrame,
 }: {
   w: WidgetInstance;
   spec: DashboardSpec;
@@ -29,6 +35,8 @@ export function GridWidget({
   env?: AnalystEnv;
   /** The reader arranged the grid: keep it in the widget's state. */
   onState?: (id: string, state: Record<string, unknown>) => void;
+  /** The grid runs the binding's query itself, so it tells the frame what it got. */
+  onFrame?: (state: GridFrameState) => void;
 }) {
   const contract = contracts.get(w.bind.metric);
   const dims = useMemo(() => (w.bind.dims ?? []).filter((d) => d !== 'as_of_date'), [JSON.stringify(w.bind.dims)]);
@@ -49,7 +57,16 @@ export function GridWidget({
     return () => { alive = false; };
   }, [requests]);
 
-  const rows = useMemo(() => (answer.result ? metricGroupRows(answer.result.rows, dims) : []), [answer.result, dims]);
+  // A `bps` metric is scaled to basis points once, on the way in (ADR-74).
+  const scale = metricScale(answer.result?.format ?? contract?.format ?? 'number');
+  const rows = useMemo(() => (answer.result ? metricGroupRows(answer.result.rows, dims, scale) : []), [answer.result, dims, scale]);
+  useEffect(() => {
+    onFrame?.({
+      status: answer.error ? 'error' : !answer.result ? 'loading' : rows.length === 0 ? 'empty' : 'fresh',
+      asOf: answer.result?.asOf ?? null,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the frame follows the answer
+  }, [answer, rows.length]);
   const schema = useMemo(
     () => metricGroupsSchema({
       measure: contract?.measure ?? w.bind.metric,
@@ -73,7 +90,16 @@ export function GridWidget({
     const parsed = safeParseView(w.state ?? { version: VIEW_VERSION }, schema);
     return parsed.ok ? parsed.view : defaultView(schema);
   }, [JSON.stringify(w.state), schema]);
-  const onViewChange = (update: ViewUpdate) => onState?.(w.id, update(view) as unknown as Record<string, unknown>);
+  // Two writes in one gesture — "Clear all filters" clears the column filters,
+  // then the quick filter — must build on each other, not both on the view
+  // this render read: the latest view is kept here until the spec catches up.
+  const latest = useRef(view);
+  latest.current = view;
+  const onViewChange = (update: ViewUpdate) => {
+    const next = update(latest.current);
+    latest.current = next;
+    onState?.(w.id, next as unknown as Record<string, unknown>);
+  };
 
   if (answer.error) return <div className="cr-widget-error">{answer.error}</div>;
   if (!answer.result) return <div className="cr-skeleton cr-skeleton-chart" />;

@@ -103,9 +103,13 @@ export function chartFromRange(table: CopyTable, asOf = ''): ChartOutcome {
     const agg = cell.column.columnDef.aggregationFn;
     const out: ChartRow[] = [];
     const seen = new Map<string, number>();
+    // A grid `bps` column holds basis points; the catalog's `bps` format holds a
+    // percent and multiplies as it renders (ADR-74), so the chart is handed the percent.
+    const toCatalog = meta!.unit === 'bps' ? 0.01 : 1;
     for (const row of rows) {
       const category = categoryOf(row[categoryIndex]!);
-      const value = measureOf(row[i]!);
+      const measured = measureOf(row[i]!);
+      const value = measured === undefined ? undefined : measured * toCatalog;
       if (category === undefined || value === undefined) continue;
       // Two rows with one label (a repeated desk) would draw one bar over another: number them.
       const n = (seen.get(category) ?? 0) + 1;

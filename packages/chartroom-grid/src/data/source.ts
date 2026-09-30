@@ -63,8 +63,14 @@ export interface QueryResult<Row> {
 export interface DataSource<Row> {
   describe(): Promise<SourceDescription>;
   query(view: ViewState, options?: QueryOptions): Promise<QueryResult<Row>>;
-  /** The distinct values of a dimension over the whole source, in reading order — the pivot's columns (ADR-80). */
-  distinct?(column: string): Promise<string[]>;
+  /**
+   * The distinct values of a dimension, in reading order: over the whole
+   * source (the pivot's columns, ADR-80), or under a view's other filters
+   * when one is given (a set filter's list over a served answer).
+   */
+  distinct?(column: string, view?: ViewState): Promise<string[]>;
   /** Write committed edits back (ADR-87): a host that grants editing may hand the grid's commits straight here. */
   update?(edits: CellEdit[]): Promise<void>;
+  /** Release what the source holds — a worker, a connection. The host calls it when it lets the source go. */
+  close?(): Promise<void>;
 }

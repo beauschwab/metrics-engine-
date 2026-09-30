@@ -32,10 +32,22 @@ export function metricUnit(shape: Pick<MetricShape, 'unit' | 'format' | 'precisi
   if (shape.format === 'currency_usd' || shape.unit === 'USD') return { unit: 'ccy', dp: 0 };
   const pct = /^percent_(\d)dp$/.exec(shape.format);
   if (pct) return { unit: 'pct', dp: Number(pct[1]) };
-  if (shape.unit === 'percent') return { unit: 'pct', dp: shape.precision ?? 2 };
+  // The format is the rendering truth: a `bps` format reads in basis points whatever the stored unit.
   if (shape.format === 'bps') return { unit: 'bps', dp: shape.precision ?? 1 };
+  if (shape.unit === 'percent') return { unit: 'pct', dp: shape.precision ?? 2 };
   if (shape.unit === 'count') return { dp: 0 };
   return { dp: shape.precision ?? 0 };
+}
+
+/**
+ * What the grid stores a metric's value in, relative to the engine: the
+ * catalog's `bps` format holds a percent and multiplies by 100 as it
+ * renders, while a grid `bps` column holds basis points (ADR-74). The rows
+ * are scaled once on the way in, so every surface — cells, subtotals, the
+ * sheet, a chart drawn from the block — reads the same number.
+ */
+export function metricScale(format: string): number {
+  return format === 'bps' ? 100 : 1;
 }
 
 /** A dim's label: `entity_id` reads as "Entity id". */
@@ -69,12 +81,12 @@ export function metricGroupsSchema(shape: MetricShape, dims: readonly string[]):
 }
 
 /** The interpreter's group rows as grid records: the key's dims spread into columns, the move derived. */
-export function metricGroupRows(rows: ReadonlyArray<{ key: Record<string, string>; value: number; prior: number }>, dims: readonly string[]): GridRecord[] {
+export function metricGroupRows(rows: ReadonlyArray<{ key: Record<string, string>; value: number; prior: number }>, dims: readonly string[], scale = 1): GridRecord[] {
   return rows.map((r) => ({
     ...Object.fromEntries(dims.map((d) => [d, r.key[d] ?? ''])),
-    value: r.value,
-    prior: r.prior,
-    delta: r.value - r.prior,
+    value: r.value * scale,
+    prior: r.prior * scale,
+    delta: (r.value - r.prior) * scale,
     [GROUP_KEY]: dims.map((d) => r.key[d] ?? '').join(' · '),
   }));
 }

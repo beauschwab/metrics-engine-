@@ -93,9 +93,24 @@ const crossCheck = (v: { [k: string]: unknown }, ctx: z.RefinementCtx): void => 
   };
   (v.columnOrder as string[]).forEach((id, i) => defined(id, ['columnOrder', i]));
   (v.sorting as { id: string }[]).forEach((s, i) => defined(s.id, ['sorting', i, 'id']));
-  (v.columnFilters as { id: string }[]).forEach((f, i) => {
+  (v.columnFilters as { id: string; value?: unknown }[]).forEach((f, i) => {
     defined(f.id, ['columnFilters', i, 'id']);
-    if (isPivotId(f.id)) issue(`a pivot column is not filtered; filter its measure or its dimension: ${f.id}`, ['columnFilters', i, 'id']);
+    if (isPivotId(f.id)) { issue(`a pivot column is not filtered; filter its measure or its dimension: ${f.id}`, ['columnFilters', i, 'id']); return; }
+    // The value's shape follows the column's kind, as the contract says: a
+    // dimension keeps rows whose value is one of a list of strings; a
+    // measure (a calculated column is one) an inclusive range whose ends
+    // are finite numbers or null. Any other shape would read differently
+    // in memory and in SQL, so it is refused here.
+    const measure = isComputedId(f.id) || metaOf(f.id)?.kind === 'measure';
+    const value = f.value;
+    if (measure) {
+      const end = (x: unknown) => x === null || (typeof x === 'number' && Number.isFinite(x));
+      if (!Array.isArray(value) || value.length !== 2 || !value.every(end)) {
+        issue(`a range filter on ${f.id} takes [min|null, max|null] of finite numbers`, ['columnFilters', i, 'value']);
+      }
+    } else if (metaOf(f.id) && (!Array.isArray(value) || !value.every((x) => typeof x === 'string'))) {
+      issue(`a set filter on ${f.id} takes a list of strings`, ['columnFilters', i, 'value']);
+    }
   });
   for (const k of Object.keys(v.columnVisibility as object)) defined(k, ['columnVisibility', k]);
   for (const k of Object.keys(v.columnSizing as object)) defined(k, ['columnSizing', k]);

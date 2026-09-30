@@ -19,6 +19,7 @@ import { VIEW_VERSION, safeParseView, type ViewState } from '../grid/viewState';
 import type { DataSource, SourceDescription } from '../data/source';
 import type { GridRecord } from '../grid/schema';
 import { headlessTable } from './headless';
+import { isGroupNode, type GroupNode } from '../data/groupNode';
 
 export interface ContractColumn {
   id: string;
@@ -148,15 +149,31 @@ export async function queryView(
   // for the totals over everything the view matches; the rest is answered
   // whole and cut here.
   const windowed = !!about.serves.window && view.grouping.length === 0;
-  const answer = windowed ? await source.query(view, { window: { offset, limit }, totals: true }) : await source.query(view);
+  const servedGroups = !!about.serves.group && view.grouping.length > 0;
+  const answer = windowed
+    ? await source.query(view, { window: { offset, limit }, totals: true })
+    : await source.query(view, servedGroups ? { totals: true } : {});
   const effective: ViewState = options.expandAll ? { ...view, expanded: true } : view;
-  const table = headlessTable(answer.rows, effective, schemaFromDescription(about));
+  // A source that grouped (ADR-70) answered with group nodes, a level at a
+  // time: they are not grouped again here. Expanding them is asking the
+  // source for each node's children by its path, level by level.
+  let rows = answer.rows;
+  if (answer.applied.group && effective.expanded === true) {
+    const attach = async (list: GridRecord[]): Promise<GridRecord[]> => Promise.all(list.map(async (node) => {
+      if (!isGroupNode(node)) return node;
+      const kids = await source.query(view, { groupPath: node.__group.path });
+      return { ...node, __children: await attach(kids.rows) };
+    }));
+    rows = await attach(rows);
+  }
+  const table = headlessTable(rows, effective, schemaFromDescription(about), answer.applied);
   const columnsOut = table.getVisibleLeafColumns().map((c) => c.id);
   const model = table.getRowModel().rows;
   const window = answer.applied.window ? model : model.slice(offset, offset + limit);
 
-  const rows: QueryRow[] = window.map((row) => {
-    const grouped = row.getIsGrouped();
+  const out: QueryRow[] = window.map((row) => {
+    const node: GroupNode | null = isGroupNode(row.original) ? row.original : null;
+    const grouped = row.getIsGrouped() || node !== null;
     const values: Record<string, unknown> = {};
     const shown: Record<string, string> = {};
     for (const cell of row.getAllCells()) {
@@ -164,23 +181,31 @@ export async function queryView(
       if (!columnsOut.includes(id)) continue;
       const meta = cell.column.columnDef.meta;
       let v: unknown;
-      if (cell.getIsGrouped()) v = row.groupingValue;
-      else if (cell.getIsAggregated()) v = aggregatedNumber(cell.getValue());
+      let aggregate = cell.getIsAggregated();
+      if (node) {
+        // An engine-made group: its own dimension's value, and each measure's aggregate as the engine computed it.
+        const raw = cell.getValue();
+        if (id === node.__group.column) v = node.__group.value;
+        else if (meta?.kind === 'measure' && cell.column.columnDef.aggregationFn && typeof raw === 'number' && Number.isFinite(raw)) { v = raw; aggregate = true; }
+      } else if (cell.getIsGrouped()) v = row.groupingValue;
+      else if (aggregate) v = aggregatedNumber(cell.getValue());
       else if (cell.getIsPlaceholder() || grouped) v = undefined;
       else v = cell.getValue();
       if (v !== undefined) values[id] = v;
-      if (display && meta && v !== undefined) shown[id] = formatValue(v, cell.getIsAggregated() ? aggregateMeta(meta, cell.column.columnDef.aggregationFn) : meta);
+      if (display && meta && v !== undefined) shown[id] = formatValue(v, aggregate ? aggregateMeta(meta, cell.column.columnDef.aggregationFn) : meta);
     }
-    const out: QueryRow = { id: row.id, depth: row.depth, kind: grouped ? 'group' : 'leaf', values };
-    if (grouped) {
-      out.group = {
+    const q: QueryRow = { id: row.id, depth: row.depth, kind: grouped ? 'group' : 'leaf', values };
+    if (node) {
+      q.group = { column: node.__group.column, value: node.__group.value, count: node.__group.count };
+    } else if (grouped) {
+      q.group = {
         column: String(row.groupingColumnId),
         value: String(row.groupingValue),
         count: row.getLeafRows().filter((r) => !r.getIsGrouped()).length,
       };
     }
-    if (display) out.display = shown;
-    return out;
+    if (display) q.display = shown;
+    return q;
   });
 
   const totals: QueryViewResult['totals'] = { values: {} };
@@ -194,12 +219,18 @@ export async function queryView(
     if (totals.display) totals.display[c.id] = formatValue(n, aggregateMeta(meta, c.columnDef.aggregationFn));
   }
 
-  const total = answer.applied.window ? answer.total : table.getFilteredRowModel().rows.length;
+  // The leaves the view keeps: the engine's count for a window, the top-level
+  // nodes' counts for engine-made groups, else the client's filtered rows.
+  const total = answer.applied.window
+    ? answer.total
+    : answer.applied.group
+      ? answer.rows.reduce((n, r) => n + (isGroupNode(r) ? r.__group.count : 1), 0)
+      : table.getFilteredRowModel().rows.length;
   const modelRows = answer.applied.window ? answer.total : model.length;
   return {
     view: effective,
     columns: columnsOut,
-    rows,
+    rows: out,
     total,
     modelRows,
     offset,

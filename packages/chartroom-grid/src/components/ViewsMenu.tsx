@@ -11,6 +11,7 @@ import { Bookmark, Link2, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { defaultView, type ViewState } from '../grid/viewState';
 import type { SavedView, ViewStore } from '../views/store';
 import { writeViewToHash } from '../views/url';
+import { useSchema } from './SchemaContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -25,6 +26,8 @@ export function ViewsMenu({
   view: ViewState;
   onLoad: (view: ViewState) => void;
 }) {
+  // Saved views are listed against the schema this grid shows (ADR-82).
+  const schema = useSchema();
   const [open, setOpen] = useState(false);
   const [views, setViews] = useState<SavedView[]>([]);
   const [name, setName] = useState('');
@@ -32,7 +35,7 @@ export function ViewsMenu({
   useEffect(() => {
     if (!open || !store) return;
     let live = true;
-    void store.list().then((v) => { if (live) setViews(v); });
+    void store.list(schema).then((v) => { if (live) setViews(v); });
     return () => { live = false; };
   }, [open, store]);
 
@@ -40,12 +43,12 @@ export function ViewsMenu({
     if (!store || !name.trim()) return;
     await store.save(name.trim(), view);
     setName('');
-    setViews(await store.list());
+    setViews(await store.list(schema));
   };
   const remove = async (id: string) => {
     if (!store) return;
     await store.remove(id);
-    setViews(await store.list());
+    setViews(await store.list(schema));
   };
   const copyLink = () => {
     const href = `${location.origin}${location.pathname}${writeViewToHash(location.hash || '#/grid', view)}`;
@@ -102,7 +105,7 @@ export function ViewsMenu({
         )}
         <Separator className="my-2" />
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="xs" onClick={() => { onLoad(defaultView()); setOpen(false); }} aria-label="Reset view">
+          <Button variant="ghost" size="xs" onClick={() => { onLoad(defaultView(schema)); setOpen(false); }} aria-label="Reset view">
             <RotateCcw /> Reset
           </Button>
           <Button variant="ghost" size="xs" onClick={copyLink} aria-label="Copy link to this view">

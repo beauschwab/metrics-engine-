@@ -22,7 +22,13 @@ export const headlessFeatures = tableFeatures({ ...features, coreReactivityFeatu
 export type HeadlessFeatures = typeof headlessFeatures;
 export type HeadlessTable = Table<HeadlessFeatures, GridRecord>;
 
-export function headlessTable(rows: GridRecord[], view: ViewState, schema: GridSchema = TREASURY_SCHEMA): HeadlessTable {
+/**
+ * `manual`: the stages the source already applied (ADR-70). The rows are
+ * then its answer — engine-made group nodes carrying the children fetched
+ * for them under `__children` — and the table passes them through rather
+ * than filtering, sorting or grouping them a second time.
+ */
+export function headlessTable(rows: GridRecord[], view: ViewState, schema: GridSchema = TREASURY_SCHEMA, manual?: { filter: boolean; sort: boolean; group: boolean }): HeadlessTable {
   return constructTable<HeadlessFeatures, GridRecord>({
     features: headlessFeatures,
     columns: buildColumns(view.columnAggs, view.columnFormats, view.computedColumns, view.pivot.column ? { ...view.pivot, distinct: distinctValues(rows, view.pivot.column) } : undefined, schema) as unknown as ColumnDef<HeadlessFeatures, GridRecord, unknown>[],
@@ -31,6 +37,11 @@ export function headlessTable(rows: GridRecord[], view: ViewState, schema: GridS
     globalFilterFn: 'search',
     keepPinnedRows: false,
     enableRowPinning: (row) => !row.getIsGrouped() && !isGroupNode(row.original),
+    manualFiltering: manual?.filter ?? false,
+    manualSorting: manual?.sort ?? false,
+    manualGrouping: manual?.group ?? false,
+    getSubRows: (row) => (row as GridRecord & { __children?: GridRecord[] }).__children,
+    getRowCanExpand: (row) => isGroupNode(row.original) || row.subRows.length > 0,
     state: toTableState(view),
   });
 }
