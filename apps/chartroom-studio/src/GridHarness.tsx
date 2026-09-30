@@ -25,16 +25,32 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RangeChart } from './RangeChart';
 import {
   TreasuryGrid, defaultView, duckdbSource, generatePositions, inMemorySource, localStorageViewStore,
-  readViewFromHash, writeViewToHash, type ChartOutcome, type SourceDescription, type ViewState, type ViewUpdate,
+  readViewFromHash, writeViewToHash, type ChartOutcome, type EditPolicy, type SourceDescription, type ViewState, type ViewUpdate,
 } from 'chartroom-grid';
 
 const ROWS = 50_000;
 
 type SourceKind = 'memory' | 'duckdb';
 
-function sourceKind(): SourceKind {
+const hashParams = () => {
   const q = location.hash.indexOf('?');
-  return q >= 0 && new URLSearchParams(location.hash.slice(q + 1)).get('s') === 'duckdb' ? 'duckdb' : 'memory';
+  return new URLSearchParams(q >= 0 ? location.hash.slice(q + 1) : '');
+};
+
+function sourceKind(): SourceKind {
+  return hashParams().get('s') === 'duckdb' ? 'duckdb' : 'memory';
+}
+
+/** `#/grid?e=1` grants editing (ADR-87): this harness is the one host that does; the dashboard never does. */
+const editingOn = (): boolean => hashParams().get('e') === '1';
+
+/** The harness link that keeps the source and flips one flag. */
+function linkWith(kind: SourceKind, edit: boolean): string {
+  const p = new URLSearchParams();
+  if (kind === 'duckdb') p.set('s', 'duckdb');
+  if (edit) p.set('e', '1');
+  const q = p.toString();
+  return q ? `#/grid?${q}` : '#/grid';
 }
 
 function initialView(): { view: ViewState; issues: string[] } {
@@ -45,6 +61,7 @@ function initialView(): { view: ViewState; issues: string[] } {
 
 export function GridHarness() {
   const [kind, setKind] = useState<SourceKind>(sourceKind);
+  const [editable, setEditable] = useState<boolean>(editingOn);
   const book = useMemo(() => generatePositions(ROWS), []);
   const source = useMemo(
     () => (kind === 'duckdb' ? duckdbSource(book, 'DuckDB-WASM') : inMemorySource(book, 'seeded book')),
@@ -68,6 +85,7 @@ export function GridHarness() {
   useEffect(() => {
     const onHash = () => {
       setKind(sourceKind());
+      setEditable(editingOn());
       const next = initialView();
       setState((prev) => (JSON.stringify(prev.view) === JSON.stringify(next.view) && next.issues.length === 0 ? prev : next));
     };
@@ -81,17 +99,26 @@ export function GridHarness() {
       return { view: next, issues: [] };
     });
   }, []);
+  // Editing (ADR-87): the harness grants it and hands every commit to the
+  // source's own `update`, so an edited book is the book the next query reads.
+  const edit = useMemo<EditPolicy | null>(
+    () => (editable && source.update ? { onCommit: (edits) => source.update!(edits) } : null),
+    [editable, source],
+  );
 
   return (
-    <div className="flex h-screen flex-col" data-testid="grid-harness" data-source={kind}>
+    <div className="flex h-screen flex-col" data-testid="grid-harness" data-source={kind} data-editing={editable || undefined}>
       <header className="cr-header">
         <span className="cr-brand">Chartroom</span>
         <span className="cr-header-title" data-testid="grid-harness-title">
           treasury grid — phase 5, {about ? `${about.rowCount.toLocaleString('en-US')} positions as of ${about.asOf} · ${about.name}` : kind === 'duckdb' ? 'loading DuckDB-WASM…' : 'describing the source…'}
         </span>
         <span className="cr-header-spacer" />
-        <a className="cr-link" href={kind === 'duckdb' ? '#/grid' : '#/grid?s=duckdb'} data-testid="grid-source-switch">
+        <a className="cr-link" href={linkWith(kind === 'duckdb' ? 'memory' : 'duckdb', editable)} data-testid="grid-source-switch">
           {kind === 'duckdb' ? 'in-memory source' : 'DuckDB-WASM source'}
+        </a>
+        <a className="cr-link" href={linkWith(kind, !editable)} data-testid="grid-edit-switch" data-editing={editable || undefined}>
+          {editable ? 'editing on' : 'editing off'}
         </a>
         <a className="cr-link" href="#/widgets">widget states</a>
         <a className="cr-link" href="#/">back to the studio</a>
@@ -108,7 +135,7 @@ export function GridHarness() {
       <div className="min-h-0 flex-1 px-5 pt-3 pb-5">
         <div className="flex h-full border border-border bg-card">
           <div className="min-w-0 flex-1">
-            <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={store} defaultSidebarOpen onChart={setChart} />
+            <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={store} defaultSidebarOpen onChart={setChart} edit={edit} />
           </div>
           {chart && <RangeChart outcome={chart} onClose={() => setChart(null)} />}
         </div>

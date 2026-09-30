@@ -13,6 +13,7 @@
  * addressed by the values of the view's grouping columns in order.
  */
 
+import type { CellEdit } from '../grid/edit';
 import type { ColumnMeta } from '../grid/meta';
 import type { ViewState } from '../grid/viewState';
 
@@ -64,4 +65,6 @@ export interface DataSource<Row> {
   query(view: ViewState, options?: QueryOptions): Promise<QueryResult<Row>>;
   /** The distinct values of a dimension over the whole source, in reading order — the pivot's columns (ADR-80). */
   distinct?(column: string): Promise<string[]>;
+  /** Write committed edits back (ADR-87): a host that grants editing may hand the grid's commits straight here. */
+  update?(edits: CellEdit[]): Promise<void>;
 }

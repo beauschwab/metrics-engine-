@@ -34,6 +34,10 @@ test.describe('the interpreter renders real data', () => {
     const table = page.getByTestId('widget-outflow-table').getByTestId('treasury-grid');
     await expect(table.locator('tbody tr').first()).toBeVisible();
     await expect(table.locator('tbody tr').first().locator('td[data-column="value"]')).toHaveText(/^-?\$[\d,]+$/);
+    // The dashboard grants no editing (ADR-87): a double-click on a value opens nothing.
+    await table.locator('tbody tr').first().locator('td[data-column="value"]').dblclick();
+    await expect(table.locator('[data-slot="cell-editor"]')).toHaveCount(0);
+    await expect(table).not.toHaveAttribute('data-editable', '');
   });
 
   test('the grid widget keeps the reader\'s arrangement in the widget\'s state (ADR-83)', async ({ page }) => {

@@ -12,8 +12,13 @@ import type { SourceDescription } from '../data/source';
 import { isGroupNode } from '../data/sqlSource';
 
 export function StatusBar({
-  table, about, applied, pending = false, servedTotal,
-}: { table: TreasuryTable; about: SourceDescription | null; applied?: Applied; pending?: boolean; servedTotal?: number }) {
+  table, about, applied, pending = false, servedTotal, edited, editError,
+}: {
+  table: TreasuryTable; about: SourceDescription | null; applied?: Applied; pending?: boolean; servedTotal?: number;
+  /** Cells edited this session (ADR-87); undefined when the host granted no editing. */
+  edited?: number;
+  editError?: string | null;
+}) {
   // With a source that serves a stage, the client model passes rows through:
   // the count shown is what the source answered, against its whole book.
   // When the engine grouped, the rows are nodes; the positions they stand
@@ -41,6 +46,12 @@ export function StatusBar({
         <span className="tabular-nums text-foreground">{filtered.toLocaleString('en-US')}</span>
         {filtered !== total && <> of <span className="tabular-nums">{total.toLocaleString('en-US')}</span></>} rows
       </span>
+      {edited !== undefined && (
+        <span data-slot="status-edited" data-count={edited} className="flex items-center gap-2">
+          <span><span className="tabular-nums text-foreground">{edited.toLocaleString('en-US')}</span> {edited === 1 ? 'cell' : 'cells'} edited</span>
+          {editError && <span data-slot="status-edit-error" className="text-breach-text">edit refused: {editError}</span>}
+        </span>
+      )}
       <span data-slot="status-selected" className="flex items-center gap-3">
         <span>
           <span className="tabular-nums text-foreground">{selected.length.toLocaleString('en-US')}</span> selected

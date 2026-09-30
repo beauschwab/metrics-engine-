@@ -107,6 +107,10 @@ export function useTreasuryTable({ data, view, onViewChange, applied, pivotValue
     // The view owns expansion (ADR-66); the table must not rewrite it when
     // the grouping or the data changes underneath.
     autoResetExpanded: false,
+    // A block is anchored to row and column ids, which survive a new answer:
+    // an edit's overlay (ADR-87) and a window fetched on scroll (ADR-85) both
+    // hand the table a new array, and neither is a reason to lose the block.
+    autoResetCellSelection: false,
     // Resizing writes the view on every pointer move; the body reads
     // `column.getSize()` per visible cell, which is a window, not the book.
     columnResizeMode: 'onChange',

@@ -2631,6 +2631,76 @@ buckets, equal to brute force; the pivot e2e unticks USD and watches its
 band go, reads the nine buckets off the link, and clears the choice with
 All.
 
+## ADR-87 — editing is a capability the host grants, and the dashboard never grants it
+
+**Pinned:** the owner's ask — editing as a general capability of a
+portable grid package, off in the dashboard — and Phase 6's refusal to
+paste into a grid that had nowhere for a value to land.
+
+**Decision.** `TreasuryGrid` takes an optional `edit: EditPolicy` — which
+columns may change (a list, or a rule over the meta; every registry
+column by default) and `onCommit(edits)`, where a committed change goes.
+Without it the grid is exactly what it was: read-only over its source.
+With it, a double-click, Enter, F2 or a typed character on the focused
+cell opens an inline editor; Enter commits and moves down, Tab commits
+and moves along, Escape gives up, a blur commits a good value and drops a
+bad one. A value that does not read stays under the reader's hands with
+the reason, never half-committed. Ctrl+V lands a tab-separated block
+from the focused cell over the visible columns — the paste ADR-71 had no
+home for — skipping and naming what cannot change: a group row, an
+aggregate, a placeholder, a calculated or pivot column, a value that does
+not parse.
+
+*What typed text means.* The stored value in the column's unit, read
+the way the search grammar reads a number: `2.5bn` in a notional column
+is 2,500,000,000 dollars, `3.5%` in a yield column is 3.5, `(1,200)` is
+-1200, `$1,200,000` is a number with its sign stripped. A dimension takes
+text; a date takes an ISO day. NUM-01 holds: the grid never changes what
+a column means, only what a cell holds.
+
+*Where a commit goes.* The cells change at once — an overlay over the
+rows, so subtotals and totals recompute — the host's `onCommit` is
+called, and when it settles the source is asked again where the reader
+is, so what is shown is what the source holds: a host that persists
+nothing sees the value revert, honestly. A host that throws puts the
+cells back and the status bar says why. Every cell edited in the session
+wears a corner mark and the status bar counts them. `DataSource.update`
+joins the seam as an optional write: the in-memory source replaces the
+rows it names, the SQL source runs one `UPDATE … WHERE rowId = ?` per
+edit (inlined and escaped for Dremio), DuckDB-WASM inherits it; a
+portable host may wire `onCommit` straight to it.
+
+*The dashboard grants nothing.* `GridWidget` passes no policy, and says
+so in a comment: a dashboard reads a governed number, and an edit there
+would edit a query result nobody stores. The `grid@1` contract is
+unchanged. The harness grants editing behind `#/grid?e=1` and wires it
+to the source's `update`, so a reviewer can edit the seeded book in
+memory or in DuckDB.
+
+*Not carried.* Edits are data, not view: they do not enter the view's
+history, so Ctrl+Z undoes an arrangement and never a number — an undo of
+a write is the host's to offer, against its own source. The agent tools
+stay read-only; an agent that changes a number is a different decision
+(GOV-02 territory) and is not made here.
+
+**Not chosen.** Editing on by default with an `readOnly` prop (a host
+that forgets a flag would be editing a governed number; the grant must be
+explicit). A cell-level `editable` in the meta (which cells may change is
+the host's policy over its source, not a fact about the column). An
+edit queue with a Save button (a commit is a commit; batching is the
+host's `onCommit` to do).
+
+**What now fails if this regresses.** `edit.test.ts` reads typed text in
+every unit, rules columns in and out by policy, lands a pasted block from
+an anchor and names every skipped cell, lays edits over rows without
+touching the others, and reads edits back from the in-memory and SQLite
+sources. The grid e2e at `#/grid?e=1` types `2.5bn` into a notional and
+reads `$2,500.0M` with a moved footer total, drops a typed character with
+Escape, holds an unreadable yield with its reason, pastes a two-by-two
+block, and finds the same book read-only once the grant is off. The
+studio e2e double-clicks a value in the seeded grid widget and finds no
+editor.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

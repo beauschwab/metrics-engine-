@@ -78,6 +78,8 @@ export function GridWidget({
   if (answer.error) return <div className="cr-widget-error">{answer.error}</div>;
   if (!answer.result) return <div className="cr-skeleton cr-skeleton-chart" />;
   if (rows.length === 0) return <div className="cr-widget-empty">no groups match</div>;
+  // No `edit` policy (ADR-87): a dashboard reads a governed number; the grid
+  // is read-only here by the host's choice, not the package's.
   return (
     <div className="h-full min-h-0" data-slot="grid-widget" data-widget={w.id}>
       <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={null} defaultDensity="compact" />

@@ -16,6 +16,7 @@ export { isGroupNode, type GroupNode } from './groupNode';
 import { isPivotId } from '../grid/pivot';
 import { effectiveAgg } from '../grid/columns';
 import type { ViewState } from '../grid/viewState';
+import type { CellEdit } from '../grid/edit';
 import { compileSql, DUCKDB, type SqlDialect } from './compileSql';
 import type { GridRecord, GridSchema } from '../grid/schema';
 import { TREASURY_SCHEMA } from './treasury';
@@ -86,6 +87,20 @@ export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${di
       const col = q(column);
       const raw = await executor.run(`SELECT DISTINCT ${col} AS ${q('v')} FROM ${table.split('.').map(q).join('.')} WHERE ${col} IS NOT NULL ORDER BY ${col}`, []);
       return raw.map((r) => String(r.v ?? '')).filter((v) => v !== '');
+    },
+    // A committed edit (ADR-87) is one UPDATE by the row id; the value binds as
+    // a parameter, or inlines escaped where the dialect takes none.
+    async update(edits: CellEdit[]) {
+      const q = dialect.quote;
+      const from = table.split('.').map(q).join('.');
+      const literal = (v: string | number) => (typeof v === 'number' ? String(v) : `'${v.replace(/'/g, "''")}'`);
+      for (const e of edits) {
+        if (!schema.columns[e.columnId]) throw new RangeError(`sqlSource: unknown column ${JSON.stringify(e.columnId)}`);
+        const sql = dialect.inlineLiterals
+          ? `UPDATE ${from} SET ${q(e.columnId)} = ${literal(e.value)} WHERE ${q(schema.rowId)} = ${literal(e.rowId)}`
+          : `UPDATE ${from} SET ${q(e.columnId)} = ? WHERE ${q(schema.rowId)} = ?`;
+        await executor.run(sql, dialect.inlineLiterals ? [] : [e.value, e.rowId]);
+      }
     },
     async query(view: ViewState, { groupPath = [], window, totals }: QueryOptions = {}): Promise<QueryResult<GridRecord>> {
       // A pivot's buckets (ADR-80) need the dimension's values before a level or the totals compile:

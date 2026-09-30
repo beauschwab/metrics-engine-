@@ -67,5 +67,6 @@ export function duckdbSource(rows: Position[], name = 'DuckDB-WASM', schema?: Gr
     describe: () => inner().then((s) => s.describe()),
     query: (view, options) => inner().then((s) => s.query(view, options)),
     distinct: (column) => inner().then((s) => s.distinct!(column)),
+    update: (edits) => inner().then((s) => s.update!(edits)),
   };
 }

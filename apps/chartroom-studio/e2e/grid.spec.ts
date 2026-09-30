@@ -863,6 +863,71 @@ test.describe('the treasury grid harness', () => {
     await expect(panel.locator('[data-slot="range-chart-refused"]')).toHaveText(/mixes units.*NUM-01/);
   });
 
+  test('edits cells when the host grants it: typed values in the unit, paste of a block, a refused value, and read-only without the grant (ADR-87)', async ({ page }) => {
+    await page.goto('/#/grid?e=1');
+    const grid = page.getByTestId('treasury-grid');
+    const status = page.getByTestId('status-bar');
+    await expect(grid.locator('tbody tr').first()).toBeVisible();
+    await expect(page.getByTestId('grid-harness')).toHaveAttribute('data-editing', 'true');
+    await expect(status.locator('[data-slot="status-edited"]')).toHaveText(/^0 cells edited$/);
+    const footerNotional = grid.locator('tfoot [data-slot="grand-total"] td[data-column="notional"]');
+    const totalBefore = await footerNotional.textContent();
+
+    // A double-click opens the cell with its stored value; 2.5bn is 2,500,000,000 dollars.
+    const first = grid.locator('tbody tr').first();
+    const notional = first.locator('td[data-column="notional"]');
+    await notional.dblclick();
+    const editor = grid.locator('[data-slot="cell-editor"]');
+    await expect(editor).toBeVisible();
+    await expect(editor).toHaveValue(/^\d+(\.\d+)?$/);
+    await editor.fill('2.5bn');
+    await editor.press('Enter');
+    await expect(editor).toHaveCount(0);
+    await expect(notional).toHaveText('$2500.0M');
+    await expect(notional).toHaveAttribute('data-edited', 'true');
+    await expect(status.locator('[data-slot="status-edited"]')).toHaveText(/^1 cell edited$/);
+    await expect(footerNotional).not.toHaveText(totalBefore!);
+
+    // Enter moved the focus down: typing opens the next row's cell with the character; Escape drops it.
+    const second = grid.locator('tbody tr').nth(1);
+    await expect(second.locator('td[data-column="notional"]')).toHaveAttribute('data-selected', 'true');
+    await page.keyboard.type('9');
+    await expect(editor).toHaveValue('9');
+    await editor.press('Escape');
+    await expect(editor).toHaveCount(0);
+    await expect(status.locator('[data-slot="status-edited"]')).toHaveText(/^1 cell edited$/);
+
+    // A value the column cannot read stays under the reader's hands, marked; Escape gives it up.
+    const yieldCell = first.locator('td[data-column="yield"]');
+    await yieldCell.dblclick();
+    await editor.fill('high');
+    await editor.press('Enter');
+    await expect(editor).toHaveAttribute('data-invalid', '');
+    await expect(editor).toHaveAttribute('title', /not a number/);
+    await editor.press('Escape');
+    await expect(status.locator('[data-slot="status-edited"]')).toHaveText(/^1 cell edited$/);
+
+    // A pasted block lands from the focused cell over the visible columns.
+    await second.locator('td[data-column="mtm"]').click();
+    await grid.evaluate((el) => {
+      const data = new DataTransfer();
+      data.setData('text/plain', '(1,000)\t250\n2000\t-5\n');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
+    });
+    await expect(second.locator('td[data-column="mtm"]')).toHaveText('-$0.00M');
+    await expect(second.locator('td[data-column="dv01"]')).toHaveText('$250');
+    await expect(grid.locator('tbody tr').nth(2).locator('td[data-column="dv01"]')).toHaveText('-$5');
+    await expect(status.locator('[data-slot="status-edited"]')).toHaveText(/^5 cells edited$/);
+
+    // Without the grant the same book is read-only: a double-click opens nothing.
+    await page.getByTestId('grid-edit-switch').click();
+    await expect(page.getByTestId('grid-harness')).not.toHaveAttribute('data-editing', 'true');
+    await expect(grid.locator('tbody tr').first()).toBeVisible();
+    await grid.locator('tbody tr').first().locator('td[data-column="notional"]').dblclick();
+    await expect(grid.locator('[data-slot="cell-editor"]')).toHaveCount(0);
+    await expect(status.locator('[data-slot="status-edited"]')).toHaveCount(0);
+  });
+
   test('serves the same book from DuckDB-WASM: filter, sort and grouping compiled to SQL, children fetched on expand', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/#/grid?s=duckdb');

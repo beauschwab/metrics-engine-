@@ -25,9 +25,10 @@ import type { DataSource, SourceDescription } from '../data/source';
 import { isGroupNode } from '../data/sqlSource';
 import { useTreasuryTable, type Applied, type GridRowData, type ViewUpdate } from '../grid/useTreasuryTable';
 import type { GridRow } from './GroupCell';
-import type { Agg, ColumnFormat } from '../grid/meta';
+import type { Agg, ColumnFormat, ColumnMeta } from '../grid/meta';
 import type { ComputedColumn } from '../grid/computed';
 import type { ChartOutcome } from '../grid/chart';
+import { applyEdits, canEditColumn, editKey, type CellEdit, type EditPolicy } from '../grid/edit';
 import { defaultView, type ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
 import { canRedo, canUndo, createHistory, pushHistory, redoHistory, undoHistory } from '../views/history';
@@ -54,6 +55,12 @@ export interface TreasuryGridProps {
   viewStore?: ViewStore | null;
   /** The host draws a chart of the selected block (ADR-81): the grid describes, the host renders. */
   onChart?: (outcome: ChartOutcome) => void;
+  /**
+   * Editing, granted by the host (ADR-87): which columns may change and where
+   * a committed change goes. Absent, the grid is read-only over its source —
+   * the dashboard never grants it.
+   */
+  edit?: EditPolicy | null;
 }
 
 const idOf = (dnd: string) => dnd.slice(dnd.indexOf(':') + 1);
@@ -69,7 +76,7 @@ const collision: CollisionDetection = (args) =>
   String(args.active.id).startsWith(COLUMN_PREFIX) ? pointerWithin(args) : closestCenter(args);
 
 export function TreasuryGrid({
-  source, view: controlled, onViewChange, defaultSidebarOpen = false, defaultDensity = 'compact', viewStore = null, onChart,
+  source, view: controlled, onViewChange, defaultSidebarOpen = false, defaultDensity = 'compact', viewStore = null, onChart, edit = null,
 }: TreasuryGridProps) {
   const [ownView, setOwnView] = useState<ViewState>(defaultView);
   const view = controlled ?? ownView;
@@ -131,6 +138,14 @@ export function TreasuryGrid({
   const windowed = !!serves?.window && view.grouping.length === 0;
   const [win, setWin] = useState<{ offset: number; total: number; totals?: Record<string, number> } | null>(null);
   const wanted = useRef<number | null>(null);
+  // Editing (ADR-87): a committed edit lies over the rows until the source
+  // answers again, and the cells it touched keep a mark for the session.
+  const [overlay, setOverlay] = useState<CellEdit[]>([]);
+  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
+  const [editError, setEditError] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const keepWindow = useRef(false);
+  useEffect(() => { setTouched(new Set()); setOverlay([]); setEditError(null); }, [source]);
   const [children, setChildren] = useState<ReadonlyMap<string, GridRecord[]>>(() => new Map());
   // The table's manual modes follow what the source *serves*, not what the
   // last answer applied: between a served slice changing and the engine's
@@ -151,17 +166,44 @@ export function TreasuryGrid({
     let live = true;
     setPending(true);
     wanted.current = null;
+    // After an edit the answer is asked for again where the reader is, not from the top.
+    const offset = keepWindow.current && win ? win.offset : 0;
+    keepWindow.current = false;
     const t = setTimeout(() => {
-      void source.query(view, windowed ? { window: { offset: 0, limit: WINDOW }, totals: true } : {}).then((r) => {
+      void source.query(view, windowed ? { window: { offset, limit: WINDOW }, totals: true } : {}).then((r) => {
         if (!live) return;
         setRows(r.rows);
         setWin(r.applied.window ? { offset: r.offset ?? 0, total: r.total, totals: r.totals } : null);
+        setOverlay([]);
         setPending(false);
       });
     }, rows === null ? 0 : 120);
     return () => { live = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the served slices, by design
-  }, [source, about, servedKey]);
+  }, [source, about, servedKey, refresh]);
+
+  // A commit (ADR-87): the cells change at once, the host is told, and the
+  // source is asked again so what the reader sees is what it holds; a host
+  // that refuses puts the cells back and says why.
+  const commitEdits = useCallback((edits: CellEdit[]) => {
+    if (!edit || edits.length === 0) return;
+    setOverlay((prev) => [...prev, ...edits]);
+    setTouched((prev) => new Set([...prev, ...edits.map((e) => editKey(e.rowId, e.columnId))]));
+    setEditError(null);
+    Promise.resolve()
+      .then(() => edit.onCommit(edits))
+      .then(() => { keepWindow.current = true; setRefresh((n) => n + 1); })
+      .catch((err: unknown) => {
+        setOverlay((prev) => prev.filter((e) => !edits.includes(e)));
+        setTouched((prev) => { const next = new Set(prev); for (const e of edits) next.delete(editKey(e.rowId, e.columnId)); return next; });
+        setEditError(err instanceof Error ? err.message : String(err));
+      });
+  }, [edit]);
+  const editing = useMemo(() => (edit ? {
+    canEdit: (_rowId: string, columnId: string, meta: ColumnMeta | undefined) => canEditColumn(edit, columnId, meta),
+    commit: commitEdits,
+    edited: touched,
+  } : undefined), [edit, commitEdits, touched]);
 
   // The body says which rows are on screen; when they leave the window's
   // safe middle, the next window is centred on them — aligned to a block so
@@ -184,17 +226,19 @@ export function TreasuryGrid({
     });
   }, [windowed, win, held, source, view]);
 
-  // Group nodes the source made carry the children the shell has fetched.
+  // Group nodes the source made carry the children the shell has fetched;
+  // committed edits lie over every leaf until the source answers again.
   const data = useMemo<GridRowData[] | null>(() => {
     if (!rows) return null;
-    if (children.size === 0) return rows;
+    const patched = (list: GridRecord[]) => (overlay.length ? applyEdits(list, overlay, schema.rowId) : list);
+    if (children.size === 0) return overlay.length ? patched(rows) : rows;
     const attach = (list: GridRecord[]): GridRowData[] =>
-      list.map((row) => {
+      patched(list).map((row) => {
         const kids = isGroupNode(row) ? children.get(String(row[schema.rowId])) : undefined;
         return kids ? { ...row, __children: attach(kids) } : row;
       });
     return attach(rows);
-  }, [rows, children]);
+  }, [rows, children, overlay, schema.rowId]);
 
   // Pivot mode (ADR-80): the dimension across the top, and its values from
   // the source — the whole source, so a filter never removes a column.
@@ -423,6 +467,7 @@ export function TreasuryGrid({
                   totals={win?.totals}
                   servedTotal={win?.total}
                   resetKey={win ? servedKey : undefined}
+                  edit={editing}
                 />
               )}
             </div>
@@ -438,7 +483,7 @@ export function TreasuryGrid({
             />
           )}
         </div>
-        <StatusBar table={table} about={about} applied={manual} pending={pending} servedTotal={win?.total} />
+        <StatusBar table={table} about={about} applied={manual} pending={pending} servedTotal={win?.total} edited={edit ? touched.size : undefined} editError={editError} />
       </div>
       <DragOverlay dropAnimation={null}>
         {dragLabel ? <Badge variant="secondary" className="cursor-grabbing shadow-md">{dragLabel}</Badge> : null}

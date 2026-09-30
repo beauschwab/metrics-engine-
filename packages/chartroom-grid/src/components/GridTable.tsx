@@ -18,7 +18,7 @@
  *   handed to a widget contract, and `columnGroupingFeature`'s pivot mode.
  */
 
-import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react';
@@ -28,9 +28,10 @@ import type { Features } from '../grid/features';
 import { aggregatedNumber } from '../grid/aggregations';
 import { SELECT_ID } from '../grid/columns';
 import { rangesToTsv, selectedCellRanges } from '../grid/copy';
+import { editKey, editText, parseClipboardBlock, parseEditText, pasteEdits, type CellEdit } from '../grid/edit';
 import { copyText } from './clipboard';
 import { heatBackground, heatIntensity } from '../grid/heat';
-import { aggregateMeta, alignOf, type Agg, type ColumnFormat } from '../grid/meta';
+import { aggregateMeta, alignOf, type Agg, type ColumnFormat, type ColumnMeta } from '../grid/meta';
 import { hasBands, headerBands } from '../grid/bands';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { cn } from '../lib/utils';
@@ -86,7 +87,26 @@ export interface GridTableProps {
   servedTotal?: number;
   /** Changes when the served slices did: the body scrolls back to the top. */
   resetKey?: string;
+  /** Editing, when the host granted it (ADR-87): which cells may change, where a change goes, which cells changed. */
+  edit?: GridEditing;
 }
+
+export interface GridEditing {
+  canEdit(rowId: string, columnId: string, meta: ColumnMeta | undefined): boolean;
+  commit(edits: CellEdit[]): void;
+  /** `editKey(rowId, columnId)` of every cell edited this session. */
+  edited: ReadonlySet<string>;
+}
+
+/** The cell being edited and what has been typed into it. */
+interface EditingCell {
+  rowId: string;
+  columnId: string;
+  text: string;
+  error?: string;
+}
+
+type Move = 'up' | 'down' | 'left' | 'right' | null;
 
 type GridColumn = Column<Features, GridRecord, unknown>;
 type DisplayItem = { kind: 'row'; row: GridRow } | { kind: 'detail'; row: GridRow };
@@ -143,7 +163,7 @@ function pinnedStyle(column: GridColumn): CSSProperties {
 
 export function GridTable({
   table, pending = false, density, detailOpen, onToggleDetail, onContextTarget, onExpandGroup, onAggChange, onFormatChange, onRemoveComputed, onPivot,
-  window: served, onRange, totals, servedTotal, resetKey,
+  window: served, onRange, totals, servedTotal, resetKey, edit,
 }: GridTableProps) {
   const rowHeight = ROW_HEIGHTS[density];
   // The rows the body scrolls are the centre rows: a pinned row leaves the
@@ -192,6 +212,72 @@ export function GridTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- facets follow the filtered model
   }, [table, model]);
 
+  // Editing (ADR-87): one cell at a time, opened by a double-click, Enter, F2
+  // or a typed character on the focused cell; closed by Enter, Tab, Escape
+  // or a blur. The edit itself is the host's the moment it commits.
+  const [editing, setEditing] = useState<EditingCell | null>(null);
+  const editingRef = useRef<EditingCell | null>(null);
+  editingRef.current = editing;
+  const cellEditable = (cell: Cell<Features, GridRecord, unknown>): boolean => {
+    if (!edit) return false;
+    const row = cell.row;
+    if (row.getIsGrouped() || isGroupNode(row.original) || cell.getIsPlaceholder() || cell.getIsAggregated()) return false;
+    return edit.canEdit(row.id, cell.column.id, cell.column.columnDef.meta);
+  };
+  const startEdit = (cell: Cell<Features, GridRecord, unknown>, initial?: string) => {
+    if (!cellEditable(cell)) return;
+    setEditing({ rowId: cell.row.id, columnId: cell.column.id, text: initial ?? editText(cell.getValue()) });
+  };
+  // Focus returns to the table at once, so the next keystroke reaches the
+  // block's keyboard rather than the document; the editor's blur is guarded.
+  const refocus = () => { scrollRef.current?.querySelector('table')?.focus(); };
+  const cancelEdit = () => { editingRef.current = null; refocus(); setEditing(null); };
+  const commitEdit = (move: Move, fromBlur = false) => {
+    const current = editingRef.current;
+    if (!current || !edit) return;
+    const row = table.getRowModel().rows.find((r) => r.id === current.rowId) ?? table.getTopRows().find((r) => r.id === current.rowId);
+    const column = table.getColumn(current.columnId);
+    const meta = column?.columnDef.meta;
+    if (!row || !column || !meta) { cancelEdit(); return; }
+    const parsed = parseEditText(current.text, meta);
+    if (!parsed.ok) {
+      // Invalid text stays under the reader's hands; a blur gives up on it.
+      if (fromBlur) cancelEdit();
+      else setEditing({ ...current, error: parsed.reason });
+      return;
+    }
+    const previous = row.getValue(column.id);
+    editingRef.current = null;
+    refocus();
+    setEditing(null);
+    if (parsed.value !== previous) edit.commit([{ rowId: row.id, columnId: column.id, value: parsed.value, previous }]);
+    if (move) table.moveCellSelection(move);
+  };
+  const onPaste = (e: React.ClipboardEvent) => {
+    if (!edit || editingRef.current) return;
+    const focused = table.getFocusedCell();
+    const text = e.clipboardData.getData('text/plain');
+    if (!focused || !text) return;
+    e.preventDefault();
+    const rows = table.getRowModel().rows;
+    const bounds = table.getCellSelectionBounds()[0];
+    const rowIndex = bounds?.minRowIndex ?? rows.findIndex((r) => r.id === focused.row.id);
+    const cellIndex = bounds?.minColumnIndex ?? focused.row.getVisibleCells().findIndex((c) => c.column.id === focused.column.id);
+    if (rowIndex < 0 || cellIndex < 0) return;
+    const pasteRows = rows.map((r) => ({
+      id: r.id,
+      grouped: r.getIsGrouped() || isGroupNode(r.original),
+      cells: r.getVisibleCells().map((c) => ({
+        columnId: c.column.id,
+        meta: c.column.columnDef.meta,
+        value: c.getValue(),
+        editable: !c.getIsPlaceholder() && !c.getIsAggregated() && c.column.id !== SELECT_ID,
+      })),
+    }));
+    const { edits } = pasteEdits(pasteRows, { rowIndex, cellIndex }, parseClipboardBlock(text), (rowId, columnId, meta) => edit.canEdit(rowId, columnId, meta));
+    if (edits.length) edit.commit(edits);
+  };
+
   // The positions the footer totals: when the engine grouped, the rows are
   // nodes and the positions are their counts (ADR-70).
   const coreRows = table.getCoreRowModel().rows;
@@ -203,7 +289,8 @@ export function GridTable({
   // The first data column carries the tree indent and the footer's label,
   // whatever order pinning and grouping put the columns in.
   const firstDataId = visible.find((c) => c.id !== SELECT_ID)?.id;
-  const rowProps = { table, firstDataId, heat, detailOpen, onToggleDetail, onExpandGroup } as const;
+  const editProps = edit ? { edited: edit.edited, editing, cellEditable, startEdit, onEditText: (text: string) => setEditing((prev) => (prev ? { ...prev, text, error: undefined } : prev)), commitEdit, cancelEdit } : undefined;
+  const rowProps = { table, firstDataId, heat, detailOpen, onToggleDetail, onExpandGroup, editProps } as const;
 
   return (
     <Table
@@ -215,10 +302,22 @@ export function GridTable({
       data-pending={pending || undefined}
       aria-busy={pending || undefined}
       tabIndex={0}
+      data-editable={edit ? '' : undefined}
+      onPaste={onPaste}
       onKeyDown={(e) => {
+        if (editingRef.current) return;
         // The block's keyboard (ADR-71): copy, clear, move, extend, all.
         const mod = e.ctrlKey || e.metaKey;
-        if (mod && (e.key === 'c' || e.key === 'C')) {
+        const focused = edit ? table.getFocusedCell() : undefined;
+        if (focused && !mod && !e.altKey && (e.key === 'Enter' || e.key === 'F2')) {
+          // Enter or F2 opens the focused cell with its value (ADR-87).
+          e.preventDefault();
+          startEdit(focused);
+        } else if (focused && !mod && !e.altKey && e.key.length === 1) {
+          // A typed character starts the edit with it, as a spreadsheet does.
+          e.preventDefault();
+          startEdit(focused, e.key);
+        } else if (mod && (e.key === 'c' || e.key === 'C')) {
           if (table.getSelectedCellCount() === 0) return;
           e.preventDefault();
           copyText(rangesToTsv(selectedCellRanges(table), { formatted: !e.shiftKey }));
@@ -356,8 +455,19 @@ export function GridTable({
 }
 
 /** One body row: in the virtualized body, or held at the top (ADR-77). */
+/** What a cell needs to edit itself (ADR-87), threaded from the table. */
+interface EditProps {
+  edited: ReadonlySet<string>;
+  editing: EditingCell | null;
+  cellEditable: (cell: Cell<Features, GridRecord, unknown>) => boolean;
+  startEdit: (cell: Cell<Features, GridRecord, unknown>, initial?: string) => void;
+  onEditText: (text: string) => void;
+  commitEdit: (move: Move, fromBlur?: boolean) => void;
+  cancelEdit: () => void;
+}
+
 function BodyRow({
-  row, index, pinned = false, className, style, table, firstDataId, heat, detailOpen, onToggleDetail, onExpandGroup,
+  row, index, pinned = false, className, style, table, firstDataId, heat, detailOpen, onToggleDetail, onExpandGroup, editProps,
 }: {
   row: GridRow;
   index: number;
@@ -370,6 +480,7 @@ function BodyRow({
   detailOpen: ReadonlySet<string>;
   onToggleDetail: (rowId: string) => void;
   onExpandGroup: (row: GridRow) => void;
+  editProps?: EditProps;
 }) {
   const grouped = row.getIsGrouped() || isGroupNode(row.original);
   const selected = row.getIsSelected();
@@ -400,6 +511,7 @@ function BodyRow({
           detailOpen={detailOpen.has(row.id)}
           onToggleDetail={onToggleDetail}
           onExpandGroup={onExpandGroup}
+          editProps={editProps}
         />
       ))}
     </TableRow>
@@ -551,7 +663,7 @@ function SelectAll({ table }: { table: TreasuryTable }) {
 }
 
 function BodyCell({
-  cell, table, first, heat, detailOpen, onToggleDetail, onExpandGroup,
+  cell, table, first, heat, detailOpen, onToggleDetail, onExpandGroup, editProps,
 }: {
   cell: Cell<Features, GridRecord, unknown>;
   table: TreasuryTable;
@@ -560,6 +672,7 @@ function BodyCell({
   detailOpen: boolean;
   onToggleDetail: (rowId: string) => void;
   onExpandGroup: (row: GridRow) => void;
+  editProps?: EditProps;
 }) {
   const column = cell.column;
   const meta = column.columnDef.meta;
@@ -646,6 +759,23 @@ function BodyCell({
     content = meta ? <ValueCell value={value} meta={meta} /> : <table.FlexRender cell={cell} />;
     if (meta?.heatmap) background = heatBackground(heatIntensity(value, heat.get(column.id)));
   }
+  // Editing (ADR-87): the cell under edit draws its input; an edited one wears a corner mark.
+  const editable = kind === 'value' && !!editProps && editProps.cellEditable(cell);
+  const isEditing = editable && editProps!.editing?.rowId === row.id && editProps!.editing.columnId === column.id;
+  const edited = !!editProps && editProps.edited.has(editKey(row.id, column.id));
+  if (isEditing) {
+    const e = editProps!.editing!;
+    content = (
+      <CellEditor
+        text={e.text}
+        error={e.error}
+        align={meta ? alignOf(meta) : 'left'}
+        onChange={editProps!.onEditText}
+        onCommit={editProps!.commitEdit}
+        onCancel={editProps!.cancelEdit}
+      />
+    );
+  }
   return (
     <TableCell
       data-align={meta ? alignOf(meta) : 'left'}
@@ -653,6 +783,10 @@ function BodyCell({
       data-cell={kind}
       data-heat={background ? '' : undefined}
       data-selected={selected || undefined}
+      data-editable={editable || undefined}
+      data-editing={isEditing || undefined}
+      data-edited={edited || undefined}
+      onDoubleClick={editable ? () => editProps!.startEdit(cell) : undefined}
       onMouseDown={(e) => {
         // A right-click inside the range keeps it, so the context menu can
         // copy what the user selected (Excel does the same); anywhere else,
@@ -669,7 +803,9 @@ function BodyCell({
         ...pinnedStyle(column),
       }}
       className={cn(
-        'flex min-w-0 select-none items-center border-b border-border-subtle bg-inherit px-2.5 py-0 data-[align=right]:justify-end',
+        'relative flex min-w-0 select-none items-center border-b border-border-subtle bg-inherit px-2.5 py-0 data-[align=right]:justify-end',
+        edited && "after:pointer-events-none after:absolute after:top-0 after:right-0 after:border-[3px] after:border-transparent after:border-t-primary after:border-r-primary after:content-['']",
+        isEditing && 'p-0',
         kind === 'group' && 'z-[1] overflow-visible',
         column.getIsPinned() === 'start' && 'border-r border-r-border',
         column.getIsPinned() === 'end' && 'border-l border-l-border',
@@ -677,5 +813,45 @@ function BodyCell({
     >
       {content}
     </TableCell>
+  );
+}
+
+/** The inline editor (ADR-87): the typed text, committed by Enter or Tab, dropped by Escape, committed or dropped by a blur. */
+function CellEditor({
+  text, error, align, onChange, onCommit, onCancel,
+}: {
+  text: string;
+  error?: string;
+  align: 'left' | 'right';
+  onChange: (text: string) => void;
+  onCommit: (move: Move, fromBlur?: boolean) => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
+  return (
+    <input
+      ref={ref}
+      data-slot="cell-editor"
+      data-invalid={error ? '' : undefined}
+      aria-invalid={error ? true : undefined}
+      title={error}
+      value={text}
+      onChange={(e) => onChange(e.target.value)}
+      onMouseDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); onCommit(e.shiftKey ? 'up' : 'down'); }
+        else if (e.key === 'Tab') { e.preventDefault(); onCommit(e.shiftKey ? 'left' : 'right'); }
+        else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+      }}
+      onBlur={() => onCommit(null, true)}
+      className={cn(
+        'h-full w-full min-w-0 select-text border border-primary bg-card px-2 text-[11.5px] text-foreground outline-none',
+        align === 'right' && 'text-right tabular-nums',
+        error && 'border-breach-text',
+      )}
+    />
   );
 }

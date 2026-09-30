@@ -8,13 +8,17 @@
  * expansion has a reference implementation to test the remote one against.
  */
 
+import { applyEdits, type CellEdit } from '../grid/edit';
 import { distinctValues } from '../grid/pivot';
 import type { ViewState } from '../grid/viewState';
 import type { GridRecord, GridSchema } from '../grid/schema';
 import { TREASURY_SCHEMA } from './treasury';
 import type { DataSource, QueryOptions, QueryResult, SourceDescription } from './source';
 
-export function inMemorySource<R extends GridRecord>(rows: R[], name = 'in-memory', schema: GridSchema = TREASURY_SCHEMA): DataSource<R> {
+export function inMemorySource<R extends GridRecord>(initial: R[], name = 'in-memory', schema: GridSchema = TREASURY_SCHEMA): DataSource<R> {
+  // An edit (ADR-87) replaces the rows it names, so the next answer is a new
+  // array and a reader of the previous one sees nothing change under it.
+  let rows = initial;
   const first = rows[0];
   const description: SourceDescription = {
     name,
@@ -31,6 +35,12 @@ export function inMemorySource<R extends GridRecord>(rows: R[], name = 'in-memor
     },
     async distinct(column: string) {
       return distinctValues(rows, column);
+    },
+    async update(edits: CellEdit[]) {
+      for (const e of edits) {
+        if (!schema.columns[e.columnId]) throw new RangeError(`inMemorySource: unknown column ${JSON.stringify(e.columnId)}`);
+      }
+      rows = applyEdits(rows, edits, schema.rowId);
     },
     async query(view: ViewState, { groupPath }: QueryOptions = {}): Promise<QueryResult<R>> {
       let out = rows;
