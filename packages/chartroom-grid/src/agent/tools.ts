@@ -27,6 +27,8 @@ export interface ContractColumn {
   unit?: ColumnMeta['unit'];
   dp?: number;
   groupable: boolean;
+  /** A dimension's implied order (ADR-84): the column sorts by it, not lexically. */
+  order?: readonly string[];
   agg?: ColumnMeta['agg'];
   weightBy?: string;
   /** The aggregations `columnAggs` may choose for this measure. */
@@ -53,7 +55,7 @@ export function viewContract(schema: GridSchema): ViewContract {
     const m = schema.columns[id]!;
     return {
       id, label: m.label, kind: m.kind, unit: m.unit, dp: m.dp,
-      groupable: !!m.groupable, agg: m.agg, weightBy: m.weightBy, aggs: allowedAggs(id, schema),
+      groupable: !!m.groupable, order: m.order, agg: m.agg, weightBy: m.weightBy, aggs: allowedAggs(id, schema),
       filter: m.kind === 'dimension' ? 'set' : 'range',
       formats: allowedFormatKeys(id, [], schema),
     };
@@ -62,7 +64,7 @@ export function viewContract(schema: GridSchema): ViewContract {
     grouping: 'string[] of groupable column ids, outermost first',
     columnFilters: '{ id, value }[] — a set filter takes value: string[] (keep rows whose value is one of these); a range filter takes value: [min|null, max|null], inclusive, null for an open end',
     globalFilter: 'string — a quick filter of space-separated tokens, all of which must hold: a bare word is matched case-insensitively against every column; column:text (contains), column=text, column!=text on a dimension; column>n, >=, <, <=, =, != on a measure, n with k/m/bn suffixes; a column is named by id or label (ccy, entity); quotes keep spaces',
-    sorting: '{ id, desc: boolean }[] — first entry sorts first; measures sort numerically',
+    sorting: '{ id, desc: boolean }[] — first entry sorts first; measures sort numerically; a dimension with an order sorts by it, unlisted values last',
     expanded: 'true to expand every group, or { [groupRowId]: true } where a group row id is "column:value" joined by ">" per level',
     pagination: '{ pageIndex, pageSize } — carried, not driven until the data layer serves it',
     columnVisibility: '{ [columnId]: false } hides a column',

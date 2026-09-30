@@ -46,6 +46,7 @@ export {
   PIVOT_PREFIX, isPivotId, pivotId, parsePivotId, distinctValues, pivotMeta, pivotValue, pivotAggregation, type PivotState,
 } from './grid/pivot';
 export { pivotMeasures, type PivotBuild } from './grid/columns';
+export { compareByOrder, ordinalRank, sortByOrder, orderFromRows } from './grid/ordinal';
 export { schemaFromColumns, schemaFromDescription, measuresOf, idsOf, type GridSchema, type GridRecord } from './grid/schema';
 export { TREASURY_SCHEMA, TREASURY_META, TREASURY_ORDER } from './data/treasury';
 export { metricGroupsSchema, metricGroupRows, metricUnit, dimLabel, GROUP_KEY, type MetricShape } from './data/metricGroups';

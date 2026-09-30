@@ -11,6 +11,7 @@ import { createColumnHelper } from '@tanstack/table-core';
 import type { Features } from './features';
 import { AGGS, FORMAT_KEYS, isScalable, type Agg, type ColumnFormat, type ColumnMeta } from './meta';
 import { computedAggregation, computedMeta, computedValue, isComputedId, type ComputedColumn } from './computed';
+import { sortByOrder } from './ordinal';
 import { pivotAggregation, pivotId, pivotMeta, pivotValue, type PivotState } from './pivot';
 import { TREASURY_META, TREASURY_ORDER, TREASURY_SCHEMA } from '../data/treasury';
 import { idsOf, measuresOf, type GridRecord, type GridSchema } from './schema';
@@ -118,8 +119,10 @@ export function pivotMeasures(pivot: PivotState | undefined, schema: GridSchema 
 
 export function buildColumns(aggs: ColumnAggs = {}, formats: ColumnFormats = {}, computed: readonly ComputedColumn[] = [], pivot?: PivotBuild, schema: GridSchema = TREASURY_SCHEMA) {
   const pivoted = pivot?.column ? pivotMeasures(pivot, schema) : [];
+  // The buckets read in the dimension's own order where it has one (ADR-84).
+  const buckets = pivot?.column ? sortByOrder(pivot.distinct, schema.columns[pivot.column]?.order) : [];
   const pivotColumns = pivot?.column
-    ? pivot.distinct.flatMap((value) =>
+    ? buckets.flatMap((value) =>
       pivoted.flatMap((m) => {
         const meta = effectiveMeta(m, formats, [], schema);
         const agg = effectiveAgg(m, aggs, schema);
@@ -178,8 +181,9 @@ export function buildColumns(aggs: ColumnAggs = {}, formats: ColumnFormats = {},
         // are the UI over these.
         filterFn: meta.kind === 'dimension' ? 'arrHas' : 'inNumberRange',
         // Measures sort numerically — a grouped row's aggregate is a Number
-        // object (ADR-67), which `basic` compares by value.
-        sortFn: meta.kind === 'measure' ? 'basic' : 'alphanumeric',
+        // object (ADR-67), which `basic` compares by value. A dimension with
+        // an implied order sorts by it (ADR-84).
+        sortFn: meta.kind === 'measure' ? 'basic' : meta.order ? 'ordinal' : 'alphanumeric',
       });
   };
   return helper.columns([

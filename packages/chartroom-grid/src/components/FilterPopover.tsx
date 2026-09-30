@@ -17,6 +17,7 @@ import type { Column } from '@tanstack/react-table';
 import type { GridRecord } from '../grid/schema';
 import type { Features } from '../grid/features';
 import { formatValue } from '../grid/meta';
+import { compareByOrder } from '../grid/ordinal';
 import { cn } from '../lib/utils';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -52,10 +53,12 @@ export function FilterPopover({ column, className }: { column: GridColumn; class
 function SetFilter({ column }: { column: GridColumn }) {
   const [search, setSearch] = useState('');
   const facets = column.getFacetedUniqueValues();
-  const values = useMemo(
-    () => [...facets.entries()].map(([v, n]) => ({ value: String(v), count: n })).sort((a, b) => a.value.localeCompare(b.value)),
-    [facets],
-  );
+  // The list reads in the dimension's own order where it has one (ADR-84), else alphabetically.
+  const order = column.columnDef.meta?.order;
+  const values = useMemo(() => {
+    const cmp = order ? compareByOrder(order) : (a: string, b: string) => a.localeCompare(b);
+    return [...facets.entries()].map(([v, n]) => ({ value: String(v), count: n })).sort((a, b) => cmp(a.value, b.value));
+  }, [facets, order]);
   const selected = column.getFilterValue() as string[] | undefined;
   const isOn = (v: string) => !selected || selected.includes(v);
   const shown = search ? values.filter((x) => x.value.toLowerCase().includes(search.toLowerCase())) : values;

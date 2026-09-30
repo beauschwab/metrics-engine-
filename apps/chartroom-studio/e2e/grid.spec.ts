@@ -192,6 +192,29 @@ test.describe('the treasury grid harness', () => {
     await page.getByRole('button', { name: 'Clear all filters' }).click();
     await expect(status.locator('[data-slot="status-rows"]')).toHaveText(/^50,000 rows$/);
     await expect(page.getByLabel('Quick filter')).toHaveValue('');
+
+    // Tenor is a ladder (ADR-84): its set filter lists the buckets in their
+    // own order, and a header sort walks the ladder — O/N first, 10Y+ last —
+    // where a lexical sort would put 10Y+ before 1M.
+    const ladder = ['O/N', '1W', '1M', '3M', '6M', '1Y', '5Y', '10Y+'];
+    await grid.locator('th[data-column="tenorBucket"]').hover();
+    await page.getByRole('button', { name: 'Filter Tenor' }).click();
+    const tenorFilter = page.locator('[data-slot="filter-popover"][data-column="tenorBucket"]');
+    await expect(tenorFilter.locator('[data-slot="set-filter-values"] li')).toHaveCount(8);
+    expect(await tenorFilter.locator('[data-slot="set-filter-values"] li').evaluateAll((els) => els.map((el) => el.getAttribute('data-value')))).toEqual(ladder);
+    await page.keyboard.press('Escape');
+    // A 64px column's label has no room beside its tools, so the sort comes from the menu.
+    const tenorHeader = grid.locator('th[data-column="tenorBucket"]');
+    await tenorHeader.hover();
+    await page.getByRole('button', { name: 'Tenor column menu' }).click();
+    await page.getByRole('menuitem', { name: 'Sort ascending' }).click();
+    await expect(tenorHeader).toHaveAttribute('aria-sort', 'ascending');
+    await expect(grid.locator('tbody tr').first().locator('td[data-column="tenorBucket"]')).toHaveText('O/N');
+    await tenorHeader.hover();
+    await page.getByRole('button', { name: 'Tenor column menu' }).click();
+    await page.getByRole('menuitem', { name: 'Sort descending' }).click();
+    await expect(tenorHeader).toHaveAttribute('aria-sort', 'descending');
+    await expect(grid.locator('tbody tr').first().locator('td[data-column="tenorBucket"]')).toHaveText('10Y+');
   });
 
   test('pins, hides and resizes from the header menu, and hides from the sidebar', async ({ page }) => {

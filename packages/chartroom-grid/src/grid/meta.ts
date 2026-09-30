@@ -120,6 +120,12 @@ export interface ColumnMeta {
   pivot?: boolean;
   /** Dimensions only: may this column be a grouping level? */
   groupable?: boolean;
+  /**
+   * Dimensions only: the values in their implied order (ADR-84) — a tenor
+   * ladder, a maturity bucket, a rating — so the column sorts, filters and
+   * pivots in that order rather than lexically. Values not named sort last.
+   */
+  order?: readonly string[];
   /** Measures only: how the column rolls up under grouping. */
   agg?: Agg;
   /** For `wavg`: the column id to weight by, e.g. `notional`. */

@@ -2486,6 +2486,57 @@ The studio's `studio.spec.ts` finds the seeded working table with dollar
 rows, groups it by entity from the header menu, and reads the arrangement
 back in the source tab.
 
+## ADR-84 — an ordinal dimension declares its order once, and every reader of the column follows it
+
+**Pinned:** the owner's question — a string column such as a tenor
+bucket has an implied order that a lexical sort scrambles ("10Y+" before
+"1M"); how does a reader get the ladder? — and BAR-02, which already
+gives the bar chart the same answer for the same dims.
+
+**Decision.** `ColumnMeta` gains `order?: readonly string[]` on a
+dimension: the values in their implied order. It is declared once, on
+the schema, never on the view — a reader chooses *whether* to sort by
+tenor; the book knows *what* tenor order is — and every path that reads
+the column follows it:
+
+- *The sort.* The column's `sortFn` is `ordinal`, registered in the
+  feature registry beside `alphanumeric`; it reads the order off the
+  column's own meta, so the column definition stays a name, not a
+  closure, and group rows sort by it as leaves do. A value the order does
+  not name sorts after every named one, alphanumerically among its kind,
+  so a bucket the data grew appears at the end rather than nowhere.
+- *The SQL.* `compileSql` orders such a column by `CASE col WHEN v₀ THEN
+  0 … ELSE n END`, then the column, every value a parameter (inlined,
+  escaped, for Dremio); a grouping level on the dimension reads in that
+  order by default, as it read alphabetically before.
+- *The set filter* lists the values in that order; *the pivot* lays its
+  buckets across the top in that order.
+- *The treasury book* declares the tenor ladder (`O/N … 10Y+`). *A
+  registry metric's* ordinal dims — the API already marks a
+  `*_bucket` dim `ordinal` and knows its values — now carry those values
+  in the contract summary, and `metricGroupsSchema` turns them into the
+  column's order; where a summary has none, the studio takes the order
+  the engine served the groups in, which is BAR-02's rule.
+- *The agent contract* names the order on the column, so `set_view`'s
+  author knows a sort on it is not lexical.
+
+**Not chosen.** A per-view sort comparator (the view is JSON every
+consumer speaks; a function does not serialize, and a view that carried
+the ladder would let two views disagree about what tenor order is). A
+numeric shadow column (`tenorYears`) sorted in the ladder's stead — it
+works for tenors and for nothing else, and it leaks a sort key into the
+data. A `sortDescFirst` toggle — orthogonal; the ladder's direction is
+still the reader's.
+
+**What now fails if this regresses.** `ordinal.test.ts` sorts leaves,
+group rows and pivot buckets by the ladder in memory, compiles the CASE
+with a parameter per value and inline literals for Dremio, proves SQLite
+answers the order the client does, and builds a metric schema whose
+ordinal dim orders by the contract's values. The API's contract test
+finds the maturity ladder on the summary. The grid e2e reads the tenor
+set filter in ladder order and walks the header sort from `O/N` to
+`10Y+`.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

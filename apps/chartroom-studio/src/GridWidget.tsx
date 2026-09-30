@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardSpec, FilterExpr, WidgetInstance } from 'chartroom-spec';
 import {
-  TreasuryGrid, VIEW_VERSION, defaultView, inMemorySource, metricGroupRows, metricGroupsSchema, safeParseView,
+  TreasuryGrid, VIEW_VERSION, defaultView, inMemorySource, metricGroupRows, metricGroupsSchema, orderFromRows, safeParseView,
   type ViewUpdate,
 } from 'chartroom-grid';
 import { DEFAULT_ENV, requestsFor, type AnalystEnv, type GroupResult } from './bindings';
@@ -49,18 +49,21 @@ export function GridWidget({
     return () => { alive = false; };
   }, [requests]);
 
+  const rows = useMemo(() => (answer.result ? metricGroupRows(answer.result.rows, dims) : []), [answer.result, dims]);
   const schema = useMemo(
     () => metricGroupsSchema({
       measure: contract?.measure ?? w.bind.metric,
       unit: answer.result?.unit ?? contract?.unit ?? 'number',
       format: answer.result?.format ?? contract?.format ?? 'number',
       precision: contract?.precision,
-      dims: contract?.dims ?? dims.map((name) => ({ name })),
+      // An ordinal dim reads in its ladder's order (ADR-84): the contract's values
+      // where the summary carries them, else the order the engine served the groups in — BAR-02's rule.
+      dims: (contract?.dims ?? dims.map((name) => ({ name, ordinal: false }))).map((d) =>
+        d.ordinal && !d.values?.length ? { ...d, values: orderFromRows(rows, d.name) } : d),
       allowed_aggregations: contract?.allowed_aggregations,
     }, dims),
-    [contract, answer.result?.unit, answer.result?.format, dims],
+    [contract, answer.result?.unit, answer.result?.format, dims, rows],
   );
-  const rows = useMemo(() => (answer.result ? metricGroupRows(answer.result.rows, dims) : []), [answer.result, dims]);
   const source = useMemo(
     () => inMemorySource(rows, `${contract?.measure ?? w.bind.metric}${answer.result ? ` · as of ${answer.result.asOf}` : ''}`, schema),
     [rows, schema, contract?.measure, w.bind.metric, answer.result],

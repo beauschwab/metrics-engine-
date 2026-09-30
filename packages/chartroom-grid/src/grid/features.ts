@@ -43,6 +43,7 @@ import {
 } from '@tanstack/table-core';
 import { wavg } from './aggregations';
 import type { ColumnMeta } from './meta';
+import { ordinalSortFn } from './ordinal';
 import { searchFilterFn } from './search';
 
 export const features = tableFeatures({
@@ -83,6 +84,8 @@ export const features = tableFeatures({
     alphanumeric: sortFn_alphanumeric,
     basic: sortFn_basic,
     datetime: sortFn_datetime,
+    // A dimension with an implied order sorts by it (ADR-84).
+    ordinal: ordinalSortFn,
   },
 
   columnGroupingFeature,

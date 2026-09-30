@@ -8,7 +8,7 @@
 
 import type { ColumnMeta } from '../grid/meta';
 import type { GridSchema } from '../grid/schema';
-import type { Position } from './mock';
+import { TENORS, type Position } from './mock';
 
 export const TREASURY_META: Record<keyof Position, ColumnMeta> = {
   tradeId: { label: 'Trade', kind: 'dimension', band: 'Trade', width: 84 },
@@ -17,7 +17,7 @@ export const TREASURY_META: Record<keyof Position, ColumnMeta> = {
   legalEntity: { label: 'Entity', kind: 'dimension', groupable: true, band: 'Book', width: 84 },
   currency: { label: 'Ccy', kind: 'dimension', groupable: true, band: 'Instrument', width: 60 },
   product: { label: 'Product', kind: 'dimension', groupable: true, band: 'Instrument', width: 80 },
-  tenorBucket: { label: 'Tenor', kind: 'dimension', groupable: true, band: 'Instrument', width: 64 },
+  tenorBucket: { label: 'Tenor', kind: 'dimension', groupable: true, order: TENORS, band: 'Instrument', width: 64 },
   counterparty: { label: 'Counterparty', kind: 'dimension', groupable: true, band: 'Instrument', width: 104 },
   book: { label: 'Book', kind: 'dimension', groupable: true, band: 'Book', width: 68 },
   notional: { label: 'Notional', kind: 'measure', unit: 'mm', agg: 'sum', heatmap: true, band: 'Exposure', width: 104 },

@@ -21,7 +21,8 @@ export interface MetricShape {
   unit: string;
   format: string;
   precision?: number;
-  dims: ReadonlyArray<{ name: string }>;
+  /** A dim with `ordinal` and its `values` reads in that order (ADR-84). */
+  dims: ReadonlyArray<{ name: string; ordinal?: boolean; values?: readonly string[] }>;
   allowed_aggregations?: readonly string[];
 }
 
@@ -54,7 +55,11 @@ export function metricGroupsSchema(shape: MetricShape, dims: readonly string[]):
     id, meta: { label, kind: 'measure', unit, dp, agg: sums ? 'sum' : undefined, band: shape.measure, width: 110, ...extra },
   });
   const columns = [
-    ...dims.map((d) => ({ id: d, meta: { label: dimLabel(d), kind: 'dimension', groupable: true, band: 'Group', width: 110 } as ColumnMeta })),
+    ...dims.map((d) => {
+      const contract = shape.dims.find((x) => x.name === d);
+      const order = contract?.ordinal && contract.values?.length ? [...contract.values] : undefined;
+      return { id: d, meta: { label: dimLabel(d), kind: 'dimension', groupable: true, order, band: 'Group', width: 110 } as ColumnMeta };
+    }),
     measure('value', shape.measure),
     measure('prior', 'Prior'),
     measure('delta', 'Move', { negativeRed: true }),

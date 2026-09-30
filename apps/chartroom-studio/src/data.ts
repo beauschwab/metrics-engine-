@@ -46,7 +46,8 @@ export interface ContractSummary {
   /** How the measure re-aggregates (ADR-83): a grid sums only what sums. */
   allowed_aggregations?: string[];
   denominator_of: string | null;
-  dims: Array<{ name: string; type: string; ordinal: boolean }>;
+  /** An ordinal dim lists its values in order (ADR-84); a grid sorts the ladder by it. */
+  dims: Array<{ name: string; type: string; ordinal: boolean; values?: string[] }>;
   owner: string;
   description: string | null;
 }

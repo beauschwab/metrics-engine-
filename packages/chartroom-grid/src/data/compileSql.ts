@@ -190,6 +190,20 @@ class Params {
   }
 }
 
+/**
+ * A column's ORDER BY terms (ADR-84): a dimension with an implied order
+ * sorts by its rank in that order — a CASE over the named values, unnamed
+ * ones after — then by the column itself; any other column by itself.
+ */
+function orderTerms(id: string, desc: boolean, dialect: SqlDialect, params: Params, schema: GridSchema): string[] {
+  const col = dialect.quote(id);
+  const dir = desc ? 'DESC' : 'ASC';
+  const order = schema.columns[id]?.order;
+  if (!order?.length) return [`${col} ${dir}`];
+  const ranks = order.map((v, i) => `WHEN ${params.add(v)} THEN ${i}`).join(' ');
+  return [`CASE ${col} ${ranks} ELSE ${order.length} END ${dir}`, `${col} ${dir}`];
+}
+
 function where(view: ViewState, opts: CompileOptions, dialect: SqlDialect, params: Params, schema: GridSchema): string[] {
   const clauses: string[] = [];
   for (const f of view.columnFilters) {
@@ -298,6 +312,7 @@ export function compileSql(view: ViewState, opts: CompileOptions, dialect: SqlDi
     const clauses = where(view, opts, dialect, params, schema);
     const whereSql = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
     const order: string[] = [];
+    let byDim = false;
     for (const s of view.sorting) {
       if (isComputedId(s.id) || isPivotId(s.id)) {
         // A calculated column sorts a grouping level by its arithmetic over the operands' aggregates; a pivot column by its bucket's.
@@ -306,9 +321,15 @@ export function compileSql(view: ViewState, opts: CompileOptions, dialect: SqlDi
         continue;
       }
       const id = columnId(schema, s.id);
-      if (id === dim || effectiveAgg(id, view.columnAggs, schema)) order.push(`${dialect.quote(id)} ${s.desc ? 'DESC' : 'ASC'}`);
+      if (id === dim) {
+        byDim = true;
+        order.push(...orderTerms(id, s.desc, dialect, params, schema));
+      } else if (effectiveAgg(id, view.columnAggs, schema)) {
+        order.push(`${dialect.quote(id)} ${s.desc ? 'DESC' : 'ASC'}`);
+      }
     }
-    if (!order.some((o) => o.startsWith(dimCol))) order.push(`${dimCol} ASC`);
+    // The level reads in the dimension's own order unless the view sorts it otherwise.
+    if (!byDim) order.push(...orderTerms(dim, false, dialect, params, schema));
     const sql = `SELECT ${select.join(', ')} FROM ${from}${whereSql} GROUP BY ${dimCol} ORDER BY ${order.join(', ')}`;
     return { sql, params: params.values, shape: 'group', groupColumn: dim };
   }
@@ -329,6 +350,7 @@ export function compileSql(view: ViewState, opts: CompileOptions, dialect: SqlDi
         `CASE WHEN ${dim} = ${params.add(p.value)} THEN ${dialect.quote(columnId(schema, p.measure))} END ${s.desc ? 'DESC' : 'ASC'}`,
       ];
     }
+    if (!isComputedId(s.id)) return orderTerms(columnId(schema, s.id), s.desc, dialect, params, schema);
     return [`${leafExpr(s.id, dialect, view, params, schema)} ${s.desc ? 'DESC' : 'ASC'}`];
   });
   order.push(`${dialect.quote('tradeId')} ASC`);
