@@ -2670,6 +2670,14 @@ rows it names, the SQL source runs one `UPDATE … WHERE rowId = ?` per
 edit (inlined and escaped for Dremio), DuckDB-WASM inherits it; a
 portable host may wire `onCommit` straight to it.
 
+*What a commit never touches.* The row id column: it is what every
+edit, mark and selection is keyed by, so the grid refuses it whatever the
+policy says, and the SQL source refuses it again. A batch over SQL runs
+in one transaction where the engine has them (DuckDB, SQLite; Dremio's
+REST API takes one statement per job), so a paste lands whole or not at
+all; and a refused batch still re-reads the source, so what is shown is
+what it holds even where a host wrote part of it before refusing.
+
 *The dashboard grants nothing.* `GridWidget` passes no policy, and says
 so in a comment: a dashboard reads a governed number, and an edit there
 would edit a query result nobody stores. The `grid@1` contract is

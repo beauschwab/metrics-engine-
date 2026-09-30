@@ -125,3 +125,26 @@ describe('a source takes committed edits back', () => {
     expect(totals.totals!.notional).toBeCloseTo(book.reduce((a, b) => a + b.notional, 0) - book[3]!.notional + 42, 3);
   });
 });
+
+describe('a batch over SQL lands whole or not at all', () => {
+  it('rolls the earlier statements back when a later one fails, and refuses the row id', async () => {
+    const book = generatePositions(20);
+    const inner = sqliteExecutor(book);
+    let updates = 0;
+    const executor = {
+      async run(sql: string, params: ReadonlyArray<string | number>) {
+        if (sql.startsWith('UPDATE') && ++updates === 2) throw new Error('the engine refused the second write');
+        return inner.run(sql, params);
+      },
+    };
+    const source = sqlSource({ executor, table: 'positions', dialect: SQLITE });
+    await expect(source.update!([
+      { rowId: 'T000001', columnId: 'notional', value: 1, previous: book[0]!.notional },
+      { rowId: 'T000002', columnId: 'notional', value: 2, previous: book[1]!.notional },
+    ])).rejects.toThrow(/refused the second write/);
+    const rows = (await source.query(parseView({ version: 6, sorting: [{ id: 'tradeId', desc: false }] }))).rows;
+    expect(rows[0]!.notional).toBe(book[0]!.notional);
+    expect(rows[1]!.notional).toBe(book[1]!.notional);
+    await expect(source.update!([{ rowId: 'T000001', columnId: 'tradeId', value: 'X', previous: 'T000001' }])).rejects.toThrow(/row id/);
+  });
+});

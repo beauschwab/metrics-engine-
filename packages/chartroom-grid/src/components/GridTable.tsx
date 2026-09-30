@@ -103,6 +103,8 @@ interface EditingCell {
   rowId: string;
   columnId: string;
   text: string;
+  /** Opened by a typed character: the caret follows it rather than selecting it. */
+  typed?: boolean;
   error?: string;
 }
 
@@ -226,35 +228,42 @@ export function GridTable({
   };
   const startEdit = (cell: Cell<Features, GridRecord, unknown>, initial?: string) => {
     if (!cellEditable(cell)) return;
-    setEditing({ rowId: cell.row.id, columnId: cell.column.id, text: initial ?? editText(cell.getValue()) });
+    setEditing({ rowId: cell.row.id, columnId: cell.column.id, text: initial ?? editText(cell.getValue()), typed: initial !== undefined });
   };
-  // Focus returns to the table at once, so the next keystroke reaches the
-  // block's keyboard rather than the document; the editor's blur is guarded.
+  // Focus returns to the table after a keyboard commit or cancel, so the next
+  // keystroke reaches the block's keyboard; after a blur it stays where the
+  // reader put it — the input they just clicked, not the table.
   const refocus = () => { scrollRef.current?.querySelector('table')?.focus(); };
-  const cancelEdit = () => { editingRef.current = null; refocus(); setEditing(null); };
+  const cancelEdit = (fromBlur = false) => { editingRef.current = null; if (!fromBlur) refocus(); setEditing(null); };
   const commitEdit = (move: Move, fromBlur = false) => {
     const current = editingRef.current;
     if (!current || !edit) return;
     const row = table.getRowModel().rows.find((r) => r.id === current.rowId) ?? table.getTopRows().find((r) => r.id === current.rowId);
     const column = table.getColumn(current.columnId);
     const meta = column?.columnDef.meta;
-    if (!row || !column || !meta) { cancelEdit(); return; }
+    if (!row || !column || !meta) { cancelEdit(fromBlur); return; }
     const parsed = parseEditText(current.text, meta);
     if (!parsed.ok) {
       // Invalid text stays under the reader's hands; a blur gives up on it.
-      if (fromBlur) cancelEdit();
+      if (fromBlur) cancelEdit(true);
       else setEditing({ ...current, error: parsed.reason });
       return;
     }
     const previous = row.getValue(column.id);
     editingRef.current = null;
-    refocus();
+    if (!fromBlur) refocus();
     setEditing(null);
     if (parsed.value !== previous) edit.commit([{ rowId: row.id, columnId: column.id, value: parsed.value, previous }]);
     if (move) table.moveCellSelection(move);
   };
+  // A keystroke or paste aimed at a control inside the table — a filter's
+  // input, a menu, a checkbox — is that control's, never the block's.
+  const inControl = (e: { target: EventTarget | null; currentTarget: EventTarget | null }) => {
+    const t = e.target as HTMLElement | null;
+    return !!t && t !== e.currentTarget && !!t.closest('input, textarea, select, button, [contenteditable="true"], [role="menu"], [role="dialog"]');
+  };
   const onPaste = (e: React.ClipboardEvent) => {
-    if (!edit || editingRef.current) return;
+    if (!edit || editingRef.current || inControl(e)) return;
     const focused = table.getFocusedCell();
     const text = e.clipboardData.getData('text/plain');
     if (!focused || !text) return;
@@ -264,7 +273,9 @@ export function GridTable({
     const rowIndex = bounds?.minRowIndex ?? rows.findIndex((r) => r.id === focused.row.id);
     const cellIndex = bounds?.minColumnIndex ?? focused.row.getVisibleCells().findIndex((c) => c.column.id === focused.column.id);
     if (rowIndex < 0 || cellIndex < 0) return;
-    const pasteRows = rows.map((r) => ({
+    const block = parseClipboardBlock(text);
+    // Only the rows the block can reach are read: a paste of four cells into a book of fifty thousand touches four cells.
+    const pasteRows = rows.slice(rowIndex, rowIndex + block.length).map((r) => ({
       id: r.id,
       grouped: r.getIsGrouped() || isGroupNode(r.original),
       cells: r.getVisibleCells().map((c) => ({
@@ -274,7 +285,7 @@ export function GridTable({
         editable: !c.getIsPlaceholder() && !c.getIsAggregated() && c.column.id !== SELECT_ID,
       })),
     }));
-    const { edits } = pasteEdits(pasteRows, { rowIndex, cellIndex }, parseClipboardBlock(text), (rowId, columnId, meta) => edit.canEdit(rowId, columnId, meta));
+    const { edits } = pasteEdits(pasteRows, { rowIndex: 0, cellIndex }, block, (rowId, columnId, meta) => edit.canEdit(rowId, columnId, meta));
     if (edits.length) edit.commit(edits);
   };
 
@@ -305,7 +316,7 @@ export function GridTable({
       data-editable={edit ? '' : undefined}
       onPaste={onPaste}
       onKeyDown={(e) => {
-        if (editingRef.current) return;
+        if (editingRef.current || inControl(e)) return;
         // The block's keyboard (ADR-71): copy, clear, move, extend, all.
         const mod = e.ctrlKey || e.metaKey;
         const focused = edit ? table.getFocusedCell() : undefined;
@@ -768,6 +779,7 @@ function BodyCell({
     content = (
       <CellEditor
         text={e.text}
+        selectAll={!e.typed}
         error={e.error}
         align={meta ? alignOf(meta) : 'left'}
         onChange={editProps!.onEditText}
@@ -818,9 +830,11 @@ function BodyCell({
 
 /** The inline editor (ADR-87): the typed text, committed by Enter or Tab, dropped by Escape, committed or dropped by a blur. */
 function CellEditor({
-  text, error, align, onChange, onCommit, onCancel,
+  text, selectAll, error, align, onChange, onCommit, onCancel,
 }: {
   text: string;
+  /** Opened with the cell's value: select it all, so typing replaces it; opened by a typed character: the caret follows it. */
+  selectAll: boolean;
   error?: string;
   align: 'left' | 'right';
   onChange: (text: string) => void;
@@ -828,7 +842,14 @@ function CellEditor({
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    if (selectAll) el.select();
+    else el.setSelectionRange(el.value.length, el.value.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on open
+  }, []);
   return (
     <input
       ref={ref}

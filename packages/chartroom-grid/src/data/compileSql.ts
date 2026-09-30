@@ -174,9 +174,18 @@ function aggExpr(id: string, dialect: SqlDialect, view: ViewState, params: Param
   return compose(spec, a, b, params);
 }
 
-function tableRef(dialect: SqlDialect, table: string): string {
+export function tableRef(dialect: SqlDialect, table: string): string {
   if (!/^[A-Za-z_][\w$]*(\.[A-Za-z_][\w$]*)*$/.test(table)) throw new RangeError(`compileSql: bad table name ${JSON.stringify(table)}`);
   return table.split('.').map(dialect.quote).join('.');
+}
+
+/** A value as an SQL literal, for a dialect that takes no parameters: a finite number as is, text quoted and escaped. */
+export function sqlLiteral(value: string | number): string {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new RangeError('compileSql: a value is not finite');
+    return String(value);
+  }
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 class Params {
@@ -184,9 +193,7 @@ class Params {
   constructor(private readonly dialect: SqlDialect) {}
   add(value: string | number): string {
     if (typeof value === 'number' && !Number.isFinite(value)) throw new RangeError('compileSql: a filter value is not finite');
-    if (this.dialect.inlineLiterals) {
-      return typeof value === 'number' ? String(value) : `'${value.replace(/'/g, "''")}'`;
-    }
+    if (this.dialect.inlineLiterals) return sqlLiteral(value);
     this.values.push(value);
     return '?';
   }

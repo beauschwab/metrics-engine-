@@ -22,7 +22,7 @@ import { schemaFromColumns, type GridRecord, type GridSchema } from '../grid/sch
 import { TREASURY_SCHEMA } from '../data/treasury';
 import { SchemaContext } from './SchemaContext';
 import type { DataSource, SourceDescription } from '../data/source';
-import { isGroupNode } from '../data/sqlSource';
+import { groupNodePath, isGroupNode } from '../data/sqlSource';
 import { useTreasuryTable, type Applied, type GridRowData, type ViewUpdate } from '../grid/useTreasuryTable';
 import type { GridRow } from './GroupCell';
 import type { Agg, ColumnFormat, ColumnMeta } from '../grid/meta';
@@ -144,9 +144,16 @@ export function TreasuryGrid({
   const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
   const [editError, setEditError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
-  const keepWindow = useRef(false);
-  useEffect(() => { setTouched(new Set()); setOverlay([]); setEditError(null); }, [source]);
+  // A re-read after a commit keeps the reader's window and the children they expanded.
+  const refreshing = useRef(false);
+  // Edits whose commit the host has not settled yet: an answer that lands meanwhile must not drop them.
+  const inFlight = useRef(new Set<CellEdit>());
+  const touchedRef = useRef<ReadonlySet<string>>(touched);
+  touchedRef.current = touched;
+  useEffect(() => { setTouched(new Set()); setOverlay([]); setEditError(null); inFlight.current.clear(); }, [source]);
   const [children, setChildren] = useState<ReadonlyMap<string, GridRecord[]>>(() => new Map());
+  const childrenRef = useRef(children);
+  childrenRef.current = children;
   // The table's manual modes follow what the source *serves*, not what the
   // last answer applied: between a served slice changing and the engine's
   // answer, the client row models must not group or sort the stale rows
@@ -158,23 +165,32 @@ export function TreasuryGrid({
   );
   useEffect(() => {
     if (!about) return;
-    // Children fetched under the previous grouping are stale the moment a
-    // served slice changes — dropped now, not when the debounced answer
-    // lands, so a node expanded in the meantime keeps the children it just
-    // fetched under the new grouping (their paths are the same).
-    setChildren((prev) => (prev.size ? new Map() : prev));
+    // A re-read after a commit (ADR-87) is the same view asked again: the
+    // window stays where the reader is and the children they expanded are
+    // asked for again by their paths. A served slice changing is not: the
+    // children fetched under the previous slice are stale the moment it
+    // changes — dropped now, not when the debounced answer lands, so a node
+    // expanded in the meantime keeps the children it just fetched under the
+    // new grouping (their paths are the same).
+    const isRefresh = refreshing.current;
+    refreshing.current = false;
+    if (!isRefresh) setChildren((prev) => (prev.size ? new Map() : prev));
     let live = true;
     setPending(true);
     wanted.current = null;
-    // After an edit the answer is asked for again where the reader is, not from the top.
-    const offset = keepWindow.current && win ? win.offset : 0;
-    keepWindow.current = false;
+    const offset = isRefresh && win ? win.offset : 0;
     const t = setTimeout(() => {
-      void source.query(view, windowed ? { window: { offset, limit: WINDOW }, totals: true } : {}).then((r) => {
+      const main = source.query(view, windowed ? { window: { offset, limit: WINDOW }, totals: true } : {});
+      const kids = isRefresh
+        ? Promise.all([...childrenRef.current.keys()].map((id) => source.query(view, { groupPath: groupNodePath(id) }).then((r) => [id, r.rows] as const)))
+        : Promise.resolve([]);
+      void Promise.all([main, kids]).then(([r, fetched]) => {
         if (!live) return;
         setRows(r.rows);
         setWin(r.applied.window ? { offset: r.offset ?? 0, total: r.total, totals: r.totals } : null);
-        setOverlay([]);
+        if (isRefresh) setChildren(new Map(fetched));
+        // What the source now holds replaces every settled edit; one still being written stays over the rows.
+        setOverlay((prev) => prev.filter((e) => inFlight.current.has(e)));
         setPending(false);
       });
     }, rows === null ? 0 : 120);
@@ -187,23 +203,31 @@ export function TreasuryGrid({
   // that refuses puts the cells back and says why.
   const commitEdits = useCallback((edits: CellEdit[]) => {
     if (!edit || edits.length === 0) return;
+    const before = touchedRef.current;
+    for (const e of edits) inFlight.current.add(e);
     setOverlay((prev) => [...prev, ...edits]);
     setTouched((prev) => new Set([...prev, ...edits.map((e) => editKey(e.rowId, e.columnId))]));
     setEditError(null);
+    const reread = () => { refreshing.current = true; setRefresh((n) => n + 1); };
     Promise.resolve()
       .then(() => edit.onCommit(edits))
-      .then(() => { keepWindow.current = true; setRefresh((n) => n + 1); })
+      .then(() => { for (const e of edits) inFlight.current.delete(e); reread(); })
       .catch((err: unknown) => {
+        for (const e of edits) inFlight.current.delete(e);
         setOverlay((prev) => prev.filter((e) => !edits.includes(e)));
-        setTouched((prev) => { const next = new Set(prev); for (const e of edits) next.delete(editKey(e.rowId, e.columnId)); return next; });
+        // A cell an earlier commit changed keeps its mark; only cells this batch alone touched lose it.
+        setTouched((prev) => { const next = new Set(prev); for (const e of edits) { const k = editKey(e.rowId, e.columnId); if (!before.has(k)) next.delete(k); } return next; });
         setEditError(err instanceof Error ? err.message : String(err));
+        // A batch may have landed in part before the host refused: what is shown must still be what the source holds.
+        reread();
       });
   }, [edit]);
   const editing = useMemo(() => (edit ? {
-    canEdit: (_rowId: string, columnId: string, meta: ColumnMeta | undefined) => canEditColumn(edit, columnId, meta),
+    // The row id is what every edit, mark and selection is keyed by: never a cell to change.
+    canEdit: (_rowId: string, columnId: string, meta: ColumnMeta | undefined) => columnId !== schema.rowId && canEditColumn(edit, columnId, meta),
     commit: commitEdits,
     edited: touched,
-  } : undefined), [edit, commitEdits, touched]);
+  } : undefined), [edit, commitEdits, touched, schema.rowId]);
 
   // The body says which rows are on screen; when they leave the window's
   // safe middle, the next window is centred on them — aligned to a block so

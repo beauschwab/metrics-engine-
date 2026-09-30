@@ -17,7 +17,7 @@ import { isPivotId } from '../grid/pivot';
 import { effectiveAgg } from '../grid/columns';
 import type { ViewState } from '../grid/viewState';
 import type { CellEdit } from '../grid/edit';
-import { compileSql, DUCKDB, type SqlDialect } from './compileSql';
+import { compileSql, DUCKDB, sqlLiteral, tableRef, type SqlDialect } from './compileSql';
 import type { GridRecord, GridSchema } from '../grid/schema';
 import { TREASURY_SCHEMA } from './treasury';
 import type { DataSource, QueryOptions, QueryResult, SourceDescription } from './source';
@@ -31,6 +31,8 @@ export interface SqlExecutor {
 
 /** A group node's row id: stable across queries, distinct from any trade id. */
 export const groupNodeId = (path: string[]) => `g:${path.map(encodeURIComponent).join('/')}`;
+/** The path a group node id was made from — what a child query needs to ask for it again. */
+export const groupNodePath = (id: string): string[] => (id.startsWith('g:') ? id.slice(2).split('/').filter((s) => s !== '').map(decodeURIComponent) : []);
 
 export interface SqlSourceOptions {
   executor: SqlExecutor;
@@ -88,18 +90,29 @@ export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${di
       const raw = await executor.run(`SELECT DISTINCT ${col} AS ${q('v')} FROM ${table.split('.').map(q).join('.')} WHERE ${col} IS NOT NULL ORDER BY ${col}`, []);
       return raw.map((r) => String(r.v ?? '')).filter((v) => v !== '');
     },
-    // A committed edit (ADR-87) is one UPDATE by the row id; the value binds as
-    // a parameter, or inlines escaped where the dialect takes none.
+    // A committed batch (ADR-87) is one UPDATE per edit by the row id, in one
+    // transaction where the engine has them, so a batch lands whole or not at
+    // all; the value binds as a parameter, or inlines escaped where the
+    // dialect takes none (the same escaping the compiler uses).
     async update(edits: CellEdit[]) {
       const q = dialect.quote;
-      const from = table.split('.').map(q).join('.');
-      const literal = (v: string | number) => (typeof v === 'number' ? String(v) : `'${v.replace(/'/g, "''")}'`);
+      const from = tableRef(dialect, table);
       for (const e of edits) {
         if (!schema.columns[e.columnId]) throw new RangeError(`sqlSource: unknown column ${JSON.stringify(e.columnId)}`);
-        const sql = dialect.inlineLiterals
-          ? `UPDATE ${from} SET ${q(e.columnId)} = ${literal(e.value)} WHERE ${q(schema.rowId)} = ${literal(e.rowId)}`
-          : `UPDATE ${from} SET ${q(e.columnId)} = ? WHERE ${q(schema.rowId)} = ?`;
-        await executor.run(sql, dialect.inlineLiterals ? [] : [e.value, e.rowId]);
+        if (e.columnId === schema.rowId) throw new RangeError(`sqlSource: the row id column ${JSON.stringify(e.columnId)} is not editable`);
+      }
+      const statements = edits.map((e) => (dialect.inlineLiterals
+        ? { sql: `UPDATE ${from} SET ${q(e.columnId)} = ${sqlLiteral(e.value)} WHERE ${q(schema.rowId)} = ${sqlLiteral(e.rowId)}`, params: [] as Array<string | number> }
+        : { sql: `UPDATE ${from} SET ${q(e.columnId)} = ? WHERE ${q(schema.rowId)} = ?`, params: [e.value, e.rowId] }));
+      // Dremio's REST API takes one statement per job and has no transaction to offer.
+      const transactional = dialect.name !== 'dremio' && statements.length > 1;
+      if (transactional) await executor.run('BEGIN', []);
+      try {
+        for (const st of statements) await executor.run(st.sql, st.params);
+        if (transactional) await executor.run('COMMIT', []);
+      } catch (err) {
+        if (transactional) await executor.run('ROLLBACK', []).catch(() => undefined);
+        throw err;
       }
     },
     async query(view: ViewState, { groupPath = [], window, totals }: QueryOptions = {}): Promise<QueryResult<GridRecord>> {

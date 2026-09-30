@@ -891,8 +891,8 @@ test.describe('the treasury grid harness', () => {
     // Enter moved the focus down: typing opens the next row's cell with the character; Escape drops it.
     const second = grid.locator('tbody tr').nth(1);
     await expect(second.locator('td[data-column="notional"]')).toHaveAttribute('data-selected', 'true');
-    await page.keyboard.type('9');
-    await expect(editor).toHaveValue('9');
+    await page.keyboard.type('12');
+    await expect(editor).toHaveValue('12');
     await editor.press('Escape');
     await expect(editor).toHaveCount(0);
     await expect(status.locator('[data-slot="status-edited"]')).toHaveText(/^1 cell edited$/);
@@ -918,6 +918,10 @@ test.describe('the treasury grid harness', () => {
     await expect(second.locator('td[data-column="dv01"]')).toHaveText('$250');
     await expect(grid.locator('tbody tr').nth(2).locator('td[data-column="dv01"]')).toHaveText('-$5');
     await expect(status.locator('[data-slot="status-edited"]')).toHaveText(/^5 cells edited$/);
+
+    // The row id is what every edit is keyed by: never a cell to change.
+    await first.locator('td[data-column="tradeId"]').dblclick();
+    await expect(editor).toHaveCount(0);
 
     // Without the grant the same book is read-only: a double-click opens nothing.
     await page.getByTestId('grid-edit-switch').click();
