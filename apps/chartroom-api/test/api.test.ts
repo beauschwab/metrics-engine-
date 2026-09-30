@@ -61,8 +61,14 @@ describe('catalog', () => {
   it('serves contracts, truncated for listing and full by ref', async () => {
     const list = await handle({ method: 'GET', path: '/api/contracts' }, deps);
     expect(list.status).toBe(200);
-    const { contracts } = list.body as { contracts: Array<{ ref: string; dims: unknown[] }> };
+    const { contracts } = list.body as { contracts: Array<{ ref: string; dims: Array<{ name: string; ordinal: boolean; values?: string[] }> }> };
     expect(contracts.length).toBeGreaterThan(10);
+    // An ordinal dim carries its ladder so a grid sorts it in order (ADR-84); a nominal one carries no values.
+    const laddered = contracts.find((c) => c.dims.some((d) => d.name === 'maturity_bucket'))!;
+    const bucket = laddered.dims.find((d) => d.name === 'maturity_bucket')!;
+    expect(bucket.ordinal).toBe(true);
+    expect(bucket.values!.length).toBeGreaterThan(1);
+    expect(laddered.dims.find((d) => d.name === 'entity_id')!.values).toBeUndefined();
 
     const one = await handle(
       { method: 'GET', path: `/api/contracts/${encodeURIComponent(ref('lcr_pct'))}` }, deps,

@@ -46,6 +46,17 @@ export const CATALOG: WidgetContract[] = [
       + 'the variance monitor’s reading habit, as a widget.',
   },
   {
+    // Host-rendered (ADR-83): the treasury grid draws this one in the
+    // studio; the widgets package carries the contract, never the renderer.
+    widget: 'grid', version: 1, family: 'grid', renderer: 'host',
+    accepts: { categorical_dims: { min: 1, max: 4 }, supports: ['max_cells', 'filters', 'sort'] },
+    guide_rules: ['GRID-01', 'AGG-01', 'NUM-01'],
+    description: 'The metric’s groups as a working table: group, sort, filter, '
+      + 'pivot and format the rows, calculate a column, copy a block — the '
+      + 'reader’s arrangement kept in the widget’s state. Totals sum, so '
+      + 'AGG-01 keeps a ratio out of it.',
+  },
+  {
     widget: 'perspective-grid', version: 1, family: 'grid',
     accepts: { categorical_dims: { min: 1, max: 4 }, supports: ['max_cells', 'filters'] },
     guide_rules: ['GRID-01'],

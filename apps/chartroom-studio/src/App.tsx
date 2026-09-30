@@ -30,6 +30,7 @@ import type { AnalystEnv, Basis } from './bindings';
 import { Canvas } from './Canvas';
 import { Inspector, type Tab } from './Inspector';
 import { Harness } from './Harness';
+import { GridHarness } from './GridHarness';
 import { ProposalsPage } from './ProposalsPage';
 import { ViewPage } from './ViewPage';
 import { AgentRail, type Pointer } from './chat/AgentRail';
@@ -55,6 +56,8 @@ export function App() {
     return () => window.removeEventListener('hashchange', on);
   }, []);
   if (route === '#/widgets') return <Harness />;
+  // `#/grid?v=…` carries a view (ADR-69); the harness reads the query itself.
+  if (route === '#/grid' || route.startsWith('#/grid?')) return <GridHarness />;
   if (route === '#/proposals') return <ProposalsPage />;
   const view = /^#\/view\/([a-z][a-z0-9-]*)$/.exec(route);
   if (view) return <ViewPage id={view[1]} />;
@@ -580,6 +583,15 @@ function Studio({ mode }: { mode: 'read' | 'author' }) {
                 onExplain={setExplain}
                 attached={new Set(pointers.map((x) => x.id))}
                 onAsk={askWidget}
+                onWidgetState={(id, state) => {
+                  // The reader arranged a grid: the arrangement is the widget's
+                  // state, an edit like any other (ADR-83).
+                  const next = structuredClone(spec);
+                  const target = next.widgets.find((x) => x.id === id);
+                  if (!target) return;
+                  target.state = state;
+                  editSpec(next);
+                }}
               />
             )
             : (

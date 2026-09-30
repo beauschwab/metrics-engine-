@@ -44,18 +44,23 @@ describe('the catalog', () => {
       }),
       guide_rules: z.array(z.string().regex(/^[A-Z]+-\d\d$/)),
       description: z.string().min(20),
+      renderer: z.enum(['widgets', 'host']).optional(),
     });
     for (const c of CATALOG) expect(() => Contract.parse(c)).not.toThrow();
   });
 
-  it('ships the Phase-1 five and the Phase-9 seven, each with a component, and no strays', () => {
+  it('ships the Phase-1 five, the Phase-9 seven and the host-rendered grid; every widgets-rendered one has a component, and no strays', () => {
     const refs = CATALOG.map((c) => `${c.widget}@${c.version}`).sort();
     expect(refs).toEqual([
       'annotation@1', 'bar@1', 'bullet@1', 'delta-table@1', 'distribution@1',
-      'heatmap@1', 'kpi-tile@1', 'perspective-grid@1', 'small-multiples@1',
+      'grid@1', 'heatmap@1', 'kpi-tile@1', 'perspective-grid@1', 'small-multiples@1',
       'stacked-area@1', 'timeseries@1', 'waterfall@1',
     ]);
-    expect(Object.keys(COMPONENTS).sort()).toEqual(refs);
+    const ours = CATALOG.filter((c) => c.renderer !== 'host').map((c) => `${c.widget}@${c.version}`).sort();
+    expect(Object.keys(COMPONENTS).sort()).toEqual(ours);
+    // A host-rendered contract is drawn by the studio, never by this package (ADR-83).
+    expect(CATALOG.filter((c) => c.renderer === 'host').map((c) => c.widget)).toEqual(['grid']);
+    expect(COMPONENTS['grid@1']).toBeUndefined();
   });
 
   it('cites only rules the linter can actually emit', () => {

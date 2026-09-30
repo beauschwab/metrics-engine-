@@ -1,0 +1,113 @@
+/*
+ * The grid's theme bridge (ADR-65): Tailwind's theme tokens, bound to the
+ * studio's `--cr-*` aliases, which are themselves Aperture Risk tokens by
+ * reference (ADR-48). Every name on the left is what a shadcn component's
+ * classes read (`bg-card`, `text-muted-foreground`); every value on the
+ * right is a token. This file declares no colour, and no bare variable.
+ *
+ * No bare variable, deliberately. shadcn's root layer of bare names
+ * (accent, border, radius, …) is skipped: those names are Aperture's own —
+ * the system's `accent` is its yellow, and declaring shadcn's grey highlight
+ * under that name turned the studio's brand and links grey. Tailwind's
+ * `--color-*` namespace cannot collide with a design token, so the bridge
+ * lives there and nowhere else.
+ *
+ * Where Tailwind's own theme layer and Aperture do share a name — the type
+ * scale (`--text-*`), tracking, leading, `--font-mono`, `--radius-*` — the
+ * system wins by construction: Tailwind emits its defaults inside
+ * `@layer theme`, Aperture's tokens are unlayered, and an unlayered
+ * declaration beats a layered one. So `text-xs` here is Aperture's
+ * `--text-xs`, not Tailwind's 0.75rem.
+ *
+ * Tailwind is the studio's build — the app's stylesheet imports the theme
+ * and utilities layers. This file tells that build three things: where the
+ * grid's classes live, that the default palette does not exist here, and
+ * what the theme tokens resolve to.
+ */
+
+/* Scan this package's own source for utility classes. */
+@source './';
+
+/* Tailwind's default palette is withdrawn: a class naming one of its
+   colours compiles to nothing, so the only colours a class can name are
+   the tokens below. This is ADR-48's "no colour invented beside the system"
+   made structural for utilities, the way aliasing made it structural for
+   the stylesheet. */
+@theme {
+  --color-*: initial;
+}
+
+@theme inline {
+  /* shadcn's vocabulary, each name on Aperture by reference. */
+  --color-background: var(--cr-bg);
+  --color-foreground: var(--cr-text);
+  --color-card: var(--cr-panel);
+  --color-card-foreground: var(--cr-text);
+  --color-popover: var(--cr-panel);
+  --color-popover-foreground: var(--cr-text);
+  --color-primary: var(--cr-accent);
+  --color-primary-foreground: var(--text-on-accent);
+  --color-secondary: var(--cr-panel-2);
+  --color-secondary-foreground: var(--cr-text);
+  --color-muted: var(--cr-panel-2);
+  --color-muted-foreground: var(--cr-text-muted);
+  --color-accent: var(--cr-panel-2);
+  --color-accent-foreground: var(--cr-text);
+  --color-destructive: var(--cr-breach);
+  --color-border: var(--cr-border);
+  --color-input: var(--cr-border);
+  --color-ring: var(--cr-accent);
+
+  /* Beyond shadcn's vocabulary, the readings this surface has and shadcn
+     does not: a subtler rule between rows, a fainter text step for header
+     labels, and the breach *text* colour ADR-48 derives for contrast. */
+  --color-border-subtle: var(--cr-border-subtle);
+  /* A selected row: the accent mixed into the panel, solid, so a pinned
+     cell painted with it hides what scrolls beneath. */
+  --color-selected: color-mix(in oklab, var(--cr-accent) 14%, var(--cr-panel));
+  --color-faint: var(--cr-text-faint);
+  --color-breach-text: var(--cr-breach-text);
+  --color-up: var(--cr-up);
+  --color-warn: var(--cr-warn);
+
+  /* Aperture's radius scale is 1–2px; shadcn's calc() steps off it would
+     go negative, so every step is the system's one small radius. */
+  --radius-sm: var(--radius-xs);
+  --radius-md: var(--radius-xs);
+  --radius-lg: var(--radius-xs);
+  --radius-xl: var(--radius-xs);
+}
+
+/* The slice of Tailwind's preflight that shadcn components assume, scoped
+   to `data-slot` so the studio's unlayered sheet is untouched: a `border-b`
+   with no colour class takes the theme's border, not currentColor; a
+   button or an input inside a component starts from nothing rather than
+   from the user agent's grey box (the studio's own button reset stops at
+   this scope, ADR-65). */
+@layer base {
+  [data-slot],
+  [data-slot] *,
+  [data-slot] ::before,
+  [data-slot] ::after {
+    border-color: var(--color-border);
+  }
+  [data-slot] button,
+  button[data-slot] {
+    background-color: transparent;
+    background-image: none;
+    border-width: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  [data-slot] :is(input, select, textarea),
+  [data-slot]:is(input, select, textarea) {
+    font: inherit;
+    color: inherit;
+    background-color: transparent;
+  }
+  [data-slot] svg {
+    display: block;
+  }
+}

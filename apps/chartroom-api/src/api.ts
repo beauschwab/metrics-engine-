@@ -171,8 +171,10 @@ const truncate = (set: ContractSet) =>
   set.contracts.map((c) => ({
     ref: c.ref, doc: c.doc, measure: c.measure, version: c.version, status: c.status,
     grain: c.grain, unit: c.unit, precision: c.precision, format: c.format,
+    allowed_aggregations: c.allowed_aggregations,
     denominator_of: c.denominator_of ?? null,
-    dims: c.dims.map((d) => ({ name: d.name, type: d.type, ordinal: d.ordinal ?? false })),
+    // An ordinal dim carries its values so a grid reads the ladder in order (ADR-84); other domains stay server-side.
+    dims: c.dims.map((d) => ({ name: d.name, type: d.type, ordinal: d.ordinal ?? false, ...(d.ordinal && d.values ? { values: d.values } : {}) })),
     owner: c.owner, description: c.description ?? null,
   }));
 

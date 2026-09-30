@@ -455,6 +455,10 @@ PromptInput, Suggestions) on the studio's own design system rather than
 importing the library — the studio has no Tailwind/shadcn substrate, and the
 component contract, not the CSS, is what's worth replicating.
 
+*Amended by ADR-65:* the studio now carries that substrate, for the grid.
+The chat pane stands as built; the reasoning above still holds for six
+components and stopped holding at a grid's twenty.
+
 ## ADR-35 — chat unavailability is a banner, not a block
 
 **Decision:** ADR-20's posture, extended to the chat: with no
@@ -1367,6 +1371,1343 @@ back with an inverse of `formatTick`, and asserts it equals the position the
 line is drawn at. The old code fails it five times over. The test that was
 there before — `ticks sit strictly inside the extent` — passed throughout:
 containment was true, and it was never the property that mattered.
+
+## ADR-64 — the treasury grid is a headless core behind the widget seam, not AG Grid and not a component library
+
+Phase 0 shipped; the plan's later phases are its consequence. The occasion
+is a request to build the dashboard builder's standard grid to the shape of
+the AG Grid Enterprise demo — grouping with subtotals, set filters, pinning,
+master-detail, xlsx export — over a non-ticking treasury book, arranged so
+the data layer can later become DuckDB-WASM or Dremio and so the grid's
+state doubles as an agent tool contract.
+
+**Decision, in four parts.**
+
+*The table logic is TanStack Table v9, pinned exact (`9.2.4`).* Headless:
+it owns row models, state slices and the feature registry, and renders
+nothing. This is ADR-63's arrangement, one layer up — the arithmetic is a
+library's, the marks are ours. v9 is explicit where v8 was implicit: a
+state slice, an API or a row model exists only if `tableFeatures()`
+registers it, and the registry type-checks its own prerequisites, which is
+why the grid declares every feature once (`grid/features.ts`) and every
+screen reaches the same instance through one hook. The version is pinned
+because the API moved between betas and the docs lag; the declarations and
+skills shipped in `node_modules/@tanstack/*` are the reference, not memory.
+
+*Tailwind and shadcn — declined here, reversed by ADR-65.* The plan as
+pasted specified both; Phase 0 shipped without either on ADR-34's reasoning
+and ADR-48's binding, with one stylesheet of geometry that named no colour
+of its own. The reversal, its terms, and how ADR-48 survives it are ADR-65's.
+The component contract is still what the AG Grid demo is worth replicating.
+
+*Column meta is the single source of behaviour.* Formatting, groupability,
+aggregation, conditional formatting and the export's number formats all
+read `ColumnMeta`; there is no per-feature column list. Where a unit
+already has a rendering in the widget catalog the grid delegates to
+`chartroom-widgets/format`, so a cell says the tile's number and the deck's
+(ADR-29). One vocabulary difference is recorded rather than papered over:
+the grid's `bps` is a *unit* the stored value is in, where the catalog's
+`bps` is a *format* that converts a percent — when the grid binds to a
+registry metric the contract's `format` derives the meta, and that mapping
+is where the two meet.
+
+*The package sits at `spec ← grid ← studio`.* It is not a widget: a widget
+receives a few hundred resolved aggregates and may not fetch, and this grid
+holds fifty thousand raw positions behind a `DataSource` that a remote
+adapter will one day implement. So it is a sibling of the catalog, not a
+member — the boundaries test says it imports the widgets' React-free
+subpaths only, and that its table, components and export never fetch;
+`src/data` is the one directory a query may leave from. When the grid does
+become a canvas widget (`data-grid@1`, Phase 4+), the widget will be a thin
+contract over this package, the way `perspective-grid@1` is a contract over
+a renderer (ADR-9).
+
+**Why not the alternatives.** AG Grid Enterprise is licensed per developer
+and closed; its state is not a JSON shape an agent can be handed and
+validated. FINOS Perspective (ADR-9's deferred wrap) is a pivot engine, not
+a row grid, and its WASM is the weight ADR-9 declined to pay for a few
+hundred cells — it may still land under `perspective-grid@1` when the
+cross-filter loop gives it a job. Building the row models by hand is what
+ADR-8 did for scales, and ADR-63 records how that went.
+
+**What Phase 0 leaves honest.** `wavg` was declared in meta but not
+registered until Phase 2 landed it behind its tests (ADR-67); until then a
+weighted column showed blank on a subtotal row rather than an average of
+averages (ADR-44). Pagination is not registered at all: `getRowModel()` resolves to the last
+registered model, and a paged one would hand the Phase-1 virtualizer ten
+rows; it returns as `manualPagination` in Phase 5. Every deferred hook is a
+`TODO(grid-phase-N)` at the seam it plugs into.
+
+**What now fails if this regresses.** `column meta drives the table` builds
+a headless v9 instance and asserts every cell carries the meta its column
+declared and formats through the registry to the same string; `says the
+catalog's number` pins `ccy`, `mm` and `pct` to the widgets' `formatValue`;
+the studio's `grid.spec.ts` reads the harness at `#/grid` and checks the
+rendered units. The boundaries test fails on the grid importing a widget
+component, the server, the studio, or fetching from anywhere but its data
+seam.
+
+## ADR-65 — the grid renders on shadcn/ui and Tailwind; Aperture Risk is still the only palette
+
+**Pinned:** the treasury grid plan's stack — "TanStack Table v9 +
+shadcn/ui" — declined by ADR-64 at Phase 0 and reinstated here at the
+owner's direction. Supersedes ADR-64's third part and amends ADR-34's last
+sentence; leaves ADR-48 whole.
+
+**Decision.** The grid is built on shadcn/ui components over Tailwind v4,
+on four terms.
+
+*shadcn lands as source, not as a dependency.* Each component is copied
+into `chartroom-grid/src/components/ui` by the CLI (`components.json` is
+the package's), read, and kept — shadcn's own model, and the same
+arrangement ADR-63 made for scales: the library's arithmetic, our marks.
+This package is bundled by the studio's Vite and owns no `@/` alias, so a
+landed component's imports are rewritten relative on arrival. One upstream
+file carries one addition, `Table`'s `containerClassName`, because a sticky
+header sticks to the nearest scrolling ancestor and shadcn's container is
+that ancestor.
+
+*Tailwind is the studio's build, and it does not touch the studio.* The
+app's stylesheet imports Tailwind's `theme` and `utilities` layers and
+declares the layer order; it does not import `preflight`. The studio's base
+styles — Inter's feature settings, the focus ring, the header — are its own
+and stay unlayered, and an unlayered rule beats any layered utility, so
+nothing already on screen is rewritten. The grid's `theme.css` carries the
+`@source` for the package's own files; the studio does not need to know
+where the grid lives.
+
+*The theme is a bridge, and the default palette is withdrawn.* `theme.css`
+binds Tailwind's theme tokens in shadcn's vocabulary (`--color-background`,
+`--color-muted-foreground`, `--color-border`, …) to `--cr-*` aliases, and
+each of those is an Aperture token by reference (ADR-48). It declares
+`--color-*: initial` first, so Tailwind's palette does not exist in this
+build: a `text-red-500` compiles to nothing. ADR-48 made "no colour beside
+the system" structural for the stylesheet by aliasing; this makes it
+structural for utilities by subtraction. Beyond shadcn's vocabulary the
+theme names only the readings this surface has and shadcn does not — the
+subtle row rule, the faint label step, the breach text mix, up and warn.
+
+It declares no bare variable. shadcn's own `:root` layer (`--accent`,
+`--border`, `--radius`, …) is skipped, and not as a simplification: those
+are Aperture's token names. The first build declared shadcn's `--accent`
+— its grey hover highlight — at `:root`, and the studio's brand and links,
+which alias Aperture's `--accent` yellow, turned grey. Tailwind's
+`--color-*` namespace cannot collide with a design token; the bridge lives
+there and nowhere else, and the test below holds it to that.
+
+Where Tailwind's own theme layer and Aperture do share a name — the type
+scale (`--text-xs` is 11px here, not Tailwind's 0.75rem), tracking,
+leading, `--font-mono`, `--radius-*` — the system wins by construction:
+Tailwind emits its defaults inside `@layer theme`, Aperture's tokens are
+unlayered, and an unlayered declaration beats a layered one. A `text-xs`
+utility on a grid cell is therefore Aperture's type step. Aperture declares
+no `--spacing`, so Tailwind's spacing scale is the one the utilities use.
+
+*Scope.* shadcn and Tailwind classes belong to the grid package and to
+what frames it (the harness). The widget catalog and the rest of the
+studio keep their stylesheets and their rule: no hardcoded colour, which
+now also means no utility that names one (the test below reads both). The
+Phase 3 surface — Popover, Command, ContextMenu, Sheet, DropdownMenu — is
+the occasion this decision is for: those are the components a grid needs
+twenty of, and where a hand-built library costs the most for the least.
+
+**Why now, and why not before.** ADR-34's reasoning was that the
+component contract is the transferable part and the CSS is not, which held
+for a chat pane of six components written once. A grid's surface is a
+different order — menus, popovers, command palettes, sheets, each with
+focus management and keyboard behaviour that Radix gets right and a
+hand-rolled version gets right on the third attempt. The cost of the
+substrate is a second styling idiom in one app; the terms above keep it
+inside one package and one route, and keep its palette the system's.
+
+**What Phase 0 leaves honest.** The `@/` alias is not real: the CLI writes
+it, the landing rewrites it, and a component that reaches the bundle
+un-rewritten fails to resolve at build rather than at runtime. Dark is the
+only theme, as it is everywhere in the studio; shadcn's `.dark` variant is
+not declared and would be a no-op if it were.
+
+**What now fails if this regresses.** `the theme is Aperture Risk by
+reference` reads `theme.css` and rejects any hex, `rgb`, `hsl` or `oklch`
+literal, any declaration outside the `--color-*` and `--radius-*`
+namespaces or any `:root` block, and any theme that fails to withdraw the
+default palette; it walks the package's sources for a Tailwind palette
+class. The studio's
+`grid.spec.ts` still reads the rendered units and the breach colour on a
+negative MTM, now through shadcn's `data-slot` markup.
+
+## ADR-66 — the view state is the contract, and the data seam is a query of it
+
+**Pinned:** the grid plan's second and third principles — "view state is
+the contract" and "no SQL crosses a trust boundary" — and its Phase 1. The
+occasion is the first thing after Phase 0 that could have been done two
+ways: a table whose state lives in the table, with a save button that
+serializes it, or a JSON shape that *is* the state, which the table is
+driven from.
+
+**Decision.** The second, in three parts.
+
+*One versioned, strict, zod-validated shape (`grid/viewState.ts`).* It
+carries the table's slices — grouping, filters, global filter, sorting,
+expansion, pagination, visibility, order, pinning, sizing — under a
+`version` literal, and refuses at the boundary what a plain `TableState`
+would render: an unknown key, a column that does not exist, a grouping on
+a column whose meta is not `groupable`. That last one is the point. An
+agent handed `set_view` (Phase 4) can ask for anything; asking to group by
+trade id is answered with an issue naming the column, not with fifty
+thousand groups. `pagination` is carried but not driven — the paginated
+row model is unregistered (ADR-64) until Phase 5's server-side modes.
+
+*The table is controlled from the view, slice by slice.* v9 has no global
+state callback; one functional update on the view fans out to a change
+handler per registered slice, so a feature API — `column.toggleSorting()`,
+`column.pin()` — writes the view through the hook, and the view is never a
+copy of the state that could drift from it. The hook stays the one
+constructor of a table (ADR-64); a screen supplies rows and a view, or
+neither and the grid keeps its own.
+
+*A source answers a view; it does not receive SQL.* `DataSource` is two
+methods: `describe()` — name, as-of, row count, the columns' meta, and
+which stages it will serve — and `query(view, { groupPath? })`. The
+in-memory source returns the whole book and says in `applied` that it
+filtered, sorted and grouped nothing; the client row models do that work.
+A DuckDB or Dremio source will compile the view and report what it
+applied, and the table flips its `manual*` modes from that answer rather
+than from configuration — the seam is built now so Phase 5 swaps an
+implementation, not an architecture. `groupPath` is lazy expansion's hook,
+and the in-memory source serves it so the remote one has a reference to be
+tested against.
+
+**Virtualization is renderer composition, not a feature.** TanStack
+Virtual windows the *final* row model — never the raw data, which would
+ignore the filter and the grouping — in the grid/flex geometry the
+maintained example uses, with column widths from meta (`width`, one more
+reading of the same declaration) and a fixed row height that is never
+measured. A treasury grid is a lattice, not a feed; a measured row is a
+scrollbar that jumps.
+
+**What Phase 1 left honest.** The grid queried the source once per
+source, since the in-memory source serves no stage of the view; Phase 5
+keys the query on the slices a source reports it serves (ADR-70). The
+Phase 1 e2e drove no interaction; the contract was exercised headlessly
+and the screen at rest, and the later phases drive it.
+
+**What now fails if this regresses.** `the view state contract` refuses
+another version, an unknown key, an unknown column and an ungroupable
+grouping, and round-trips a view through JSON; `a view drives a headless
+table` builds a table from a view and asserts it sorts, groups (collapsed
+until `expanded`), hides, orders and sizes as the view says; `the
+in-memory source` describes the book from the meta, answers with
+`applied` all false, serves a group path equal to brute force and refuses
+one deeper than the grouping. The studio's `grid.spec.ts` reads a count
+that only `describe()` could have supplied, a window of rows in the DOM
+over a body fifty thousand rows tall, and the last trade after a scroll
+with the header still in view.
+
+## ADR-67 — a subtotal is decomposed, never averaged; grouping is a reading of meta
+
+**Pinned:** the grid plan's Phase 2 — group rows with subtotals, a grand
+total, a group-by drop zone and a columns sidebar, and "only `meta.groupable`
+dimensions group" — with its instruction that the aggregation tests come
+before the grouping UI.
+
+**Decision.**
+
+*`wavg` decomposes.* A weighted average carries Σ(x·w) and Σ(w) as its
+result; a parent group merges its children's pairs and never re-reads a
+leaf (`grid/aggregations.ts`, registered through v9's
+`constructAggregationFn({ aggregate, merge })`). The alternative — a mean of
+the sub-group means — is the number a spreadsheet gives when someone drags
+a formula down, and it is wrong the moment two sub-groups differ in size,
+which in a treasury book is always. The test asserts the decomposed number
+equals brute force at every level of a three-deep grouping *and* that the
+mean of means differs from it, so the guard cannot pass by accident. The
+weight column is read from meta (`weightBy`); a row without a finite value
+or weight contributes nothing, and a zero total weight renders the dash
+(ADR-44). The result is a `Number` subclass so a sort compares by value and
+the cell reads one number; the parts ride along for `merge`.
+
+*A cell renders what it is.* On a group row the grouped column renders the
+toggle, the value and the leaf count; an aggregated measure renders its
+aggregate through the same `formatValue` as a leaf; a dimension the row
+does not group by, or a grouped column on a leaf row, renders nothing. A
+leaf value on a group row is a wrong number with a confident face (ADR-44),
+and `data-cell` names each kind so a test can tell them apart. Grouped
+columns move to the front (`groupedColumnMode: 'reorder'`): the tree reads
+left to right and a chip's order is the column order.
+
+*The grand total is `column.getAggregationValue()`.* v9 aggregates
+independently of grouping over the pre-grouped (filtered, sorted) rows, so
+the footer's number is the same function the subtotals use, over the rows
+the filter left — the test holds the total to the sum of the top-level
+subtotals and a filter's subtotals to brute force over the remaining rows.
+
+*Every gesture is a feature API.* A header or a sidebar item dropped on the
+zone is `column.toggleGrouping()`, refused unless `getCanGroup()` — the
+zone's highlight is not a promise, the meta is the rule; a chip reordered
+is `table.setGrouping()`; a sidebar item moved is `table.setColumnOrder()`;
+a checkbox is `column.toggleVisibility()`. All of them write the view
+through the hook (ADR-66), so a grouping made by drag is the same JSON a
+saved view or an agent would hand over. Each drag has a click path — the
+sidebar's group button, the chip's remove — so a keyboard reader can do
+what a mouse can.
+
+*The set filter and the number filter are v9's own.* A dimension filters
+by `arrHas` (a scalar equal to one of the chosen values) and a measure by
+`inNumberRange` (an inclusive range whose blank ends are open), both chosen
+from the meta's `kind` and both proven in the Phase 2 tests before Phase 3
+builds their UI.
+
+**Why dnd-kit and not HTML5 drag.** The native API cannot render a drag
+preview the design system controls, has no keyboard path, and fires
+nothing usable in a virtualized body. dnd-kit's pointer sensor with an
+activation distance leaves a header click free for Phase 3's sort.
+
+**What now fails if this regresses.** `the weighted average` asserts
+registration from meta, brute-force equality at every level with the mean
+of means excluded, decomposition of parent parts into children's parts,
+and the grand total; `subtotals and totals` asserts every subtotal is the
+sum of its children and of its leaves, and the grand total the sum of the
+top level; `filtering updates subtotals` asserts a set filter, a range
+filter with an open end and a quick filter each change the subtotals to
+the rows that remain. The studio's `grid.spec.ts` groups from the sidebar,
+expands a group, stacks a second grouping, ungroups from the chips, and
+drags a header onto the zone.
+
+## ADR-68 — the AG Grid surface is a set of feature APIs with a face, and the export is the screen
+
+**Pinned:** the grid plan's Phase 3 — set filter, number filters, pinning,
+resizing, a header menu, conditional formatting, master-detail, a context
+menu, row selection, a status bar, density, xlsx export and a quick
+filter; deferred by the plan and left as marked seams: range selection,
+undo/redo, charts and the pivot UI.
+
+**Decision.**
+
+*Every control is a feature API with a face.* A header click is
+`column.toggleSorting()`; the header menu's items are `pin`, `toggleGrouping`,
+`toggleVisibility`, `resetSize`; the filter popover writes
+`column.setFilterValue()` in the two shapes Phase 2 proved — a set for a
+dimension, an open-ended range for a measure; the quick filter is the
+global filter, debounced; the context menu's "filter to this value" is the
+set filter with one value; the resize handle is `header.getResizeHandler()`
+wired to both mouse and touch, as the shipped skill insists. Each of them
+therefore writes the view (ADR-66) and each appears only where the column
+says it may (`getCanSort`, `getCanPin`, `getCanFilter`, `getCanHide`,
+`getCanResize`), which the column def set from meta. The selection column
+is the one exception: structural, not a field, composed in the hook and
+never in the view — pinned at the start by the hook, stripped from any
+pinning or order update before it reaches the view, so a saved view never
+names a column it cannot validate.
+
+*The renderer owns positioning.* v9 computes pinned regions and offsets and
+nothing else; the cells take `position: sticky` with `getStart('start')` and
+`getAfter('end')`, a solid background (`bg-inherit` from a row that is
+never translucent), and a rule on the pinned edge. A selected row is the
+accent mixed into the panel, solid, for the same reason: a pinned cell must
+hide what scrolls beneath it.
+
+*Conditional formatting reads meta and the facets.* A `heatmap` column
+mixes the accent token by the value's place in `getFacetedMinMaxValues()`
+— logarithmic when the range is positive, since notional spans three
+orders of magnitude and a linear ramp lights only the top decile; a
+`negativeRed` value takes the breach text token. No colour is named
+(ADR-48). Selection and detail state are transient and stay in the shell.
+
+*Master-detail is a row, not a measurement.* The body is windowed and never
+measures, so a detail panel is a second virtual item of declared height
+under its leaf row, a `<tr>` with one full-width cell, and the virtualizer
+is told when the declaration changes. Row density is the same mechanism:
+two declared heights.
+
+*The export is the screen, with the meta's number formats.* The workbook
+carries the visible columns in order, the current row model — a collapsed
+group as its subtotal row, indented by depth — and the grand total. Every
+number stays raw; the format is derived from the same meta the cell used
+(ADR-29): `mm` scales by a million in the format (`,,`) so a SUM in the
+sheet still adds dollars, and `pct` takes a literal "%" suffix because the
+value is already in percent units — Excel's `%` type would multiply by a
+hundred. exceljs loads lazily, on the first export. The export module is
+typed structurally against what it reads, because v9's `Table` is
+invariant in its registry and the React table and the headless test table
+are two registries.
+
+*The status bar aggregates the selection by the meta's own aggregation.* A
+selection's notional is a sum and its yield a weighted average — the same
+`wavg` (ADR-67), over the selected leaf rows through
+`column.getAggregationValue({ rows })` — so the number in the bar is the
+number the footer would show for those rows alone.
+
+**Deferred, with the seam named.** Range selection would be v9's
+`cellSelectionFeature` in the registry and a drag on the body cell; undo
+and redo a history of view states in the shell, which the contract makes
+trivial and the plan defers; charts the selected rows handed to a widget
+contract; the pivot UI `columnGroupingFeature`'s pivot mode. Each is a
+`TODO(grid-deferred)` where it would plug in, and none is started.
+
+**What now fails if this regresses.** `Excel formats from meta` pins each
+unit's format; `the workbook` reads a sheet back and asserts the visible
+headers, raw values with their formats, the total row, and a collapsed
+grouping exported as bold, indented subtotal rows with blank dimensions;
+`the heat ramp` asserts the logarithmic ramp, the clamps and that only the
+accent token is mixed. The studio's `grid.spec.ts` sorts from the header,
+filters by set and by range and by the quick filter, pins with sticky
+positioning, hides from the menu and restores from the sidebar with the
+body following the header, resizes by drag with the cells following,
+selects into the status bar, opens and closes a detail panel, switches
+density, filters from the context menu, and downloads the export.
+
+## ADR-69 — the view is the agent's contract too: saved, linked, and served over MCP
+
+**Pinned:** the grid plan's Phase 4 — saved views, URL state, the
+`describe_view` / `query_view` / `set_view` tools, and an MCP server — and
+its second principle, that the view state is the contract every consumer
+speaks (ADR-66). This ADR is that principle's third and fourth consumers.
+
+**Decision.**
+
+*The React-free core is one import graph, and the agent lives in it.* The
+registry, the columns, the view state and the aggregations import
+`@tanstack/table-core`, not the React adapter; only the hook touches
+`@tanstack/react-table`. `agent/headless.ts` constructs a table without a
+screen from the same three, so an agent tool, a test or a server answers a
+view with the row models, the aggregations and the formatter the screen
+uses — the same `wavg`, the same dash for a missing value. `src/agent`
+may not fetch (the boundaries test), and a stdio server must import
+`node:` (which `src` may not), so the MCP entry sits at the package root
+and the server builder in `src/agent` takes a source through the seam.
+
+*Three tools, and the third refuses.* `describe_view` returns the source's
+description, the current view and a *contract*: every column with its
+meta, which are groupable, which filter shape each takes, and every slice
+of the view in a sentence an agent reads before it patches. `set_view`
+merges a patch slice for slice — or replaces the view when asked — and
+validates the result against the same zod schema the URL and the store
+validate against; an unknown column, an ungroupable grouping or an unknown
+slice comes back as issues naming what was wrong, never as a view that is
+almost right (ADR-44). `query_view` answers the view as the screen shows
+it — group rows with subtotals and leaf counts, leaf rows with values,
+grand totals, optionally each value formatted — a window at a time, with
+`total` the filtered leaf count and `applied` what the source itself did.
+The MCP server holds one view per process, the agent's session; a person
+can be handed it as a link.
+
+*A saved view is a validated document.* `views/store.ts` is an interface
+with two implementations — memory, and any `getItem`/`setItem` storage,
+the browser's included. Every read re-validates; a view saved by an older
+build that no longer parses is dropped and counted, not rendered half
+right. The interface is the seam for the governed API to hold views
+tomorrow — a saved view is something a steward could review, which is why
+it is the validated JSON and nothing else.
+
+*The URL carries the view, and a clean link stays clean.* `#/grid?v=…` is
+the validated JSON, base64url; the default view writes no parameter. The
+studio route reads the parameter on load and refuses one that does not
+parse — with the issues shown, not a blank grid — and writes the view
+back with `replaceState` on every change, so a link is the state and a
+reload is a no-op.
+
+**Why not JSON Schema from the zod.** The classic zod API this package
+uses has no schema emitter, and a raw schema would still not say that a
+`pct` value is already in percent units or that `wavg` is never a mean of
+means. The contract is the sentences an agent needs, generated from the
+same meta the columns are — one source, read a fourth way.
+
+**What now fails if this regresses.** `describe_view` asserts the contract
+lists every column with its filter shape and the notes; `set_view` asserts
+slice-wise merging, replacement, and refusals of an unknown column, an
+ungroupable grouping, an unknown slice and a non-object; `query_view`
+asserts a sorted window with formatted values and totals, a grouped answer
+whose subtotals equal brute force with dimensions blank, expansion on
+request, and the filtered total; `the MCP server` lists the three tools,
+refuses a bad patch with `isError`, keeps one session view and answers a
+supplied view without changing it. `the view store` saves, replaces,
+removes and drops what no longer parses; `the view in a URL` round-trips,
+writes nothing for the default and refuses what does not parse. The
+studio's `grid.spec.ts` loads a grouped view from a link, watches the
+hash follow a change, reloads into the same view, saves a view and loads
+it back, and shows the refusal for a link that does not parse.
+
+## ADR-70 — the view compiles to SQL behind the seam, and the table does not redo what the engine did
+
+**Pinned:** the grid plan's Phase 5 — `compileSql`, lazy group expansion,
+`manual*` modes, DuckDB-WASM and Dremio — and its third principle, that no
+SQL crosses a trust boundary. The seam was built in Phase 1 (ADR-66) so
+this phase would swap an implementation, not an architecture; it did.
+
+**Decision.**
+
+*The view compiles; identifiers come from meta and values never enter the
+text.* `data/compileSql.ts` is pure: a view, a table and a dialect in, a
+statement and its parameters out. A column id the meta does not know
+throws before a byte of SQL exists; a table name is validated as an
+identifier path; a value is a positional parameter, or — for Dremio's REST
+API, which takes none — an escaped literal from one function, and the
+Dremio executor refuses a statement that arrives with parameters, so the
+one injection path this package could have is closed at compile time. The
+quick filter binds once per column it is matched against, because a
+positional placeholder binds once and a needle reused across fifteen
+columns leaves fourteen of them null — the test that caught it stays.
+
+*Two shapes, one WHERE.* A leaf statement selects positions, filtered,
+sorted, windowed. A group statement, asked when the view groups deeper
+than the `groupPath` given, aggregates the next level: the dimension, a
+count, each measure by its meta's `agg` — `wavg` as SUM(x·w) / SUM(w),
+the client's decomposition (ADR-67) in the engine's words, with the parts
+alongside. Both take the view's set and range filters, the quick filter
+and the path's dimensions. The tests run the compiled statements through
+Node's own SQLite and hold the answers equal to the in-memory path:
+filtered and sorted leaves in the same order, subtotals at every level
+equal to brute force and to the client's aggregation.
+
+*A group the source made is a row the columns can read.* `sqlSource`
+returns Position-shaped nodes — the grouped dimension filled, the others
+blank, every measure holding its aggregate — with `__group` carrying the
+level, the value, the count and the path a child query needs. The shell
+attaches fetched children as sub-rows, the hook's `getSubRows` reads them,
+and a node can expand before its children arrive; the same cell renderer
+draws a source group and a client group alike, and the footer's
+`getAggregationValue()` over group nodes still gives the right weighted
+average, since Σ(avg·W)/ΣW over groups is Σ(x·w)/Σw over leaves. Row ids
+for source groups (`g:Credit/EUR`) differ from the client's, so a saved
+`expanded` slice does not transfer between sources — recorded, not hidden.
+
+*`manual*` follows `applied`, not configuration.* The source's answer says
+what it applied; the hook sets `manualFiltering`, `manualSorting` and
+`manualGrouping` from that, so the client row models pass through what
+the engine already did rather than doing it twice, and the shell
+re-queries only when a slice the source *serves* changes — debounced,
+since a resize handle moves the view many times a second. The in-memory
+source serves nothing and the grid behaves as it did.
+
+*Two engines, one executor interface.* DuckDB-WASM in the browser: the
+book loaded into a table in a worker, the module and worker shipped as
+assets and loaded only when a reader picks that source; parameters bound
+through prepared statements; Arrow's BigInt counts read back as numbers.
+Dremio over its REST SQL API: submit, poll the job, page the results, the
+transport injected so a test can be it. Arrow Flight is the faster wire
+and a gRPC client, which a browser cannot be — the Flight path is a
+server-side executor (the API's Python agent already speaks it) behind the
+same `SqlExecutor`, and is not in this package.
+
+**What stays honest.** Pagination is still carried and not driven: a leaf
+answer from the engine is every matching row, which is the right answer
+for a fifty-thousand-row book and the wrong one for fifty million, where
+`limit`/`offset` in `compileSql` — already there — meet `manualPagination`
+next. The DuckDB path loads the book from JSON on first use, seconds of
+work the studio harness shows as a loading title; a real deployment
+registers a Parquet file or a remote table instead.
+
+**What now fails if this regresses.** `compileSql` pins the leaf statement
+and its parameters, the group statement with `wavg` decomposed and the
+path scoping, the refusals, and the dialect difference; `the SQL source
+answers as the in-memory path does` runs through SQLite and holds leaves
+and subtotals equal; `the Dremio executor` submits with the token, polls,
+pages, refuses parameters and names a failed job, and as a source sends
+the compiled dialect with literals inlined. The studio's `grid.spec.ts`
+loads the DuckDB source, sees the status bar say what it serves, sorts and
+filters through the engine, groups a level at a time and expands to
+children and then to leaves still filtered.
+
+## ADR-71 — a block of cells is a thing to copy, not a view
+
+**Pinned:** the owner's request after Phase 5 for Excel-like range
+selection and copy, which the grid plan had deferred; un-deferred here.
+
+**Decision.** v9's `cellSelectionFeature` joins the registry. A drag or a
+Shift-click selects a rectangle, Ctrl or Cmd adds or subtracts one, the
+arrow keys move the active cell and Shift-arrows extend it, Escape clears.
+The selection column takes no part. The selection is transient — a
+reader's hand on the book, like row selection (ADR-68) — and never enters
+the view, a saved view or a link.
+
+*Copy is the screen's text.* Ctrl+C, and the context menu's "Copy range",
+write the block as tab-separated text: the formatted number the reader
+sees by default, the raw value on request, an optional first row of column
+labels, one blank line between disjoint rectangles. A group cell copies
+its value, an aggregate its number, a placeholder nothing — the same
+reading as the cell (ADR-67). The copier resolves cells from the
+selection's *bounds* over each row's visible cells, in the render order
+the feature resolves its rectangles in — pinned start, centre, pinned end
+— because `getSelectedCellRangesData()` yields values, and a value cannot
+say what it is.
+
+*Paste has nowhere to land.* The grid is read-only over a source; a paste
+into cells would be an edit and a write path to the source, a decision of
+its own. Copying out to a spreadsheet is what "copy/paste" means here
+until that decision is made.
+
+*Ranges are corners, not cells.* v9 anchors a range to its corner ids, so
+a sort or a filter keeps the corners and recomputes what sits between
+them; a reorder or a pin resets the selection in the shell, as the
+shipped skill advises, rather than letting a rectangle scatter.
+
+**What now fails if this regresses.** `range copy` selects a block on a
+headless table and asserts the tab-separated text, formatted and raw, the
+label row, a group row's cells as the screen shows them, and two disjoint
+ranges separated by a blank line. The studio's `grid.spec.ts` drags a
+block, reads the outline and the count, copies with Ctrl+C and reads the
+clipboard back.
+
+## ADR-72 — a measure's aggregation is the view's to choose, within what the column can bear
+
+**Pinned:** the owner's request after Phase 5 to "expose agg functions";
+ADR-67 fixed one aggregation per measure in column `meta`, and this entry
+opens that to the reader without giving up what ADR-67 protected.
+
+**Decision.** The view gains a `columnAggs` slice (view version 2; a
+version-1 view migrates with an empty slice): a map from a measure's id
+to one of `sum`, `wavg`, `mean`, `median`, `min`, `max`, `count`,
+`uniqueCount`. The column's `meta.agg` stays the default; the view's
+entry, when present, is what the column aggregates by, everywhere at
+once — a group's subtotal, the grand total, the status bar, the xlsx
+export, the agent's `describe_view`, and the SQL the seam compiles.
+Columns are rebuilt from the view, so there is one place that decides
+(`effectiveAgg`) and no reader keeps its own opinion.
+
+*The column says what it can bear.* `allowedAggs` lists a measure's
+choices: every aggregation for a plain measure, and `wavg` only where
+`meta.weightBy` names a weight — a weighted average without a weight is
+not a number, so the menu never offers it and the parser refuses it. A
+dimension has no aggregation and no menu. A view carrying a choice a
+column cannot take does not parse, the same as a sort on an unknown
+column (ADR-66): a link or an agent cannot make the grid show a figure it
+cannot stand behind.
+
+*The engine gets the same word.* `compileSql` turns the choice into the
+dialect's function — `AVG`, `COUNT(DISTINCT …)`, `MEDIAN` where the
+dialect has one — and decomposes `wavg` as before (ADR-70). A dialect
+without a median (SQLite) throws at compile time with the column named,
+rather than serving a mean and calling it a median.
+
+*The default is a menu item, not a mystery.* The header menu's "Aggregate
+as" marks the column's default, shows the current choice in its trigger,
+and offers "Restore default" only while a choice is in force. Restoring
+deletes the entry rather than writing the default back, so a view carries
+only what the reader changed.
+
+**What now fails if this regresses.** `viewState.test.ts` migrates a
+version-1 view and refuses a dimension, an unknown aggregation and an
+unweighted `wavg`; `aggregation.test.ts` re-aggregates a group and the
+grand total under a chosen mean and median; `sql.test.ts` compiles each
+choice per dialect and runs a mean per desk through SQLite; `agent.test.ts`
+reads the choices back from the contract. The studio's `grid.spec.ts`
+chooses a mean for Yield from the header menu and reads the footer, a
+group row and the link.
+
+## ADR-73 — the quick filter is a grammar, and every filter reads back as a chip
+
+**Pinned:** the owner's request after Phase 5 for a top-level search
+filter, richer set filters and a place to see what is applied.
+
+**Decision.** The view's `globalFilter` stays one string — no new slice,
+no version bump, every saved view and link still parses — but the string
+now reads as space-separated tokens, all of which must hold. A bare word
+matches any column, as before. `desk:Credit` is a dimension containing
+the text, `desk=Credit` equal to it, `desk!=Credit` anything else;
+`notional>1bn`, `yield<=3.5`, `mtm!=0` compare a measure to a number,
+with `k`, `m` and `bn` suffixes and a tolerated `%`; a column is named by
+its id or its label (`ccy`, `entity`); quotes keep spaces together. One
+parser (`parseSearch`) serves the client filter, the compiled SQL and the
+filter bar, so the three cannot disagree on what a token means; the
+SQL test proves the engine keeps the same rows as the client for each
+kind of token.
+
+*A word the grid does not know is a word.* `cpty:foo` names no column,
+so it stays free text and finds nothing rather than pretending to be a
+term. A known measure given something that is not a number, or a
+dimension given a comparison, is *unknown*: it keeps no row, the chip
+shows it struck through with the reason, and the SQL carries `1 = 0` —
+"notional > abc" has no honest answer, and an answer of "every row" would
+be the dishonest one.
+
+*The global filter answers for the row.* v9 asks the global filter once
+per globally filterable column and stops at the first yes, so a
+row-level grammar answers on the first ask and memoises the verdict for
+the other columns of that pass; the parse happens once per filter value,
+in `resolveFilterValue`, not per row.
+
+*The filter bar is a reading, not a state.* Under the toolbar, one chip
+per column filter — the set's values, the range's ends — and one per
+token, each removable on its own; removing a token rewrites the string
+without it, keeping the rest as typed. Nothing in the bar is stored:
+it is the view, read back. "Clear all" lives there, next to what it
+clears.
+
+*The set filter's empty list means none.* Excel's All / None / Invert,
+and a value's Only / Exclude, all write the same `arrHas` list. v9's
+built-in would drop an empty list as "no filter"; the registry's
+`arrHas` keeps it, so "none of these" keeps no row on the client and
+compiles to `1 = 0` for the engine, and a full list still collapses to
+no filter so the view stays clean. Exclude is an include list without the
+value, as Excel's is: the list is what the reader saw when they chose.
+
+**What now fails if this regresses.** `search.test.ts` parses each token
+kind, quotes, suffixes and the unknown cases, filters a headless book by
+a mixed query against a hand-written predicate, and keeps no row for an
+empty set; `sql.test.ts` compiles each token kind and runs four token
+queries through SQLite against the same predicate. The studio's
+`grid.spec.ts` types three tokens, reads three chips, removes one from
+the bar, sees an unknown term keep nothing, and works None, Invert,
+Exclude and Only on the product set.
+
+## ADR-74 — a reader formats the reading, never the unit
+
+**Pinned:** the owner's request after Phase 5 to "expose better column
+formatting options", taken under NUM-01 ("never let format overrides
+touch units") because the owner did not say otherwise when asked.
+
+**Decision.** The view gains a `columnFormats` slice (view version 3; a
+version-2 view migrates, a version-1 view migrates twice): per measure,
+the decimals, the scale a dollar amount is read at (`units`, `k`, `m`,
+`bn`), how a negative is written (`minus` or accounting `parens`), and the
+two colourings the meta already knew (`negativeRed`, `heatmap`). The
+column carries the result: `buildColumns` lays the view's format over the
+declared meta (`effectiveMeta`), so a cell, a subtotal, the grand total,
+the status bar, a copied block and the xlsx column all read the same
+object and none asks who chose what.
+
+*What a column can take is the column's to say.* `allowedFormatKeys`
+lists a measure's keys, and `scale` only for a dollar unit; a dimension
+has none. A percent reads to more or fewer decimals but never in basis
+points, dollars never become a percent, and a view that says otherwise
+does not parse — the same refusal as an aggregation a column cannot bear
+(ADR-72). The header menu offers exactly these keys, marks the current
+reading, says "Format · custom" while a choice is in force, and "Restore
+default" drops the entry rather than writing the default back.
+
+*The catalog's reading stays the catalog's.* Where the chosen reading is
+one the widget catalog already renders (`currency_usd`, `currency_usd_mm`,
+`percent_Ndp`), `formatValue` still delegates to it (ADR-29); a reader's
+scale or decimals produce the same shape, scaled. Accounting negatives
+wrap the whole reading with the sign removed, so `($1.2M)` and `(3.46%)`
+read the way a ledger does.
+
+*Excel scales in the format, not the cell.* The export keeps the raw
+number and expresses the scale as commas in the number format — one per
+thousand — so a SUM in the sheet still adds dollars whatever the column
+reads in; parentheses and `[Red]` are the format's too.
+
+**What now fails if this regresses.** `format.test.ts` reads dollars at
+each scale and decimals, negatives in parentheses in every unit, a percent
+that stays a percent, and a grouped headless table whose cell, subtotal,
+grand total and copy all carry the chosen format; `viewState.test.ts`
+migrates versions 1 and 2 and refuses a unit change, a dimension, a scale
+on a percent and seven decimals; `export.test.ts` reads the scaled and
+parenthesised Excel formats. The studio's `grid.spec.ts` reads Notional in
+billions to two decimals from the header menu, sees the footer and the
+link follow, puts a negative MTM in parentheses and restores it.
+
+## ADR-75 — a header band is a reading of the columns, not a node in the tree
+
+**Pinned:** the owner's request after Phase 6 for AG Grid's column header
+groups.
+
+**Decision.** Every column's meta names the family it belongs to (`band`:
+Book, Instrument, Trade, Exposure, Risk, Return), and the table draws a
+row above the headers with one cell per contiguous run of visible columns
+that share a family, sized to their summed widths and pinned the way they
+are. Nothing else changes: the leaf columns keep their ids, their order,
+their pinning and their drag handles, the view carries no band state, and
+an agent's `describe_view` says nothing new.
+
+*Why not v9's column groups.* A group column would make the band a parent
+in the column tree, which is what `columnOrder`, `columnPinning` and the
+drag-and-drop all operate on. A reader who drags DV01 next to Desk, or
+pins it, would then be moving a column out of its parent, and every one
+of those features would need a rule for what that means. Read as a run
+of leaves instead, the band simply follows: hide a column and the band
+narrows, drag one away and the band splits, pin one and the pinned half
+sticks while the rest scrolls, because a sticky cell cannot span into the
+scrolling middle and the run ends at the pinning boundary.
+
+*The display order follows the families.* `book` moved from after
+`counterparty` to after `legalEntity`, so the Book family is contiguous
+by default; the SQL projection, the copied header row and the range test
+moved with it.
+
+**What now fails if this regresses.** `bands.test.ts` runs contiguous
+columns together, splits at a pinning boundary, never merges bandless
+columns, and asserts every declared column names a family. The studio's
+`grid.spec.ts` reads the six bands in order, measures the Risk band
+against DV01 and CS01, hides CS01 and sees the band narrow, pins Desk and
+sees Book split with the pinned half sticky.
+
+## ADR-76 — undo is a stack of views, not a set of inverse operations
+
+**Pinned:** the owner's request after Phase 6 for Excel's Ctrl+Z over the
+grid.
+
+**Decision.** The grid shell keeps a history of the views it has rendered:
+every view that arrives — from a header click, a drop on the group zone, a
+filter chip, a format choice, a saved view loaded, a link followed, an
+agent's `set_view` — is one step, and undo hands the previous view back
+through the same `onViewChange` every other write uses. Nothing in the
+grid knows how to invert a sort or a filter, because it does not need to:
+the view is one JSON object (ADR-66) and a step is a whole one. The stack
+is transient, like row selection (ADR-68); it is not in the view, a saved
+view or a link.
+
+*Two readings keep the stack honest.* A change that leaves the view equal
+is not a step, so a click that writes the same JSON costs nothing to
+undo. A column resize writes one view per pointer move, so a sizing-only
+change within six hundred milliseconds of the last one replaces the
+present rather than pushing it: Ctrl+Z undoes the drag, not one pixel.
+The depth is bounded at a hundred steps.
+
+*The keyboard is Excel's.* Ctrl+Z (Cmd on a Mac) undoes and Ctrl+Shift+Z
+or Ctrl+Y redoes anywhere in the shell except a text field, where the
+browser's own undo of typing must keep working. The toolbar carries the
+two arrows with their enabled state, so the affordance is visible.
+
+**What now fails if this regresses.** `history.test.ts` pushes, undoes
+and redoes through the same views, drops the redo branch on a new push,
+ignores an equal view, coalesces a resize run and splits it at a pause or
+another change, and bounds the depth. The studio's `grid.spec.ts` groups,
+sorts, undoes both with Ctrl+Z, redoes from the toolbar, sees a new
+search drop the redo branch, and undoes the search.
+
+## ADR-77 — a pinned row is one of the rows on screen, held still
+
+**Pinned:** the owner's request after Phase 6 for AG Grid's row pinning.
+
+**Decision.** v9's `rowPinningFeature` joins the registry. A leaf row's
+context menu pins it to the top or unpins it; the pinned rows render in
+the sticky header block, under the column headers, in the order they were
+pinned, and leave the virtualized body, which scrolls the centre rows
+only. Like row selection and cell ranges (ADR-68, ADR-71) the pins are a
+reader's hand on the book, transient, never in the view, a saved view or
+a link.
+
+*A pinned row is one of the rows on screen.* `keepPinnedRows` is off:
+filter the row out, or collapse the group it sits in, and it leaves the
+top as it leaves the body, and comes back when the view shows it again.
+The alternative, holding a row the view says is not there, would put a
+number on screen the filter bar cannot explain. A group row cannot be
+pinned; its subtotal is the group's, and a subtotal held away from its
+children would be a figure with no reading.
+
+*The row is the same row.* The pinned block renders through the same
+`BodyRow` the body does, so a pinned row's cells format, heat, select and
+open their detail exactly as they did a moment earlier in the body, and
+its context menu offers to unpin it.
+
+**What now fails if this regresses.** `rowPinning.test.ts` moves rows from
+the centre to the top and back in pin order, refuses a group row, and
+sees a leaf under a collapsed group stay off the top. The studio's
+`grid.spec.ts` pins the first row from the context menu, scrolls the body
+far and finds the row still in view, filters it out and back, and unpins
+it from its own menu.
+
+## ADR-78 — a highlight rule earns emphasis, never a verdict
+
+**Pinned:** the owner's request after Phase 6 for AG Grid's conditional
+formatting; COL-03, which reserves semantic colour for a governed
+threshold.
+
+**Decision.** A measure's format (ADR-74) may carry up to four highlight
+rules: a comparison, a number, and the emphasis a matching cell earns —
+*highlight* (the selection tint), *bold*, or *fade*. The first matching
+rule wins. Rules live in `columnFormats`, so the link, a saved view and
+an agent's `set_view` carry them, the parser refuses them on a dimension,
+and the column's meta delivers them to every reader: the cell, the
+subtotal, the grand total, and the xlsx as conditional formats with the
+same emphasis.
+
+*Why emphasis only.* Red, amber and green on this platform say breach,
+warning and within limit, and each of those is a governed threshold with
+a citation and a review (COL-03, ADR-48). A reader's "show me the ones
+over three billion" is a question about size, not a judgement about
+safety; dressing it in the breach colour would let a scratch rule
+impersonate a limit. So the editor offers no colour, and the export
+writes bold, a grey font or a tinted fill, never a red or a green.
+
+*Why four.* A fifth rule is a banding scheme, and a banding scheme with a
+meaning is a threshold table; that belongs in the registry where it can
+be cited and reviewed, and the editor says so when the fourth is in.
+
+*Numbers read as the search does.* The threshold field takes `3bn`,
+`-2.5m`, `250k` through the same grammar the quick filter uses (ADR-73),
+so a reader learns one way to write a number.
+
+**What now fails if this regresses.** `format.test.ts` matches first-wins
+over the six comparisons and ignores non-numbers; `viewState.test.ts`
+refuses a fifth rule, a colour that is not an emphasis, an unknown
+comparison and a rule on a dimension; `export.test.ts` reads one cellIs
+rule per highlight rule over the data rows and finds no red or green in
+their styles. The studio's `grid.spec.ts` adds a rule from the header
+menu, sees the large notionals emphasised and the small ones not, reads
+the rule in the link, and removes it.
+
+## ADR-79 — a calculated column is a closed operation over governed measures, and a draft
+
+**Pinned:** the owner's question after Phase 6, "can we add custom
+calculation fields?"; NUM-01 (units belong to the function), GOV-02 (no
+ungoverned metric beyond draft), ADR-67 (never a mean of means).
+
+**Decision.** The view gains a `computedColumns` slice (view version 4;
+older views migrate): each entry an id under the `c:` prefix, a label, an
+operation from a closed vocabulary — `ratio`, `delta`, `sum`,
+`pct_change`, `scaled` — and its operands, which are registry measures.
+The grid builds a real column for each: an accessor that evaluates the
+operation on the row, a meta derived from the operands', an aggregation
+that applies the operation to the operands' aggregates, a range filter, a
+numeric sort, and a place in every other slice — order, visibility,
+pinning, sizing, formats — under the same validation, so a link cannot
+name a calculated column the view does not define.
+
+*Why not a formula.* A formula string can say `mtm + yield`, and the grid
+would have to either print a number that means nothing or parse the
+string to find out. The vocabulary makes the unit a property of the
+operation, as NUM-01 wants it to be: a difference or a sum of two columns
+in one unit keeps that unit (dollars in either reading count as one), a
+ratio or a change of two columns in one unit reads as a percent of the
+second, a scaling keeps the first's, and two units that differ are
+refused before the column exists — in the editor, which says why, and in
+the parser, which says the same.
+
+*A ratio of sums, never a sum of ratios.* A group's value is the
+operation applied to the operands' aggregates over the group's rows, each
+operand by its own rule, so a weighted average stays weighted inside a
+delta and a share at desk level is the desk's MTM over the desk's
+notional. The client aggregation asks the operand columns for their
+aggregate over the same rows; the SQL compiler composes the operands'
+aggregate expressions the same way for an engine-served sort, and the
+leaf expression for an engine-served filter. The grouped SELECT needs no
+new column: a group node carries the operands' aggregates, and the
+accessor derives the calculated value from them on the client, which is
+the same arithmetic.
+
+*A draft, marked as one.* A calculated column is a reader's scratch
+figure. The header carries a *calc* badge and the Calculated band, the
+xlsx header says *(calculated)*, and the agent contract lists the slice
+as the view's, not a metric: it has no citation and no review, and
+promoting it means writing it into the registry through the existing
+path. Eight is the most a view carries; a ninth is a model. An operand is
+always a registry measure, never another calculated column, so a chain
+cannot launder a draft into an input. The quick filter's grammar does not
+name calculated columns yet — TODO(grid-computed-search).
+
+**What now fails if this regresses.** `computed.test.ts` derives the unit
+for each operation and refuses a mixed one, evaluates each operation and
+its no-answer cases, builds a table whose calculated cells equal the
+arithmetic on the row, whose subtotals equal the operation on the
+operands' subtotals against brute force, and whose grand total does the
+same; `viewState.test.ts` migrates version 3, refuses a bad id, a
+registry id, a computed operand, a ninth column, a unit mismatch, a
+grouping on a calculated column and an aggregation choice for one, and a
+sort naming a calculated column the view does not define; `sql.test.ts`
+sorts and filters by a calculated column through SQLite and matches the
+client. The studio's `grid.spec.ts` adds an MTM-share column from the
+sidebar, reads its cells and its badge, groups by desk and checks the
+subtotal against the operands' subtotals, sees the link carry it, and
+removes it.
+
+## ADR-80 — a pivot is one dimension across the top, and every column it makes is a real column
+
+**Pinned:** the owner's request after Phase 6 for AG Grid's pivot mode.
+
+**Decision.** The view gains a `pivot` slice (view version 5; older views
+migrate): the groupable dimension across the top, or null, and the
+measures it spreads (empty meaning every measure). For each of the
+dimension's values and each spread measure the grid builds a column
+`p:<measure>:<value>`: an accessor that reads the measure only for rows
+in that value's bucket, a meta that is the measure's with the value as
+its band — so the header bands (ADR-75) draw the value row with no new
+header machinery — and an aggregation that is the measure's own rule
+over the bucket's rows, so a weighted average stays weighted and a count
+counts the bucket. The spread measures keep their own column after the
+buckets under a Total band, and the dimensions keep their place, so the
+row side reads as it did.
+
+*The columns are the source's values, not the filter's.* The values
+across the top are the dimension's distinct values over the whole source
+— `distinct()` on the seam, served by SQL for an engine and by a pass
+over the rows in memory — so a filter narrows the cells and never makes
+a column vanish under the reader's eye. A pivot id is accepted by shape
+in order, visibility, sizing and pinning, because the values are the
+data's and a link cannot know them; a stale one is simply absent.
+
+*What a pivot column is not.* It is not filtered (filter the measure or
+the dimension), not grouped, not given its own aggregation (it aggregates
+as its measure does) and not given its own format (format the measure,
+and every bucket follows): each refused by the parser with those words.
+
+*The engine serves the buckets.* At a grouping level the SQL compiler
+emits `CASE WHEN dim = value THEN measure END` inside each aggregate, one
+per value per spread measure, with a weighted average's parts alongside;
+the node carries them under the pivot ids and the client accessor reads
+them back, so a served subtotal and a client subtotal are the same
+number, which the SQLite test holds them to. A leaf query needs nothing
+new: the accessor buckets on the client, and an engine-served sort by a
+bucket sorts by the measure within it, rows outside it last.
+
+**What now fails if this regresses.** `pivot.test.ts` names and parses
+ids, reads distinct values in order, buckets a row, builds the columns in
+the right order with the right bands, and holds subtotals and the grand
+total — a sum, a weighted average, a count — to brute force per bucket;
+`viewState.test.ts` migrates version 4 and refuses a pivot on an
+ungroupable column, a dimension among the values, and a filter,
+aggregation or format on a pivot column; `sql.test.ts` reads the
+dimension's values from the engine, compiles the bucketed aggregates and
+their sort, and matches the served subtotals to the client's. The
+studio's `grid.spec.ts` pivots by currency from the header menu, reads
+the bands and the EUR bucket's columns, sees a leaf's notional only under
+its own currency, groups by desk and checks the bucket against the
+total, reads the link, and stops from the chip.
+
+## ADR-81 — a chart from a range is a widget the grid describes and the host draws
+
+**Pinned:** the owner's request after Phase 6 for AG Grid's integrated
+charts; the boundary rule (`spec ← grid ← studio`, the grid never imports
+the widgets' React components).
+
+**Decision.** The context menu's "Chart selection" turns the selected
+block into a chart request: the grid reads the range's cells through the
+same resolver the copier uses (ADR-71), takes the first dimension column
+in the block as the category and each measure column as a series, keeps
+the rows in the order the screen shows them, and hands the host a
+`ChartRequest` — the widget type (`bar@1`), the resolved `WidgetData`
+the widgets' contract expects (rows keyed by the category, the unit and
+the format the measure's meta maps to), and a title naming the columns.
+The grid draws nothing: the shell's `onChart` prop is the seam, and the
+studio, which may import the widgets, renders the request with the
+governed `Bar` renderer in a panel beside the grid. Without a host handler
+the menu item is absent.
+
+*Why the host draws.* The widgets are governed renderers: they format
+through the catalog's function (ADR-29), take colour from the theme, and
+refuse to fetch. A chart the grid drew itself would be a second renderer
+with its own formatting and its own colours, and the boundary test exists
+to stop exactly that. Handing over data in the widgets' own shape keeps
+one renderer for a number wherever it appears.
+
+*What a range can chart.* A block holds one category — the first
+dimension column in it, or the group column on grouped rows — and one or
+more measures in one unit; a block with two units, or with no dimension
+and no group rows, is refused with the reason in the panel rather than
+charted wrong (NUM-01: a bar chart has one axis). A grouped row's
+subtotal charts as the group's value; a placeholder cell charts as
+nothing. A calculated column (ADR-79) charts as the draft it is, with its
+label suffixed.
+
+**What now fails if this regresses.** `chart.test.ts` builds a request
+from a headless range: the category from the first dimension, one series
+per measure, rows in screen order, the unit and format from meta, group
+rows by their subtotal; and refuses two units and a block without a
+category. The studio's `grid.spec.ts` drags a block of desk and notional,
+opens the context menu, charts it, and reads the bars' labels and values
+against the cells.
+
+## ADR-82 — the grid reads its columns from the source, and the treasury book is one source
+
+**Pinned:** the owner's "what's next": the grid as the standard component in
+the dashboard builder, whose data is a registry metric's groups, not a
+book of positions.
+
+**Decision.** A `GridSchema` — column meta by id, the display order, and
+the column that identifies a row — replaces the fixed treasury columns
+everywhere the grid used to read them: the column builder, the view
+contract's parser, the search grammar, the SQL compiler, the sources, the
+headless table and the agent tools. The treasury book becomes one schema
+among many (`TREASURY_SCHEMA`), and the default wherever a schema is not
+given, so nothing that spoke to the grid before has to change and every
+test that proved a behaviour on the book still proves it. A source's
+`describe()` now names its `rowId` beside its columns, and the shell
+builds its schema from the description: the grid shows whatever the
+source says it serves.
+
+*One parse per schema.* The view contract is a zod schema built from a
+grid schema — column ids checked against it, groupability and measure
+kind read from it — and cached per schema object, so a link is still
+refused at the boundary with the column named, whichever source it is
+for. A component that needs a column's declared meta, not the view's
+reading of it, asks a schema context the shell provides.
+
+*The search grammar reads the table.* The quick filter used to resolve
+`ccy:` against the treasury labels; it now resolves against the table's
+own columns, calculated and pivot columns included — which closes the
+TODO in ADR-79 as a side effect — and against an explicit schema for the
+SQL compiler and the agent, so the three still agree.
+
+*A row is a record.* `Position` is a type alias with the book's fields,
+assignable to the grid's `GridRecord`; a source of any other shape hands
+the grid records and a schema, and the row id is whatever the schema
+names.
+
+**What now fails if this regresses.** `schema.test.ts` drives the grid
+with a second schema — a registry metric's groups by entity and tenor —
+and shows views parsing against it and refusing the treasury columns,
+tables identified by its row id with subtotals and totals, the search
+grammar naming its columns by label on the client and in SQL, and the
+agent contract and tools speaking it. Every earlier test runs unchanged
+against the treasury default.
+
+## ADR-83 — the grid is a dashboard widget the host draws, and its view is the widget's state
+
+**Pinned:** the owner's original ask — the standard grid component in the
+dashboard builder — and the boundary rule that the widgets package never
+imports the grid.
+
+**Decision.** `grid@1` joins the widget catalog as a contract of family
+`grid` with `renderer: 'host'`: the catalog carries it, the linter reads
+it (GRID-01 demands its cell ceiling, AGG-01 keeps a ratio off it, NUM-01
+its units), a proposal can cite it, and the studio — not the widgets
+package — draws it, because the renderer lives in `chartroom-grid` and
+`spec ← widgets` must not grow an arrow to the grid. The widget's binding
+resolves to the same group query every other widget runs; the answer's
+rows become grid records and its dims and format become a grid schema
+(ADR-82) — one groupable dimension per bound dim, the value, the prior and
+the move as measures in the unit the contract's format names, and a key
+column that identifies a group — over an in-memory source, so the reader
+gets the whole grid: grouping, sorting, filters, pivot, calculated
+columns, highlight rules, range copy.
+
+*The arrangement is the widget's.* `WidgetInstance` gains an optional
+`state`, opaque to the spec: renderer-owned, validated by the renderer
+against the columns it actually has. The grid writes its view there on
+every change through the same spec edit the inspector uses, so grouping
+by entity is an edit — undoable, saved with the dashboard, visible in the
+source tab — and a state the grid refuses (a column the binding no
+longer has) falls back to the default view rather than blocking the
+frame.
+
+*Totals sum only what sums.* A measure aggregates by sum where the
+contract's `allowed_aggregations` says it may; otherwise its subtotals
+stay blank, the same refusal ADR-67 made for the book. The contract
+summary the studio receives now carries `allowed_aggregations` for
+exactly this.
+
+**What now fails if this regresses.** `metricGroups.test.ts` builds the
+schema from a contract and dims, maps each catalog format to a grid
+unit, leaves a non-additive measure without an aggregation, and rolls the
+interpreter's rows into a table whose subtotal is the group's sum. The
+widgets' catalog test lists `grid@1` as host-rendered with no component.
+The studio's `studio.spec.ts` finds the seeded working table with dollar
+rows, groups it by entity from the header menu, and reads the arrangement
+back in the source tab.
+
+## ADR-84 — an ordinal dimension declares its order once, and every reader of the column follows it
+
+**Pinned:** the owner's question — a string column such as a tenor
+bucket has an implied order that a lexical sort scrambles ("10Y+" before
+"1M"); how does a reader get the ladder? — and BAR-02, which already
+gives the bar chart the same answer for the same dims.
+
+**Decision.** `ColumnMeta` gains `order?: readonly string[]` on a
+dimension: the values in their implied order. It is declared once, on
+the schema, never on the view — a reader chooses *whether* to sort by
+tenor; the book knows *what* tenor order is — and every path that reads
+the column follows it:
+
+- *The sort.* The column's `sortFn` is `ordinal`, registered in the
+  feature registry beside `alphanumeric`; it reads the order off the
+  column's own meta, so the column definition stays a name, not a
+  closure, and group rows sort by it as leaves do. A value the order does
+  not name sorts after every named one, alphanumerically among its kind,
+  so a bucket the data grew appears at the end rather than nowhere.
+- *The SQL.* `compileSql` orders such a column by `CASE col WHEN v₀ THEN
+  0 … ELSE n END`, then the column, every value a parameter (inlined,
+  escaped, for Dremio); a grouping level on the dimension reads in that
+  order by default, as it read alphabetically before.
+- *The set filter* lists the values in that order; *the pivot* lays its
+  buckets across the top in that order.
+- *The treasury book* declares the tenor ladder (`O/N … 10Y+`). *A
+  registry metric's* ordinal dims — the API already marks a
+  `*_bucket` dim `ordinal` and knows its values — now carry those values
+  in the contract summary, and `metricGroupsSchema` turns them into the
+  column's order; where a summary has none, the studio takes the order
+  the engine served the groups in, which is BAR-02's rule.
+- *The agent contract* names the order on the column, so `set_view`'s
+  author knows a sort on it is not lexical.
+
+**Not chosen.** A per-view sort comparator (the view is JSON every
+consumer speaks; a function does not serialize, and a view that carried
+the ladder would let two views disagree about what tenor order is). A
+numeric shadow column (`tenorYears`) sorted in the ladder's stead — it
+works for tenors and for nothing else, and it leaks a sort key into the
+data. A `sortDescFirst` toggle — orthogonal; the ladder's direction is
+still the reader's.
+
+**What now fails if this regresses.** `ordinal.test.ts` sorts leaves,
+group rows and pivot buckets by the ladder in memory, compiles the CASE
+with a parameter per value and inline literals for Dremio, proves SQLite
+answers the order the client does, and builds a metric schema whose
+ordinal dim orders by the contract's values. The API's contract test
+finds the maturity ladder on the summary. The grid e2e reads the tenor
+set filter in ladder order and walks the header sort from `O/N` to
+`10Y+`.
+
+## ADR-85 — a source that serves windows answers a leaf view one window at a time, with the engine's totals
+
+**Pinned:** the TODO every phase since 5 admitted — server-side row
+windowing — and the seam's rule that no SQL crosses it.
+
+**Decision.** `serves.window` joins the source description. A source that
+serves it (every `sqlSource`: DuckDB-WASM, Dremio, the tests' SQLite) is
+asked for a leaf view as `query(view, { window: { offset, limit },
+totals? })` and answers only those rows, in the view's order, with
+`offset`, the `total` they were cut from and, when asked, `totals`: the
+grand total of every measure by its aggregation, pivot buckets included,
+over everything the view's filters keep. `compileSql` gains the `totals`
+shape — the same aggregates a grouping level takes, with no dimension —
+and the leaf query takes its `LIMIT` and `OFFSET` from the window. A
+grouped view is untouched: a level is answered whole, as ADR-70 left it,
+because groups fan out at far fewer rows than the leaves do.
+
+*The body draws the whole answer.* The grid holds one window of a
+thousand rows and the virtualizer counts the total: rows before and after
+the window are placeholders of the same height, so the scrollbar spans
+the book and a row keeps its place while the window it sits in arrives.
+The body reports the range on screen; when it leaves the window's middle
+the shell asks for the next, centred on it and snapped to a block of a
+hundred, and drops any answer that is no longer the one wanted. A served
+slice changing (a filter, a sort) starts the answer over at the top.
+
+*The footer never sums a window.* With `totals` from the engine the grand
+total row reads them and nothing else; the status bar's count is the
+engine's `total`. The agent's `query_view` maps its own `offset` and
+`limit` onto the window and reads the same totals, so an agent asking
+for rows 20 to 27 of a Dremio table moves eight rows, not the table.
+
+*What a window does not carry.* A block copied across a window's edge
+copies the rows the grid holds; a pinned row leaves when its window does;
+the in-memory source serves no window, since a source that filters and
+sorts nothing has nothing to cut.
+
+**Not chosen.** A block cache of many windows (more to invalidate when a
+served slice changes, for a scroll pattern — jump, read, jump — that a
+single window centred on the reader serves as well). Driving the window
+from the view's `pagination` slice (the window is the screen's, not the
+reader's; a saved view must not remember how far someone scrolled).
+Client-side totals over the window (a sum of a thousand rows presented
+as the book's would be exactly the wrong number ADR-44 forbids).
+
+**What now fails if this regresses.** `window.test.ts` compiles the
+totals shape, reads a window from SQLite with its offset, total and
+grand totals equal to brute force, sees a grouped view ignore the window,
+and proves the agent's query over the SQL source answers the rows and
+totals the in-memory path does. The DuckDB-WASM e2e reads the served
+capabilities, the whole book's count and notional in the footer, scrolls
+to the last trade and back to the first through placeholder rows.
+
+## ADR-86 — a pivot names which of the dimension's values become columns
+
+**Pinned:** ADR-80's rule that the values across the top come from the
+whole source, so a filter never removes a column under the reader's eye,
+and the owner's ask for a picker over them.
+
+**Decision.** The view's `pivot` slice gains `buckets: string[]` — the
+dimension's values that become columns, in that order — and the view is
+version 6; a version-5 view migrates with `buckets: []`, which means what
+it meant before: every value the source has. The column builder, the SQL
+source's bucketed aggregates and totals, and the headless table all read
+the same rule through `pivotBuckets`: the chosen values, else every
+distinct one, in the dimension's own order where it has one (ADR-84). A
+source asked for chosen buckets compiles them straight in and skips the
+`DISTINCT` query.
+
+*The picker sits on the chip.* The pivot chip carries a list button
+opening the dimension's values from the source with a checkbox each,
+"All" and "First only"; the count of chosen values shows on the button.
+Every value ticked is written as no choice at all, so a view that pivots
+over everything stays as small as it was. Changing the pivot dimension
+clears the buckets — they were the old dimension's values.
+
+*A bucket the data lacks stays.* A saved view that names `HKD` keeps an
+HKD band of blanks when the book has no HKD today, so a layout survives
+the data under it, as ADR-80 asked; the picker only lists what the source
+has, so a reader cannot choose a value that is not there.
+
+**Not chosen.** Buckets on the filter (a pivot that hides USD is not a
+book without USD: the Total band still sums it). A "top n by value"
+rule (which n, by which measure, as of when — a view should say what it
+shows, not a rule that shows something else tomorrow).
+
+**What now fails if this regresses.** `viewState.test.ts` migrates a
+version-5 pivot to 6 and refuses an empty bucket name; `pivot.test.ts`
+restricts the headless table to the chosen buckets in the dimension's
+order; `sql.test.ts` serves a level and the totals with only the chosen
+buckets, equal to brute force; the pivot e2e unticks USD and watches its
+band go, reads the nine buckets off the link, and clears the choice with
+All.
+
+## ADR-87 — editing is a capability the host grants, and the dashboard never grants it
+
+**Pinned:** the owner's ask — editing as a general capability of a
+portable grid package, off in the dashboard — and Phase 6's refusal to
+paste into a grid that had nowhere for a value to land.
+
+**Decision.** `TreasuryGrid` takes an optional `edit: EditPolicy` — which
+columns may change (a list, or a rule over the meta; every registry
+column by default) and `onCommit(edits)`, where a committed change goes.
+Without it the grid is exactly what it was: read-only over its source.
+With it, a double-click, Enter, F2 or a typed character on the focused
+cell opens an inline editor; Enter commits and moves down, Tab commits
+and moves along, Escape gives up, a blur commits a good value and drops a
+bad one. A value that does not read stays under the reader's hands with
+the reason, never half-committed. Ctrl+V lands a tab-separated block
+from the focused cell over the visible columns — the paste ADR-71 had no
+home for — skipping and naming what cannot change: a group row, an
+aggregate, a placeholder, a calculated or pivot column, a value that does
+not parse.
+
+*What typed text means.* The stored value in the column's unit, read
+the way the search grammar reads a number: `2.5bn` in a notional column
+is 2,500,000,000 dollars, `3.5%` in a yield column is 3.5, `(1,200)` is
+-1200, `$1,200,000` is a number with its sign stripped. A dimension takes
+text; a date takes an ISO day. NUM-01 holds: the grid never changes what
+a column means, only what a cell holds.
+
+*Where a commit goes.* The cells change at once — an overlay over the
+rows, so subtotals and totals recompute — the host's `onCommit` is
+called, and when it settles the source is asked again where the reader
+is, so what is shown is what the source holds: a host that persists
+nothing sees the value revert, honestly. A host that throws puts the
+cells back and the status bar says why. Every cell edited in the session
+wears a corner mark and the status bar counts them. `DataSource.update`
+joins the seam as an optional write: the in-memory source replaces the
+rows it names, the SQL source runs one `UPDATE … WHERE rowId = ?` per
+edit (inlined and escaped for Dremio), DuckDB-WASM inherits it; a
+portable host may wire `onCommit` straight to it.
+
+*What a commit never touches.* The row id column: it is what every
+edit, mark and selection is keyed by, so the grid refuses it whatever the
+policy says, and the SQL source refuses it again. A batch over SQL runs
+in one transaction where the engine has them (DuckDB, SQLite; Dremio's
+REST API takes one statement per job), so a paste lands whole or not at
+all; and a refused batch still re-reads the source, so what is shown is
+what it holds even where a host wrote part of it before refusing.
+
+*The dashboard grants nothing.* `GridWidget` passes no policy, and says
+so in a comment: a dashboard reads a governed number, and an edit there
+would edit a query result nobody stores. The `grid@1` contract is
+unchanged. The harness grants editing behind `#/grid?e=1` and wires it
+to the source's `update`, so a reviewer can edit the seeded book in
+memory or in DuckDB.
+
+*Not carried.* Edits are data, not view: they do not enter the view's
+history, so Ctrl+Z undoes an arrangement and never a number — an undo of
+a write is the host's to offer, against its own source. The agent tools
+stay read-only; an agent that changes a number is a different decision
+(GOV-02 territory) and is not made here.
+
+**Not chosen.** Editing on by default with an `readOnly` prop (a host
+that forgets a flag would be editing a governed number; the grant must be
+explicit). A cell-level `editable` in the meta (which cells may change is
+the host's policy over its source, not a fact about the column). An
+edit queue with a Save button (a commit is a commit; batching is the
+host's `onCommit` to do).
+
+**What now fails if this regresses.** `edit.test.ts` reads typed text in
+every unit, rules columns in and out by policy, lands a pasted block from
+an anchor and names every skipped cell, lays edits over rows without
+touching the others, and reads edits back from the in-memory and SQLite
+sources. The grid e2e at `#/grid?e=1` types `2.5bn` into a notional and
+reads `$2,500.0M` with a moved footer total, drops a typed character with
+Escape, holds an unreadable yield with its reason, pastes a two-by-two
+block, and finds the same book read-only once the grant is off. The
+studio e2e double-clicks a value in the seeded grid widget and finds no
+editor.
 
 # Proposed — recorded gaps, not yet accepted
 

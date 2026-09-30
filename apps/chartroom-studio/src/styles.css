@@ -22,6 +22,15 @@
 @import 'keel-design-system/tokens/typography.css';
 @import 'keel-design-system/tokens/spacing.css';
 @import 'keel-design-system/tokens/radii.css';
+/* Tailwind, for the grid's shadcn components (ADR-65): the theme and the
+   utilities, in their own cascade layers so every unlayered rule in this
+   sheet keeps winning. Preflight is deliberately not imported — the base
+   styles below are the studio's, and a reset would rewrite them. The grid's
+   theme.css binds shadcn's variable names to the aliases that follow. */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme' layer(theme);
+@import 'tailwindcss/utilities' layer(utilities);
+@import 'chartroom-grid/theme.css';
 
 :root {
   /* ---- surfaces: Aperture's layered near-blacks ---- */
@@ -98,7 +107,9 @@ body {
 /* Mandatory on numeric data, per Aperture — digits lock column-to-column. */
 .tnum { font-variant-numeric: tabular-nums; }
 
-button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+/* The studio's button reset stops at shadcn's door: it is unlayered, so it
+   would beat every layered utility a `data-slot` component sets (ADR-65). */
+button:not([data-slot], [data-slot] *) { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 
 /* Aperture's focus ring — 3px yellow at 28% alpha. Keyboard focus has to be
    visible somewhere; the previous sheet removed the UA outline and replaced

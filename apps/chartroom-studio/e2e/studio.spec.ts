@@ -30,6 +30,38 @@ test.describe('the interpreter renders real data', () => {
     // The pivot has a totals row that really adds up (rendered, non-empty).
     await expect(page.getByTestId('widget-outflow-grid').locator('tfoot td').first())
       .toHaveText('total');
+    // The working table (ADR-83): the same groups as grid rows, in the contract's unit.
+    const table = page.getByTestId('widget-outflow-table').getByTestId('treasury-grid');
+    await expect(table.locator('tbody tr').first()).toBeVisible();
+    await expect(table.locator('tbody tr').first().locator('td[data-column="value"]')).toHaveText(/^-?\$[\d,]+$/);
+    // The dashboard grants no editing (ADR-87): a double-click on a value opens nothing.
+    await table.locator('tbody tr').first().locator('td[data-column="value"]').dblclick();
+    await expect(table.locator('[data-slot="cell-editor"]')).toHaveCount(0);
+    await expect(table).not.toHaveAttribute('data-editable', '');
+  });
+
+  test('the grid widget keeps the reader\'s arrangement in the widget\'s state (ADR-83)', async ({ page }) => {
+    const frame = page.getByTestId('widget-outflow-table');
+    const table = frame.getByTestId('treasury-grid');
+    await expect(table.locator('tbody tr').first()).toBeVisible();
+    const leaves = await table.locator('tbody tr').count();
+    // Group by entity from the header menu: group rows appear, the subtotal is a dollar figure.
+    await table.locator('th[data-column="entity_id"]').hover();
+    await page.getByRole('button', { name: 'Entity id column menu' }).click();
+    await page.getByRole('menuitem', { name: 'Group by Entity id' }).click();
+    const groups = table.locator('tbody tr[data-grouped]');
+    await expect(groups.first()).toBeVisible();
+    expect(await groups.count()).toBeLessThan(leaves);
+    await expect(groups.first().locator('td[data-column="value"]')).toHaveText(/^-?\$[\d,]+$/);
+    // The arrangement is the spec's: the source tab shows the widget's state.
+    // The editor virtualizes long documents, so scroll to the tail, where the
+    // grid widget sits, before reading.
+    await page.getByTestId('tab-source').click();
+    const scroller = page.locator('.cr-source-host .cm-scroller');
+    await expect(scroller).toBeVisible();
+    await scroller.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await expect(page.getByTestId('source-editor')).toContainText('"state"');
+    await expect(page.getByTestId('source-editor')).toContainText('"grouping"');
   });
 
   test('the frame shows the pinned function and the draft watermark shows over drafts', async ({ page }) => {

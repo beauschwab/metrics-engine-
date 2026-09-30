@@ -24,6 +24,13 @@ import type { AnalystEnv } from './bindings';
 import type { CrossFilter } from './analyst/ContextBar';
 import type { ContractSummary } from './data';
 import { useWidgetData } from './useWidgetData';
+import { GridWidget } from './GridWidget';
+
+/**
+ * Host-rendered widgets (ADR-83): contracts the widgets package carries but
+ * the studio draws, because their renderer lives outside that package.
+ */
+const HOST_RENDERED: ReadonlySet<string> = new Set(['grid@1']);
 
 interface FrameProps {
   w: WidgetInstance;
@@ -42,11 +49,13 @@ interface FrameProps {
   /** This widget is attached to the agent conversation (ADR-55). */
   attached: boolean;
   onAsk(id: string): void;
+  /** A host-rendered widget arranged by its reader (ADR-83). */
+  onWidgetState?: (id: string, state: Record<string, unknown>) => void;
 }
 
 function Frame({
   w, spec, contracts, selected, onSelect, extraFilters, pickDim, picked, onPick,
-  unrenderable, env, onExplain, attached, onAsk,
+  unrenderable, env, onExplain, attached, onAsk, onWidgetState,
 }: FrameProps) {
   const { data, status, error } = useWidgetData(w, spec, contracts, extraFilters, env);
   const Component = COMPONENTS[w.type];
@@ -76,7 +85,9 @@ function Frame({
         </span>
       </header>
       <div className="cr-frame-body">
-        {Component
+        {HOST_RENDERED.has(w.type)
+          ? <GridWidget w={w} spec={spec} contracts={contracts} extraFilters={extraFilters} env={env} onState={onWidgetState} />
+          : Component
           ? (
             <Component
               instance={w}
@@ -169,11 +180,13 @@ interface CanvasProps {
   /** Widget ids attached to the agent conversation (ADR-55). */
   attached?: ReadonlySet<string>;
   onAsk?(id: string): void;
+  /** A host-rendered widget arranged by its reader (ADR-83). */
+  onWidgetState?: (id: string, state: Record<string, unknown>) => void;
 }
 
 export function Canvas({
   spec, contracts, selected, onSelect, unrenderable = new Set<string>(),
-  env, cross, onCross, onExplain, attached = new Set<string>(), onAsk = () => {},
+  env, cross, onCross, onExplain, attached = new Set<string>(), onAsk = () => {}, onWidgetState,
 }: CanvasProps) {
 
   // The watermark the PRD asks for: draft chrome whenever the dashboard is a
@@ -233,6 +246,7 @@ export function Canvas({
             picked={cross}
             onPick={pickFor(w)}
             unrenderable={unrenderable}
+            onWidgetState={onWidgetState}
             env={env}
             onExplain={onExplain}
             attached={attached.has(w.id)}
