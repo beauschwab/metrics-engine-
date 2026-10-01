@@ -20,7 +20,8 @@ import { VIEW_VERSION, safeParseView, type ViewState } from '../grid/viewState';
 import type { DataSource, SourceDescription } from '../data/source';
 import type { GridRecord } from '../grid/schema';
 import { headlessTable } from './headless';
-import { isGroupNode, type GroupNode } from '../data/groupNode';
+import { contractGroupId, contractGroupPath, isGroupNode, type GroupNode } from '../data/groupNode';
+import { groupNodeId } from '../data/sqlSource';
 
 export interface ContractColumn {
   id: string;
@@ -117,7 +118,8 @@ export async function describeView(source: DataSource<GridRecord>, view: ViewSta
   // to guess "Rates" or "WF-US" — or which column WF-US belongs to — filters
   // to nothing and is told nothing.
   const columns = await Promise.all(contract.columns.map(async (c) => {
-    if (c.kind !== 'dimension') return c;
+    // The row id is unique per row: its "values" are the book, not a vocabulary.
+    if (c.kind !== 'dimension' || c.id === schema.rowId) return c;
     const found = await distinctOf(source, c.id, cache);
     if (!found) return c;
     // A dimension with an implied order (ADR-84) lists its values in it: a tenor ladder reads O/N to 10Y+, not alphabetically.
@@ -194,19 +196,28 @@ export async function queryView(
     ? await source.query(view, { window: { offset, limit }, totals: true })
     : await source.query(view, servedGroups ? { totals: true } : {});
   const effective: ViewState = options.expandAll ? { ...view, expanded: true } : view;
+  const schema = schemaFromDescription(about);
   // A source that grouped (ADR-70) answered with group nodes, a level at a
-  // time: they are not grouped again here. Expanding them is asking the
-  // source for each node's children by its path, level by level.
+  // time: they are not grouped again here. Opening one is asking the source
+  // for its children by its path — every node for `expanded: true`, else the
+  // nodes the view names. The view names them as the contract does
+  // ("desk:Rates"); the nodes are named by path ("g:Rates"), so the open set
+  // is translated for the table, and node ids are translated back on the way out.
   let rows = answer.rows;
-  if (answer.applied.group && effective.expanded === true) {
+  let tableView = effective;
+  if (answer.applied.group) {
+    const open = effective.expanded === true
+      ? null
+      : new Set(Object.entries(effective.expanded).filter(([, on]) => on).map(([k]) => (k.startsWith('g:') ? k : groupNodeId(contractGroupPath(k)))));
     const attach = async (list: GridRecord[]): Promise<GridRecord[]> => Promise.all(list.map(async (node) => {
-      if (!isGroupNode(node)) return node;
+      if (!isGroupNode(node) || (open && !open.has(String(node[schema.rowId])))) return node;
       const kids = await source.query(view, { groupPath: node.__group.path });
       return { ...node, __children: await attach(kids.rows) };
     }));
-    rows = await attach(rows);
+    if (!open || open.size) rows = await attach(rows);
+    if (open) tableView = { ...effective, expanded: Object.fromEntries([...open].map((id) => [id, true])) };
   }
-  const table = headlessTable(rows, effective, schemaFromDescription(about), answer.applied);
+  const table = headlessTable(rows, tableView, schema, answer.applied);
   // Screen order: pinned-to-start first, then the centre, then pinned-to-end —
   // what the reader sees left to right, not the declared order.
   const columnsOut = [...table.getStartVisibleLeafColumns(), ...table.getCenterVisibleLeafColumns(), ...table.getEndVisibleLeafColumns()].map((c) => c.id);
@@ -235,11 +246,14 @@ export async function queryView(
       else if (cell.getIsPlaceholder() || grouped) v = undefined;
       else v = cell.getValue();
       if (v !== undefined) values[id] = v;
-      const rule = meta && v !== undefined ? matchRule(meta.rules, v) : undefined;
+      // A count reads as a count, without the column's rules — as the screen draws it.
+      const rule = meta && v !== undefined ? matchRule((aggregate ? aggregateMeta(meta, cell.column.columnDef.aggregationFn) : meta).rules, v) : undefined;
       if (rule) emphasis[id] = rule.emphasis;
       if (display && meta && v !== undefined) shown[id] = formatValue(v, aggregate ? aggregateMeta(meta, cell.column.columnDef.aggregationFn) : meta);
     }
-    const q: QueryRow = { id: row.id, depth: row.depth, kind: grouped ? 'group' : 'leaf', values };
+    // An engine-made group answers to its contract id, the one expanded takes.
+    const id = node ? contractGroupId(view.grouping, node.__group.path) : row.id;
+    const q: QueryRow = { id, depth: row.depth, kind: grouped ? 'group' : 'leaf', values };
     if (Object.keys(emphasis).length) q.emphasis = emphasis;
     if (node) {
       q.group = { column: node.__group.column, value: node.__group.value, count: node.__group.count };
@@ -298,7 +312,13 @@ export function setView(view: ViewState, patch: unknown, options: { replace?: bo
     return { ok: false, issues: ['$: the patch must be an object of view slices'] };
   }
   const base = options.replace ? { version: VIEW_VERSION } : view;
-  const merged = { ...base, ...(patch as Record<string, unknown>), version: VIEW_VERSION };
+  const merged: Record<string, unknown> = { ...base, ...(patch as Record<string, unknown>), version: VIEW_VERSION };
+  // Keys the agent did not write this time and that no longer fit the
+  // grouping — left from a grouping it has just changed — are dropped, not
+  // held against it; the keys it does write are checked (agentIssues).
+  if (!('expanded' in (patch as object)) && merged.expanded && merged.expanded !== true && Array.isArray(merged.grouping)) {
+    merged.expanded = Object.fromEntries(Object.entries(merged.expanded as Record<string, boolean>).filter(([k]) => fitsGrouping(k, merged.grouping as string[])));
+  }
   const parsed = safeParseView(merged, schema);
   if (!parsed.ok) return { ok: false, issues: parsed.issues };
   const issues = agentIssues(parsed.view, schema);
@@ -327,6 +347,7 @@ export function agentIssues(view: ViewState, schema: GridSchema): string[] {
   }
   if (view.expanded !== true) {
     for (const key of Object.keys(view.expanded)) {
+      if (key.startsWith('g:')) continue; // an engine node's own id, as the screen writes it over a SQL source
       const levels = key.split('>');
       if (levels.length > view.grouping.length) {
         issues.push(`expanded: ${key}: ${levels.length} levels, but the grouping has ${view.grouping.length}`);
@@ -340,7 +361,20 @@ export function agentIssues(view: ViewState, schema: GridSchema): string[] {
       });
     }
   }
+  // A band draws against a limit the schema governs; an agent cannot supply one.
+  // (The view contract tolerates it, drawing the plain number, so a saved
+  // dashboard whose limit query fails keeps the rest of its arrangement.)
+  for (const [k, format] of Object.entries(view.columnFormats)) {
+    if (format?.trend === 'band' && !schema.columns[k]?.limit) issues.push(`columnFormats.${k}.trend: ${k} declares no limit to draw a band against`);
+  }
   return issues;
+}
+
+/** Whether an expanded key follows a grouping: "column:value" per level, in its order. */
+function fitsGrouping(key: string, grouping: readonly string[]): boolean {
+  if (key.startsWith('g:')) return true;
+  const levels = key.split('>');
+  return levels.length <= grouping.length && levels.every((level, i) => level.indexOf(':') > 0 && level.slice(0, level.indexOf(':')) === grouping[i]);
 }
 
 export interface DataCheck {
@@ -376,7 +410,7 @@ export async function checkAgainstData(
   const elsewhere = async (column: string, v: string) => {
     const owners: string[] = [];
     for (const other of dims) {
-      if (other === column) continue;
+      if (other === column || other === schema.rowId) continue;
       const values = await distinctOf(source, other, cache);
       if (values && has(values, v, '=')) owners.push(label(other));
     }
@@ -400,6 +434,7 @@ export async function checkAgainstData(
   }
   if (view.expanded !== true) {
     for (const key of Object.keys(view.expanded)) {
+      if (key.startsWith('g:')) continue;
       for (const level of key.split('>')) {
         const at = level.indexOf(':');
         await missing(`expanded ${key}`, level.slice(0, at), level.slice(at + 1));

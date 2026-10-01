@@ -75,7 +75,9 @@ export function duckdbSource(rows: Position[], name = 'DuckDB-WASM', schema?: Gr
       const pending = executor;
       executor = null;
       ready = null;
-      if (pending) await (await pending).close();
+      // A source that never started has nothing to close, and its failure was
+      // its questions' to report — the host's `void close()` must not reject.
+      if (pending) await pending.then((ex) => ex.close(), () => undefined);
     },
   };
 }

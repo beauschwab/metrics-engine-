@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest';
 import { allowedFormatKeys, buildColumns, effectiveMeta } from '../src/grid/columns';
 import { pivotMeta } from '../src/grid/pivot';
 import { TREND_SIZE, trendOf, trendReadings } from '../src/grid/trend';
-import { safeParseView, VIEW_VERSION } from '../src/grid/viewState';
+import { defaultView, safeParseView, VIEW_VERSION } from '../src/grid/viewState';
+import { setView } from '../src/agent/tools';
 import { businessDays, generatePositions, positionHistory, DV01_LIMIT } from '../src/data/mock';
 import { metricGroupsSchema } from '../src/data/metricGroups';
 import { TREASURY_SCHEMA } from '../src/data/treasury';
@@ -30,9 +31,12 @@ describe('a trend is a format a column with a history can take', () => {
     const noHistory = safeParseView(view({ yield: { trend: 'line' } }));
     expect(noHistory.ok).toBe(false);
     if (!noHistory.ok) expect(noHistory.issues.join()).toContain('yield has no history to draw');
-    const noLimit = safeParseView(view({ mtm: { trend: 'band' } }));
-    expect(noLimit.ok).toBe(false);
-    if (!noLimit.ok) expect(noLimit.issues.join()).toContain('mtm declares no limit to draw a band against');
+    // A band without a limit parses as a view (it draws the plain number, and a
+    // dashboard whose limit arrives late keeps its arrangement); an agent is refused it.
+    expect(safeParseView(view({ mtm: { trend: 'band' } })).ok).toBe(true);
+    const agent = setView(defaultView(), { columnFormats: { mtm: { trend: 'band' } } });
+    expect(agent.ok).toBe(false);
+    if (!agent.ok) expect(agent.issues.join()).toContain('mtm declares no limit to draw a band against');
     expect(safeParseView(view({ mtm: { trend: 'sparkle' } })).ok).toBe(false);
   });
 

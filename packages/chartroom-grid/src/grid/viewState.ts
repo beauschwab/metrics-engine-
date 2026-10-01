@@ -217,10 +217,11 @@ return z
             if (allowed.length === 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${k} is a dimension and has no format`, path: [k, key] });
             else if (!allowed.includes(key)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: key === 'trend' ? `${k} has no history to draw` : `${key} is not a format ${k} can take`, path: [k, key] });
           }
-          // A band draws against a limit the schema governs; a reader cannot supply one.
-          if (format.trend === 'band' && !schema.columns[k]?.limit) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${k} declares no limit to draw a band against`, path: [k, 'trend'] });
-          }
+          // A band without a limit is not refused here: the limit can arrive
+          // late or not at all (a dashboard's compare query), and refusing would
+          // throw the reader's whole arrangement back to the default. The band
+          // reads as its plain number until there is one (`trendOf`); an agent
+          // is refused it outright (`agentIssues`).
         }
       })
       .default({}),

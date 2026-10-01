@@ -26,6 +26,7 @@ import { HistoryContext } from './HistoryContext';
 import type { GridHistory } from '../grid/trend';
 import type { DataSource, SourceDescription } from '../data/source';
 import { groupNodePath, isGroupNode } from '../data/sqlSource';
+import { contractGroupId } from '../data/groupNode';
 import { useTreasuryTable, type Applied, type GridRowData, type ViewUpdate } from '../grid/useTreasuryTable';
 import type { GridRow } from './GroupCell';
 import type { Agg, ColumnFormat, ColumnMeta } from '../grid/meta';
@@ -404,7 +405,11 @@ export function TreasuryGrid({
       if (manual) {
         const { headlessTable } = await import('../agent/headless');
         const answer = await source.query({ ...view, grouping: [] });
-        sheet = headlessTable(answer.rows, view, schema) as unknown as Parameters<typeof workbookBytes>[0];
+        // Groups the reader opened over a served grouping are named by the
+        // engine's path ("g:Rates"); the sheet groups on the client, whose
+        // rows are named as the contract does ("desk:Rates").
+        const expanded = view.expanded === true ? true : Object.fromEntries(Object.entries(view.expanded).map(([k, on]) => [k.startsWith('g:') ? contractGroupId(view.grouping, groupNodePath(k)) : k, on]));
+        sheet = headlessTable(answer.rows, { ...view, expanded }, schema) as unknown as Parameters<typeof workbookBytes>[0];
       }
       const bytes = await workbookBytes(sheet, { title: about ? `${about.name} · as of ${about.asOf ?? '—'}` : undefined });
       const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

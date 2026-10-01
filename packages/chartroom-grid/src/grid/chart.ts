@@ -109,7 +109,9 @@ export function chartFromRange(table: CopyTable, asOf = ''): ChartOutcome {
     for (const row of rows) {
       const category = categoryOf(row[categoryIndex]!);
       const measured = measureOf(row[i]!);
-      const value = measured === undefined ? undefined : measured * toCatalog;
+      // A count or distinct count is a number of rows, not basis points: it is never rescaled.
+      const counted = row[i]!.getIsAggregated() && (agg === 'count' || agg === 'uniqueCount');
+      const value = measured === undefined ? undefined : measured * (counted ? 1 : toCatalog);
       if (category === undefined || value === undefined) continue;
       // Two rows with one label (a repeated desk) would draw one bar over another: number them.
       const n = (seen.get(category) ?? 0) + 1;
