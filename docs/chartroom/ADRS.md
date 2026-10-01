@@ -2855,6 +2855,62 @@ keyboard, reads the four seeded cards off the limit board and the
 dashboard grid's trend off its first row, and drives all four styles
 from the grid's format menu, a near limit and a far one included.
 
+## ADR-90 — a grid the reader can read: themed choices, whole headers, honest zeros
+
+**Pinned:** a reader could not read the calculated-column editor's operand
+list — light text on a white popup — and asked for a critique of the whole
+grid. The critique walked every surface (headers, menus, filters, editors,
+grouping, pivot, selection, empty state, the dashboard card) from
+screenshots and fixed what a reader could not read or would misread.
+
+**Decision.**
+
+- *No native choices.* A native `<select>` is drawn by the browser in its
+  own scheme; on a dark host that never declares one, its list is white.
+  The grid's choices (operation, operands, rule comparison, emphasis) are a
+  themed Radix select on the grid's own popover surface, whatever the host
+  declares, and Escape in an open list closes the list, not its editor. The
+  studio also declares `color-scheme: dark`, which fixes every remaining
+  native control it draws (the analyst bar's choices, scrollbars, dates).
+- *Whole headers.* A column's filter and menu buttons used to reserve their
+  room in the header at rest, so a 60px column read "C" for Ccy. At rest
+  they are now out of the layout; on hover or focus they overlay the
+  label's far end on the header's surface (visibility, never display, so an
+  open popover keeps its anchor); while a filter or pin is active they
+  join the flow as the column's state. A truncated label carries its name
+  as a title.
+- *Honest zeros.* A negative that shows no digit at the column's precision
+  reads as zero, unsigned and uncoloured: `-$0.00M` in the breach colour is
+  a loss the reader hunts for and never finds. One more decimal and it is
+  there to see.
+- *Heat is data, not accent.* The heatmap mixes a data hue (`--cr-s1`), not
+  the accent, which is selection, focus and the brand: a selected block
+  over amber heat read as amber on amber.
+- *The toolbar reads its own width.* It is a container: in a dashboard card
+  the drop zones keep their names and drop their hints (the hint moves to
+  a title), the search shrinks, the labelled buttons keep their icons, and
+  the controls wrap rather than overlap.
+- *Smaller readings.* The footer's "Total · N rows" overflows into the empty
+  cells beside it instead of clipping; totals over no rows say nothing
+  rather than `$0.0M`; the empty body says why and offers to clear the
+  filters; the format menu shows which decimals are chosen; the set filter's
+  count stays on one line; a pivot column in the columns panel leads with
+  its bucket.
+
+**Left as found, for a decision.** The engine formats millions without
+thousands separators (`$29041575.8M`), and the deck and widgets restate it
+on purpose (ADR-29), so separators are a change to all three or none. The
+studio sets `body { min-width: 1600px }`, so below that width every page,
+the grid harness included, scrolls sideways.
+
+**What now fails if this regresses.** `format.test.ts` reads a hidden loss
+as zero and a visible one as a loss; the heat test pins the data hue. The
+e2e picks every editor choice from the themed list, checks the list is not
+the browser's white popup and that Escape keeps the editor open, reads the
+short headers whole at their default widths, checks a hidden loss reads
+`$0.00M` uncoloured, and checks the dashboard card's search box never sits
+on its undo button.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

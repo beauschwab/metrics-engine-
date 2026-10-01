@@ -8,11 +8,11 @@
  */
 
 import type { ColumnMeta } from '../grid/meta';
-import { alignOf, formatValue, matchRule } from '../grid/meta';
+import { alignOf, formatValue, matchRule, showsNegative } from '../grid/meta';
 import { cn } from '../lib/utils';
 
 export function ValueCell({ value, meta }: { value: unknown; meta: ColumnMeta }) {
-  const negative = meta.negativeRed && typeof value === 'number' && value < 0;
+  const negative = meta.negativeRed && showsNegative(value, meta);
   // A highlight rule earns emphasis, never a semantic colour (ADR-78).
   const rule = matchRule(meta.rules, value);
   return (

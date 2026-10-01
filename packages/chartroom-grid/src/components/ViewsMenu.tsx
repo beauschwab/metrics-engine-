@@ -65,7 +65,7 @@ export function ViewsMenu({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="xs" aria-label="Saved views" aria-expanded={open}>
-          <Bookmark /> Views
+          <Bookmark /> <span className="hidden @2xl/toolbar:inline">Views</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-2 text-xs" data-slot="views-menu">

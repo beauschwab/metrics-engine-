@@ -74,6 +74,10 @@ test.describe('the interpreter renders real data', () => {
     const frame = page.getByTestId('widget-outflow-table');
     const table = frame.getByTestId('treasury-grid');
     await expect(table.locator('tbody tr').first()).toBeVisible();
+    // In a card the toolbar wraps rather than overlaps: the search box never sits on the undo button.
+    const search = (await frame.getByLabel('Quick filter').boundingBox())!;
+    const undo = (await frame.getByRole('button', { name: 'Undo view change' }).boundingBox())!;
+    expect(search.x + search.width <= undo.x || search.y + search.height <= undo.y || undo.y + undo.height <= search.y).toBe(true);
     // The frame reads the grid's answer: its status and the date it was evaluated at.
     await expect(frame).toHaveAttribute('data-status', 'fresh');
     await expect(frame.locator('.cr-frame-asof')).toHaveText(/^\d{4}-\d{2}-\d{2}$/);

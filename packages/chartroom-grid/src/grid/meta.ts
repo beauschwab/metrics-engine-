@@ -174,6 +174,11 @@ export function formatValue(value: unknown, meta: ColumnMeta): string {
   if (typeof value === 'string') return value;
   if (typeof value !== 'number' || Number.isNaN(value)) return MISSING;
 
+  // A loss too small to show at this precision reads as zero, not as
+  // "-$0.00M" in the breach colour: a sign the digits cannot back up is a
+  // loss the reader goes looking for and never finds.
+  if (value < 0 && !showsNegative(value, meta)) return formatValue(0, meta);
+
   // Accounting negatives wrap the whole reading, sign removed, so "($1.2M)"
   // and "(3.46%)" read the same way a ledger does.
   if (meta.negatives === 'parens' && value < 0) return `(${formatValue(-value, { ...meta, negatives: 'minus' })})`;
@@ -200,6 +205,11 @@ export function formatValue(value: unknown, meta: ColumnMeta): string {
     default:
       return fixed(value, meta.dp ?? 0);
   }
+}
+
+/** Whether a number reads as negative at its column's precision: below zero, and some digit says so. */
+export function showsNegative(value: unknown, meta: ColumnMeta): boolean {
+  return typeof value === 'number' && value < 0 && /[1-9]/.test(formatValue(-value, meta));
 }
 
 /** Whether a measure's unit is read at a scale — dollars are, a percent is not. */

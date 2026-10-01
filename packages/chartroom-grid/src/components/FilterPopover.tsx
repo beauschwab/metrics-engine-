@@ -97,8 +97,8 @@ function SetFilter({ column }: { column: GridColumn }) {
         aria-label={`Search ${column.columnDef.meta?.label} values`}
         className="h-7 text-xs"
       />
-      <div className="flex items-center justify-between text-faint">
-        <span>{current.length === all.length ? `${values.length.toLocaleString('en-US')} values` : `${current.length.toLocaleString('en-US')} of ${values.length.toLocaleString('en-US')}`}</span>
+      <div className="flex items-center justify-between gap-2 text-faint">
+        <span className="whitespace-nowrap tabular-nums">{current.length === all.length ? `${values.length.toLocaleString('en-US')} values` : `${current.length.toLocaleString('en-US')} of ${values.length.toLocaleString('en-US')}`}</span>
         <div className="flex gap-0.5" data-slot="set-filter-actions">
           {/* Never disabled: a button that disables under the pointer drops
               focus to the body, and the popover reads that as a dismissal. */}

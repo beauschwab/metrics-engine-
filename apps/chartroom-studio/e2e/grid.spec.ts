@@ -4,7 +4,13 @@
  * windowed body, every cell formatted from its column's meta.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+
+/** Pick from one of the grid's themed lists (a Radix select, never a native one): open it, choose by label. */
+async function choose(page: Page, trigger: Locator, option: string) {
+  await trigger.click();
+  await page.getByRole('option', { name: option, exact: true }).click();
+}
 
 test.describe('the treasury grid harness', () => {
   test('serves the seeded book through the seam and windows the body', async ({ page }) => {
@@ -22,6 +28,12 @@ test.describe('the treasury grid harness', () => {
     await expect(headers.nth(1)).toHaveText('Desk');
     await expect(headers.nth(10)).toHaveText('Notional');
     await expect(headers.nth(14)).toHaveText('Yield');
+    // Every short header reads whole at its default width: the column's
+    // controls overlay on hover, they never take the label's room.
+    for (const id of ['legalEntity', 'currency', 'product', 'tenorBucket', 'notional', 'yield', 'wal']) {
+      const label = grid.locator(`th[data-column="${id}"] [data-slot="column-header"]`);
+      expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth), id).toBe(true);
+    }
 
     // Fifty thousand rows in the model, a window of them in the DOM.
     const bodyRows = grid.locator('tbody tr');
@@ -671,9 +683,9 @@ test.describe('the treasury grid harness', () => {
     await page.locator('[data-slot="format-choices"][data-column="notional"]').getByRole('menuitem', { name: /Highlight rules/ }).click();
     const editor = page.locator('[data-slot="highlight-rules-editor"][data-column="notional"]');
     await expect(editor).toBeVisible();
-    await editor.getByLabel('Comparison').selectOption('>');
+    await choose(page, editor.getByLabel('Comparison'), '>');
     await editor.getByLabel('Notional threshold').fill('3bn');
-    await editor.getByLabel('Emphasis').selectOption('accent');
+    await choose(page, editor.getByLabel('Emphasis'), 'Highlight');
     await editor.getByRole('button', { name: 'Add' }).click();
     await expect(editor.locator('[data-slot="highlight-rule"]')).toHaveText(/> \$3000\.0M\s*Highlight/);
 
@@ -709,13 +721,22 @@ test.describe('the treasury grid harness', () => {
     await sidebar.getByRole('button', { name: 'Add calculated column' }).click();
     const editor = page.locator('[data-slot="computed-editor"]');
     await editor.getByLabel('Calculated column name').fill('MTM share');
-    await editor.getByLabel('Operation').selectOption('ratio');
-    await editor.getByLabel('Operand A').selectOption('mtm');
+    // The list is the grid's own surface, readable on the dark theme: not the browser's white popup.
+    await editor.getByLabel('Operation').click();
+    const list = page.locator('[data-slot="select-content"]');
+    await expect(list).toBeVisible();
+    const [bg, fg] = await list.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]);
+    expect(bg).not.toBe('rgb(255, 255, 255)');
+    expect(bg).not.toBe(fg);
+    await page.keyboard.press('Escape');
+    await expect(editor).toBeVisible(); // Escape closed the list, not the editor
+    await choose(page, editor.getByLabel('Operation'), 'A ÷ B, as a percent');
+    await choose(page, editor.getByLabel('Operand A'), 'MTM');
     // A mixed pair is refused with the reason before the column exists.
-    await editor.getByLabel('Operand B').selectOption('yield');
+    await choose(page, editor.getByLabel('Operand B'), 'Yield');
     await expect(editor.locator('[data-slot="computed-preview"]')).toHaveText(/different units \(NUM-01\)/);
     await expect(editor.getByRole('button', { name: 'Add column' })).toBeDisabled();
-    await editor.getByLabel('Operand B').selectOption('notional');
+    await choose(page, editor.getByLabel('Operand B'), 'Notional');
     await expect(editor.locator('[data-slot="computed-preview"]')).toHaveText(/reads in pct/);
     await editor.getByRole('button', { name: 'Add column' }).click();
 
@@ -914,7 +935,9 @@ test.describe('the treasury grid harness', () => {
       data.setData('text/plain', '(1,000)\t250\n2000\t-5\n');
       el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
     });
-    await expect(second.locator('td[data-column="mtm"]')).toHaveText('-$0.00M');
+    // -$1,000 at two decimals of millions shows no digit of loss, so it reads as zero, not "-$0.00M".
+    await expect(second.locator('td[data-column="mtm"]')).toHaveText('$0.00M');
+    await expect(second.locator('td[data-column="mtm"] [data-slot="value"]')).not.toHaveAttribute('data-negative', /.*/);
     await expect(second.locator('td[data-column="dv01"]')).toHaveText('$250');
     await expect(grid.locator('tbody tr').nth(2).locator('td[data-column="dv01"]')).toHaveText('-$5');
     await expect(status.locator('[data-slot="status-edited"]')).toHaveText(/^5 cells edited$/);

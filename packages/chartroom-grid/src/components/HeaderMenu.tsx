@@ -142,7 +142,7 @@ export function HeaderMenu({
                 <DropdownMenuRadioGroup value={String(dp)} onValueChange={(v) => onFormatChange(column.id, { dp: Number(v) })}>
                   <div className="flex px-1" data-slot="format-decimals">
                     {DECIMALS.map((n) => (
-                      <DropdownMenuRadioItem key={n} value={String(n)} className="flex-1 justify-center pl-2 [&>span:first-child]:hidden" aria-label={`${n} decimals`}>
+                      <DropdownMenuRadioItem key={n} value={String(n)} className="flex-1 justify-center pl-2 tabular-nums data-[state=checked]:bg-selected data-[state=checked]:font-semibold data-[state=checked]:text-foreground [&>span:first-child]:hidden" aria-label={`${n} decimals`}>
                         {n}
                       </DropdownMenuRadioItem>
                     ))}
