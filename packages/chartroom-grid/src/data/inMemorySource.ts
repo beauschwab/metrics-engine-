@@ -33,6 +33,7 @@ export function inMemorySource<R extends GridRecord>(initial: R[], name = 'in-me
     async describe() {
       return description;
     },
+    // The in-memory source serves no filter: the client's facets already scope a set filter's list.
     async distinct(column: string) {
       return distinctValues(rows, column);
     },

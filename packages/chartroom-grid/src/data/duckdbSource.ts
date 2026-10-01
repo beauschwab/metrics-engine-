@@ -61,12 +61,23 @@ export async function createDuckDbExecutor(rows: Position[]): Promise<DuckDbExec
 
 /** The book behind DuckDB-WASM, created on first use. */
 export function duckdbSource(rows: Position[], name = 'DuckDB-WASM', schema?: GridSchema): DataSource<GridRecord> {
+  let executor: Promise<DuckDbExecutor> | null = null;
   let ready: Promise<DataSource<GridRecord>> | null = null;
-  const inner = () => (ready ??= createDuckDbExecutor(rows).then((executor) => sqlSource({ executor, table: DUCKDB_TABLE, dialect: DUCKDB, name, schema })));
+  const inner = () => (ready ??= (executor = createDuckDbExecutor(rows)).then((ex) => sqlSource({ executor: ex, table: DUCKDB_TABLE, dialect: DUCKDB, name, schema })));
   return {
     describe: () => inner().then((s) => s.describe()),
     query: (view, options) => inner().then((s) => s.query(view, options)),
-    distinct: (column) => inner().then((s) => s.distinct!(column)),
+    distinct: (column, view) => inner().then((s) => s.distinct!(column, view)),
     update: (edits) => inner().then((s) => s.update!(edits)),
+    // The worker, the database and the connection go when the host lets the source go;
+    // a later question starts a fresh engine rather than asking a closed one.
+    async close() {
+      const pending = executor;
+      executor = null;
+      ready = null;
+      // A source that never started has nothing to close, and its failure was
+      // its questions' to report — the host's `void close()` must not reject.
+      if (pending) await pending.then((ex) => ex.close(), () => undefined);
+    },
   };
 }

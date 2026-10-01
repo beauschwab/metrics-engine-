@@ -84,8 +84,11 @@ export function ColumnsSidebar({
 
 function SidebarItem({ column, grouped, onRemoveComputed }: { column: GridColumn; grouped: boolean; onRemoveComputed?: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: SIDE_PREFIX + column.id });
-  const label = column.columnDef.meta?.label ?? column.id;
-  const computed = !!column.columnDef.meta?.computed;
+  const meta = column.columnDef.meta;
+  // A pivot column is a measure within one bucket (ADR-80): "Notional" six
+  // times over says nothing, so the bucket leads.
+  const label = meta?.pivot && meta.band ? `${meta.band} · ${meta.label}` : meta?.label ?? column.id;
+  const computed = !!meta?.computed;
   return (
     <li
       ref={setNodeRef}
@@ -102,7 +105,7 @@ function SidebarItem({ column, grouped, onRemoveComputed }: { column: GridColumn
         checked={column.getIsVisible()}
         onCheckedChange={(v) => column.toggleVisibility(v === true)}
       />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="min-w-0 flex-1 truncate" title={label}>{label}</span>
       {computed && <Badge variant="outline" className="h-4 px-1 text-[9px] uppercase text-faint" data-slot="calc-badge">calc</Badge>}
       {computed && onRemoveComputed && (
         <Button variant="ghost" size="icon-xs" aria-label={`Remove ${label}`} className="text-faint" onClick={() => onRemoveComputed(column.id)}>

@@ -51,15 +51,19 @@ export function PivotDropZone({
     <div
       ref={setNodeRef}
       data-slot="pivot-zone"
+      title="Drop a column header here to pivot by it"
       data-over={isOver || undefined}
       data-pivot={pivot ?? undefined}
       className={cn(
-        'flex min-h-8 flex-wrap items-center gap-1.5 rounded-sm border border-dashed border-border px-2 py-1 text-xs text-faint transition-colors',
+        'flex min-h-8 flex-wrap items-center gap-1.5 rounded-sm border border-dashed border-border px-2 py-1 text-xs whitespace-nowrap text-faint transition-colors',
         isOver && 'border-primary bg-muted/50 text-foreground',
       )}
     >
-      <Columns3 className="size-3.5" />
-      <span className="font-semibold tracking-[0.06em] uppercase text-[10px]">Pivot</span>
+      {/* The zone's name never parts from its icon, however narrow the toolbar. */}
+      <span className="inline-flex shrink-0 items-center gap-1.5">
+        <Columns3 className="size-3.5" />
+        <span className="font-semibold tracking-[0.06em] uppercase text-[10px]">Pivot</span>
+      </span>
       {label ? (
         <Badge variant="secondary" data-slot="pivot-chip" data-column={pivot ?? undefined} className="gap-1 pr-1 pl-1.5">
           {label}
@@ -108,7 +112,7 @@ export function PivotDropZone({
           </button>
         </Badge>
       ) : (
-        <span>drop a column here to pivot</span>
+        <span className="hidden @3xl/toolbar:inline">drop a column here to pivot</span>
       )}
     </div>
   );
@@ -120,14 +124,18 @@ export function GroupByDropZone({ table, grouping }: { table: TreasuryTable; gro
     <div
       ref={setNodeRef}
       data-slot="group-zone"
+      title="Drag a column header here to group by it"
       data-over={isOver || undefined}
       className={cn(
-        'flex min-h-8 flex-1 flex-wrap items-center gap-1.5 rounded-sm border border-dashed border-border px-2 py-1 text-xs text-faint transition-colors',
+        'flex min-h-8 flex-1 flex-wrap items-center gap-1.5 rounded-sm border border-dashed border-border px-2 py-1 text-xs whitespace-nowrap text-faint transition-colors',
         isOver && 'border-primary bg-muted/50 text-foreground',
       )}
     >
-      <Rows3 className="size-3.5" />
-      <span className="font-semibold tracking-[0.06em] uppercase text-[10px]">Row groups</span>
+      {/* The zone's name never parts from its icon, however narrow the toolbar. */}
+      <span className="inline-flex shrink-0 items-center gap-1.5">
+        <Rows3 className="size-3.5" />
+        <span className="font-semibold tracking-[0.06em] uppercase text-[10px]">Row groups</span>
+      </span>
       <SortableContext items={grouping.map((id) => GROUP_PREFIX + id)} strategy={horizontalListSortingStrategy}>
         {grouping.map((id) => (
           <GroupChip
@@ -138,7 +146,7 @@ export function GroupByDropZone({ table, grouping }: { table: TreasuryTable; gro
           />
         ))}
       </SortableContext>
-      {grouping.length === 0 && <span>drag a column here to group</span>}
+      {grouping.length === 0 && <span className="hidden @3xl/toolbar:inline">drag a column here to group</span>}
     </div>
   );
 }

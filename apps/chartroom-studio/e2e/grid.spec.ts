@@ -4,7 +4,13 @@
  * windowed body, every cell formatted from its column's meta.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+
+/** Pick from one of the grid's themed lists (a Radix select, never a native one): open it, choose by label. */
+async function choose(page: Page, trigger: Locator, option: string) {
+  await trigger.click();
+  await page.getByRole('option', { name: option, exact: true }).click();
+}
 
 test.describe('the treasury grid harness', () => {
   test('serves the seeded book through the seam and windows the body', async ({ page }) => {
@@ -22,6 +28,16 @@ test.describe('the treasury grid harness', () => {
     await expect(headers.nth(1)).toHaveText('Desk');
     await expect(headers.nth(10)).toHaveText('Notional');
     await expect(headers.nth(14)).toHaveText('Yield');
+    // Every short header reads whole at its default width: the column's
+    // controls overlay on hover, they never take the label's room.
+    for (const id of ['legalEntity', 'currency', 'product', 'tenorBucket', 'notional', 'yield', 'wal']) {
+      const label = grid.locator(`th[data-column="${id}"] [data-slot="column-header"]`);
+      expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth), id).toBe(true);
+    }
+    // The controls are transparent at rest, never hidden: a screen reader and the Tab key reach them without a hover.
+    await page.mouse.move(0, 0);
+    await expect(page.getByRole('button', { name: 'Desk column menu' })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Filter Desk' })).toHaveCount(1);
 
     // Fifty thousand rows in the model, a window of them in the DOM.
     const bodyRows = grid.locator('tbody tr');
@@ -671,9 +687,9 @@ test.describe('the treasury grid harness', () => {
     await page.locator('[data-slot="format-choices"][data-column="notional"]').getByRole('menuitem', { name: /Highlight rules/ }).click();
     const editor = page.locator('[data-slot="highlight-rules-editor"][data-column="notional"]');
     await expect(editor).toBeVisible();
-    await editor.getByLabel('Comparison').selectOption('>');
+    await choose(page, editor.getByLabel('Comparison'), '>');
     await editor.getByLabel('Notional threshold').fill('3bn');
-    await editor.getByLabel('Emphasis').selectOption('accent');
+    await choose(page, editor.getByLabel('Emphasis'), 'Highlight');
     await editor.getByRole('button', { name: 'Add' }).click();
     await expect(editor.locator('[data-slot="highlight-rule"]')).toHaveText(/> \$3000\.0M\s*Highlight/);
 
@@ -709,13 +725,22 @@ test.describe('the treasury grid harness', () => {
     await sidebar.getByRole('button', { name: 'Add calculated column' }).click();
     const editor = page.locator('[data-slot="computed-editor"]');
     await editor.getByLabel('Calculated column name').fill('MTM share');
-    await editor.getByLabel('Operation').selectOption('ratio');
-    await editor.getByLabel('Operand A').selectOption('mtm');
+    // The list is the grid's own surface, readable on the dark theme: not the browser's white popup.
+    await editor.getByLabel('Operation').click();
+    const list = page.locator('[data-slot="select-content"]');
+    await expect(list).toBeVisible();
+    const [bg, fg] = await list.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]);
+    expect(bg).not.toBe('rgb(255, 255, 255)');
+    expect(bg).not.toBe(fg);
+    await page.keyboard.press('Escape');
+    await expect(editor).toBeVisible(); // Escape closed the list, not the editor
+    await choose(page, editor.getByLabel('Operation'), 'A ÷ B, as a percent');
+    await choose(page, editor.getByLabel('Operand A'), 'MTM');
     // A mixed pair is refused with the reason before the column exists.
-    await editor.getByLabel('Operand B').selectOption('yield');
+    await choose(page, editor.getByLabel('Operand B'), 'Yield');
     await expect(editor.locator('[data-slot="computed-preview"]')).toHaveText(/different units \(NUM-01\)/);
     await expect(editor.getByRole('button', { name: 'Add column' })).toBeDisabled();
-    await editor.getByLabel('Operand B').selectOption('notional');
+    await choose(page, editor.getByLabel('Operand B'), 'Notional');
     await expect(editor.locator('[data-slot="computed-preview"]')).toHaveText(/reads in pct/);
     await editor.getByRole('button', { name: 'Add column' }).click();
 
@@ -914,7 +939,9 @@ test.describe('the treasury grid harness', () => {
       data.setData('text/plain', '(1,000)\t250\n2000\t-5\n');
       el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
     });
-    await expect(second.locator('td[data-column="mtm"]')).toHaveText('-$0.00M');
+    // -$1,000 at two decimals of millions shows no digit of loss, so it reads as zero, not "-$0.00M".
+    await expect(second.locator('td[data-column="mtm"]')).toHaveText('$0.00M');
+    await expect(second.locator('td[data-column="mtm"] [data-slot="value"]')).not.toHaveAttribute('data-negative', /.*/);
     await expect(second.locator('td[data-column="dv01"]')).toHaveText('$250');
     await expect(grid.locator('tbody tr').nth(2).locator('td[data-column="dv01"]')).toHaveText('-$5');
     await expect(status.locator('[data-slot="status-edited"]')).toHaveText(/^5 cells edited$/);
@@ -930,6 +957,106 @@ test.describe('the treasury grid harness', () => {
     await grid.locator('tbody tr').first().locator('td[data-column="notional"]').dblclick();
     await expect(grid.locator('[data-slot="cell-editor"]')).toHaveCount(0);
     await expect(status.locator('[data-slot="status-edited"]')).toHaveCount(0);
+  });
+
+  test('draws a measure\'s history as a trend in four styles from the format menu; the tip says the day, the keyboard reads it too (ADR-89)', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    const first = grid.locator('tbody tr').first();
+    await expect(first).toBeVisible();
+    const trendMenu = async (column: 'mtm' | 'dv01', label: string) => {
+      await grid.locator(`th[data-column="${column}"]`).hover();
+      await page.getByRole('button', { name: `${label} column menu` }).click();
+      await page.locator('[data-slot="format-menu"]').hover();
+      return page.locator(`[data-slot="format-choices"][data-column="${column}"] [data-slot="format-trend"]`);
+    };
+
+    // No trend until a reader asks; a column with no history offers none.
+    await expect(grid.locator('[data-slot="trend"]')).toHaveCount(0);
+    await grid.locator('th[data-column="yield"]').hover();
+    await page.getByRole('button', { name: 'Yield column menu' }).click();
+    await page.locator('[data-slot="format-menu"]').hover();
+    await expect(page.locator('[data-slot="format-choices"][data-column="yield"]')).toBeVisible();
+    await expect(page.locator('[data-slot="format-trend"]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+
+    // MTM as a line — no band offered, since MTM declares no limit.
+    let trend = await trendMenu('mtm', 'MTM');
+    await expect(trend.getByRole('menuitemradio', { name: 'None' })).toHaveAttribute('aria-checked', 'true');
+    await expect(trend.getByRole('menuitemradio', { name: /Against limit/ })).toHaveCount(0);
+    await trend.getByRole('menuitemradio', { name: 'Line' }).click();
+    const cell = first.locator('td[data-column="mtm"]');
+    const spark = cell.locator('[data-slot="trend-spark"]');
+    await expect(spark.locator('[data-mark="line"]')).toHaveCount(1);
+    await expect(spark.locator('[data-mark="current"]')).toHaveCount(1);
+    // The number still reads beside it, exactly as before.
+    await expect(cell).toHaveText(/^-?\$[\d.]+M$/);
+    const number = (await cell.textContent())!;
+
+    // Pointing at the right end lands on the as-of date, and the tip says the cell's number.
+    await spark.hover({ position: { x: 62, y: 9 } });
+    const tip = page.locator('[data-slot="trend-tip"]');
+    await expect(tip).toBeVisible();
+    await expect(tip).toContainText('2026-09-28');
+    await expect(tip).toContainText(number);
+    await spark.hover({ position: { x: 2, y: 9 } });
+    await expect(tip).not.toContainText('2026-09-28');
+    await expect(tip).toContainText('2026-08-18');
+    await page.mouse.move(0, 0);
+    await expect(tip).toHaveCount(0);
+
+    // The keyboard reads the same days: focus lands on today, the left arrow steps back a business day.
+    await spark.focus();
+    await expect(tip).toContainText('2026-09-28');
+    await page.keyboard.press('ArrowLeft');
+    await expect(tip).toContainText('2026-09-25');
+    await expect(tip).toContainText(/since 08-18/);
+    await page.keyboard.press('Escape');
+    await expect(tip).toHaveCount(0);
+    await expect(spark).toHaveAttribute('aria-label', /^MTM, T\d{6}, line: 30 points, 08-18 to 09-28: latest /);
+
+    // Columns: one per day; range: one tick per day on a track.
+    trend = await trendMenu('mtm', 'MTM');
+    await trend.getByRole('menuitemradio', { name: 'Columns' }).click();
+    await expect(spark.locator('[data-mark="column"]')).toHaveCount(30);
+    await expect(spark.locator('[data-mark="zero"]')).toHaveCount(1);
+    trend = await trendMenu('mtm', 'MTM');
+    await trend.getByRole('menuitemradio', { name: 'Range strip' }).click();
+    await expect(spark.locator('[data-mark="tick"]')).toHaveCount(30);
+    await expect(spark.locator('[data-mark="track"]')).toHaveCount(1);
+
+    // DV01 against its governed limit: the limit line, the breach side, the limit named in the menu.
+    // A trade near the limit draws it; one a hundred times inside keeps its own shape and says the side in words.
+    await page.getByLabel('Quick filter').fill('dv01>235k dv01<265k');
+    await expect(first.locator('td[data-column="dv01"]')).toHaveText(/^\$2[3-6]\d,\d{3}$/);
+    trend = await trendMenu('dv01', 'DV01');
+    await trend.getByRole('menuitemradio', { name: 'Against limit · trade DV01 limit' }).click();
+    const dv01 = first.locator('td[data-column="dv01"] [data-slot="trend-spark"]');
+    await expect(dv01.locator('[data-mark="limit"]')).toHaveCount(1);
+    await expect(dv01.locator('[data-mark="zone"]')).toHaveCount(1);
+    await dv01.focus();
+    await expect(tip).toContainText(/(above|below|at) ceiling trade DV01 limit \$250,000/);
+
+    // The link carries the choices; a group row draws no trend, only its subtotal.
+    const hash = await page.evaluate(() => location.hash);
+    const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(decoded.columnFormats).toEqual({ mtm: { trend: 'range' }, dv01: { trend: 'band' } });
+    await page.getByLabel('Quick filter').fill('dv01<5k');
+    await expect(first.locator('td[data-column="dv01"]')).toHaveText(/^\$[\d,]+$/);
+    await expect(dv01.locator('[data-mark="line"]')).toHaveCount(1);
+    await expect(dv01.locator('[data-mark="limit"]')).toHaveCount(0);
+    await dv01.focus();
+    await expect(tip).toContainText('below ceiling trade DV01 limit $250,000');
+    await dv01.blur();
+    await page.getByLabel('Quick filter').fill('');
+    // The filter bar leaves after the search's debounce and the header moves up: hover where it settles.
+    await expect(page.locator('[data-slot="filter-bar"]')).toHaveCount(0);
+    await grid.locator('th[data-column="desk"]').hover();
+    await page.getByRole('button', { name: 'Desk column menu' }).click();
+    await page.getByRole('menuitem', { name: 'Group by Desk' }).click();
+    await expect(grid.locator('tbody tr[data-grouped]').first()).toBeVisible();
+    await expect(grid.locator('tbody tr[data-grouped] [data-slot="trend"]')).toHaveCount(0);
   });
 
   test('serves the same book from DuckDB-WASM: filter, sort and grouping compiled to SQL, children fetched on expand', async ({ page }) => {
@@ -958,6 +1085,20 @@ test.describe('the treasury grid harness', () => {
     await scroller.evaluate((el) => { el.scrollTop = 0; });
     await expect(grid.locator('tbody tr:not([data-slot="placeholder-row"]) td[data-column="tradeId"]', { hasText: 'T000001' })).toBeVisible({ timeout: 30_000 });
 
+    // The sheet is the whole answer, not the window the grid holds: every
+    // position, totalled by the engine's rules over all of them.
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export to Excel' }).click();
+    const file = await download;
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile((await file.path())!);
+    const sheet = wb.worksheets[0]!;
+    const texts: string[] = [];
+    sheet.eachRow((row) => { const v = row.getCell(1).value; if (typeof v === 'string') texts.push(v); });
+    expect(texts).toContain('Total · 50,000 rows');
+    expect(sheet.rowCount).toBe(50_002);
+
     // A sort is served: the engine orders, the client passes rows through.
     await grid.locator('th[data-column="notional"] [data-slot="column-header"]').click();
     await expect(grid.locator('th[data-column="notional"]')).toHaveAttribute('aria-sort', 'descending');
@@ -973,11 +1114,25 @@ test.describe('the treasury grid harness', () => {
     await expect(status.locator('[data-slot="status-rows"]')).toHaveText(/^[\d,]+ of 50,000 rows$/, { timeout: 30_000 });
     await expect(grid.locator('tbody tr').first().locator('td[data-column="product"]')).toHaveText('CDS');
 
+    // Over a served answer a set filter lists what the source holds under the
+    // other filters, not the thousand rows in the window: every desk trades CDS.
+    await grid.locator('th[data-column="desk"]').hover();
+    await page.getByRole('button', { name: 'Filter Desk' }).click();
+    const deskFilter = page.locator('[data-slot="filter-popover"][data-column="desk"]');
+    await expect(deskFilter.locator('[data-slot="set-filter-values"] li')).toHaveCount(5);
+    await page.keyboard.press('Escape');
+    const footerNotional = grid.locator('tfoot [data-slot="grand-total"] td[data-column="notional"]');
+    await expect(footerNotional).toHaveText(/^\$[\d,]+\.\d[MB]$/);
+    const cdsTotal = await footerNotional.textContent();
+
     // Grouping is served a level at a time: five desk nodes with subtotals,
     // and a node's children fetched by its path when it expands.
     await page.getByTestId('columns-sidebar').getByRole('button', { name: 'Group by Desk' }).click();
     const groups = grid.locator('tbody tr[data-grouped]');
     await expect(groups).toHaveCount(5, { timeout: 30_000 });
+    // Grouped by the engine, the footer is still the engine's total over the
+    // filtered book — not a re-aggregation of the five desk nodes.
+    await expect(footerNotional).toHaveText(cdsTotal!);
     const first = groups.first();
     await expect(first.locator('td[data-column="desk"]')).toHaveText(/\(\d{1,2},\d{3}\)$|\(\d{3}\)$/);
     await expect(first.locator('td[data-column="notional"]')).toHaveText(/^\$[\d,]+\.\dM$/);

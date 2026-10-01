@@ -126,10 +126,10 @@ describe('the heat ramp', () => {
     expect(heatIntensity(1, [1, 1])).toBeUndefined();
   });
 
-  it('paints only the accent token, mixed, never a colour of its own', () => {
+  it('paints only a data hue, mixed — never the accent, which is selection and focus', () => {
     expect(heatBackground(0)).toBeUndefined();
     expect(heatBackground(undefined)).toBeUndefined();
-    expect(heatBackground(1)).toBe('color-mix(in oklab, var(--cr-accent) 38%, transparent)');
-    expect(heatBackground(0.5)).toMatch(/^color-mix\(in oklab, var\(--cr-accent\) 19%, transparent\)$/);
+    expect(heatBackground(1)).toBe('color-mix(in oklab, var(--cr-s1) 38%, transparent)');
+    expect(heatBackground(0.5)).toMatch(/^color-mix\(in oklab, var\(--cr-s1\) 19%, transparent\)$/);
   });
 });

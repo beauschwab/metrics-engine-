@@ -49,11 +49,12 @@ describe('the catalog', () => {
     for (const c of CATALOG) expect(() => Contract.parse(c)).not.toThrow();
   });
 
-  it('ships the Phase-1 five, the Phase-9 seven and the host-rendered grid; every widgets-rendered one has a component, and no strays', () => {
+  it('ships the Phase-1 five, the Phase-9 seven, the host-rendered grid and the four sparklines; every widgets-rendered one has a component, and no strays', () => {
     const refs = CATALOG.map((c) => `${c.widget}@${c.version}`).sort();
     expect(refs).toEqual([
       'annotation@1', 'bar@1', 'bullet@1', 'delta-table@1', 'distribution@1',
       'grid@1', 'heatmap@1', 'kpi-tile@1', 'perspective-grid@1', 'small-multiples@1',
+      'spark-band@1', 'spark-column@1', 'spark-line@1', 'spark-range@1',
       'stacked-area@1', 'timeseries@1', 'waterfall@1',
     ]);
     const ours = CATALOG.filter((c) => c.renderer !== 'host').map((c) => `${c.widget}@${c.version}`).sort();

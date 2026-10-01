@@ -22,6 +22,7 @@ import { TREASURY_SCHEMA } from '../data/treasury';
 import { idsOf, type GridSchema } from './schema';
 import { COMPUTED_OPS, MAX_COMPUTED, computedIssues, isComputedId, type ComputedColumn, type ComputedOp } from './computed';
 import { isPivotId } from './pivot';
+import { SPARK_STYLES, type SparkStyle } from 'chartroom-widgets/spark';
 import {
   AGGS, DECIMALS, EMPHASES, MAX_RULES, NEGATIVES, RULE_OPS, SCALES, type Agg, type ColumnFormat, type Emphasis, type Negatives, type RuleOp, type Scale,
 } from './meta';
@@ -93,15 +94,45 @@ const crossCheck = (v: { [k: string]: unknown }, ctx: z.RefinementCtx): void => 
   };
   (v.columnOrder as string[]).forEach((id, i) => defined(id, ['columnOrder', i]));
   (v.sorting as { id: string }[]).forEach((s, i) => defined(s.id, ['sorting', i, 'id']));
-  (v.columnFilters as { id: string }[]).forEach((f, i) => {
+  (v.columnFilters as { id: string; value?: unknown }[]).forEach((f, i) => {
     defined(f.id, ['columnFilters', i, 'id']);
-    if (isPivotId(f.id)) issue(`a pivot column is not filtered; filter its measure or its dimension: ${f.id}`, ['columnFilters', i, 'id']);
+    if (isPivotId(f.id)) { issue(`a pivot column is not filtered; filter its measure or its dimension: ${f.id}`, ['columnFilters', i, 'id']); return; }
+    // The value's shape follows the column's kind, as the contract says: a
+    // dimension keeps rows whose value is one of a list of strings; a
+    // measure (a calculated column is one) an inclusive range whose ends
+    // are finite numbers or null. Any other shape would read differently
+    // in memory and in SQL, so it is refused here.
+    const measure = isComputedId(f.id) || metaOf(f.id)?.kind === 'measure';
+    const value = f.value;
+    if (measure) {
+      const end = (x: unknown) => x === null || (typeof x === 'number' && Number.isFinite(x));
+      if (!Array.isArray(value) || value.length !== 2 || !value.every(end)) {
+        issue(`a range filter on ${f.id} takes [min|null, max|null] of finite numbers`, ['columnFilters', i, 'value']);
+      }
+    } else if (metaOf(f.id) && (!Array.isArray(value) || !value.every((x) => typeof x === 'string'))) {
+      issue(`a set filter on ${f.id} takes a list of strings`, ['columnFilters', i, 'value']);
+    }
   });
+  // A slice that names a column twice says two things at once — group by desk
+  // within desk, sort desk up and down, filter desk to Rates and to FX — and
+  // the table would silently keep one. Refused, so the view means one thing.
+  const once = (ids: string[], path: string, what: string) => {
+    const seen = new Set<string>();
+    ids.forEach((id, i) => {
+      if (seen.has(id)) issue(`${what} names ${id} twice`, [path, i]);
+      seen.add(id);
+    });
+  };
+  once(v.grouping as string[], 'grouping', 'grouping');
+  once((v.sorting as { id: string }[]).map((s) => s.id), 'sorting', 'sorting');
+  once((v.columnFilters as { id: string }[]).map((f) => f.id), 'columnFilters', 'columnFilters (one filter per column; a set filter takes several values)');
+  once(v.columnOrder as string[], 'columnOrder', 'columnOrder');
   for (const k of Object.keys(v.columnVisibility as object)) defined(k, ['columnVisibility', k]);
   for (const k of Object.keys(v.columnSizing as object)) defined(k, ['columnSizing', k]);
   const pinning = v.columnPinning as { start: string[]; end: string[] };
   pinning.start.forEach((id, i) => defined(id, ['columnPinning', 'start', i]));
   pinning.end.forEach((id, i) => defined(id, ['columnPinning', 'end', i]));
+  once([...pinning.start, ...pinning.end], 'columnPinning', 'columnPinning (a column pins to one end)');
   for (const [k, format] of Object.entries(v.columnFormats as Record<string, Record<string, unknown>>)) {
     if (!isComputedId(k)) continue;
     defined(k, ['columnFormats', k]);
@@ -171,6 +202,8 @@ return z
             value: z.number().finite(),
             emphasis: z.enum(EMPHASES as [Emphasis, ...Emphasis[]]),
           })).max(MAX_RULES, `at most ${MAX_RULES} rules; a threshold belongs in the registry`).optional(),
+          // The column's history as a sparkline (ADR-89): only where the schema declares one.
+          trend: z.enum(SPARK_STYLES as [SparkStyle, ...SparkStyle[]]).optional(),
         })
         .strict())
       .superRefine((rec, ctx) => {
@@ -182,8 +215,13 @@ return z
           for (const key of Object.keys(format) as (keyof ColumnFormat)[]) {
             if (format[key] === undefined) continue;
             if (allowed.length === 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${k} is a dimension and has no format`, path: [k, key] });
-            else if (!allowed.includes(key)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${key} is not a format ${k} can take`, path: [k, key] });
+            else if (!allowed.includes(key)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: key === 'trend' ? `${k} has no history to draw` : `${key} is not a format ${k} can take`, path: [k, key] });
           }
+          // A band without a limit is not refused here: the limit can arrive
+          // late or not at all (a dashboard's compare query), and refusing would
+          // throw the reader's whole arrangement back to the default. The band
+          // reads as its plain number until there is one (`trendOf`); an agent
+          // is refused it outright (`agentIssues`).
         }
       })
       .default({}),

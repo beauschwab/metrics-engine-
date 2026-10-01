@@ -12,6 +12,7 @@
  * AGG-01 keeps such a metric off a grid in the first place.
  */
 
+import type { SparkLimit } from 'chartroom-widgets/spark';
 import type { ColumnMeta, Unit } from '../grid/meta';
 import { schemaFromColumns, type GridRecord, type GridSchema } from '../grid/schema';
 
@@ -32,10 +33,22 @@ export function metricUnit(shape: Pick<MetricShape, 'unit' | 'format' | 'precisi
   if (shape.format === 'currency_usd' || shape.unit === 'USD') return { unit: 'ccy', dp: 0 };
   const pct = /^percent_(\d)dp$/.exec(shape.format);
   if (pct) return { unit: 'pct', dp: Number(pct[1]) };
-  if (shape.unit === 'percent') return { unit: 'pct', dp: shape.precision ?? 2 };
+  // The format is the rendering truth: a `bps` format reads in basis points whatever the stored unit.
   if (shape.format === 'bps') return { unit: 'bps', dp: shape.precision ?? 1 };
+  if (shape.unit === 'percent') return { unit: 'pct', dp: shape.precision ?? 2 };
   if (shape.unit === 'count') return { dp: 0 };
   return { dp: shape.precision ?? 0 };
+}
+
+/**
+ * What the grid stores a metric's value in, relative to the engine: the
+ * catalog's `bps` format holds a percent and multiplies by 100 as it
+ * renders, while a grid `bps` column holds basis points (ADR-74). The rows
+ * are scaled once on the way in, so every surface — cells, subtotals, the
+ * sheet, a chart drawn from the block — reads the same number.
+ */
+export function metricScale(format: string): number {
+  return format === 'bps' ? 100 : 1;
 }
 
 /** A dim's label: `entity_id` reads as "Entity id". */
@@ -47,8 +60,17 @@ export const dimLabel = (name: string): string => {
 /** The key column that identifies a group row. */
 export const GROUP_KEY = 'key';
 
-/** The grid schema for a metric's groups over the binding's dims. */
-export function metricGroupsSchema(shape: MetricShape, dims: readonly string[]): GridSchema {
+/**
+ * The grid schema for a metric's groups over the binding's dims. With
+ * `history`, the host will supply each group's series over the binding's
+ * window, so the value may be drawn as a trend (ADR-89); `limit` is the
+ * governed threshold the binding compares against, for the band.
+ */
+export function metricGroupsSchema(
+  shape: MetricShape,
+  dims: readonly string[],
+  trend: { history?: boolean; limit?: SparkLimit } = {},
+): GridSchema {
   const { unit, dp } = metricUnit(shape);
   const sums = !shape.allowed_aggregations || shape.allowed_aggregations.includes('sum');
   const measure = (id: string, label: string, extra: Partial<ColumnMeta> = {}): { id: string; meta: ColumnMeta } => ({
@@ -60,7 +82,7 @@ export function metricGroupsSchema(shape: MetricShape, dims: readonly string[]):
       const order = contract?.ordinal && contract.values?.length ? [...contract.values] : undefined;
       return { id: d, meta: { label: dimLabel(d), kind: 'dimension', groupable: true, order, band: 'Group', width: 110 } as ColumnMeta };
     }),
-    measure('value', shape.measure),
+    measure('value', shape.measure, trend.history ? { history: true, ...(trend.limit ? { limit: trend.limit } : {}) } : {}),
     measure('prior', 'Prior'),
     measure('delta', 'Move', { negativeRed: true }),
     { id: GROUP_KEY, meta: { label: 'Group', kind: 'dimension', band: 'Group', width: 160 } as ColumnMeta },
@@ -69,12 +91,12 @@ export function metricGroupsSchema(shape: MetricShape, dims: readonly string[]):
 }
 
 /** The interpreter's group rows as grid records: the key's dims spread into columns, the move derived. */
-export function metricGroupRows(rows: ReadonlyArray<{ key: Record<string, string>; value: number; prior: number }>, dims: readonly string[]): GridRecord[] {
+export function metricGroupRows(rows: ReadonlyArray<{ key: Record<string, string>; value: number; prior: number }>, dims: readonly string[], scale = 1): GridRecord[] {
   return rows.map((r) => ({
     ...Object.fromEntries(dims.map((d) => [d, r.key[d] ?? ''])),
-    value: r.value,
-    prior: r.prior,
-    delta: r.value - r.prior,
+    value: r.value * scale,
+    prior: r.prior * scale,
+    delta: (r.value - r.prior) * scale,
     [GROUP_KEY]: dims.map((d) => r.key[d] ?? '').join(' · '),
   }));
 }

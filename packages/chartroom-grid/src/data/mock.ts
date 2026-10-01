@@ -94,3 +94,43 @@ export function generatePositions(count: number, seed = 20260929): Position[] {
   }
   return out;
 }
+
+/** The per-trade DV01 limit the treasury schema declares for its band trend (ADR-89). */
+export const DV01_LIMIT = 250_000;
+
+/** The business days ending at `asOf`, oldest first — weekends skipped, as a booking calendar does. */
+export function businessDays(asOf: string, count: number): string[] {
+  const out: string[] = [];
+  const d = new Date(`${asOf}T00:00:00Z`);
+  while (out.length < count) {
+    const dow = d.getUTCDay();
+    if (dow !== 0 && dow !== 6) out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() - 1);
+  }
+  return out.reverse();
+}
+
+/** A string's FNV-1a hash, so a history is seeded by its trade and column and reads the same every visit. */
+function hash(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
+  return h;
+}
+
+/**
+ * A position's recent history for one measure (ADR-89): a seeded walk that
+ * ends at today's value, so a trend drawn beside a cell always lands on the
+ * number the cell says. The book never ticks; this is the harness's stand-in
+ * for the daily snapshots a real source would read.
+ */
+export function positionHistory(p: Position, column: 'mtm' | 'dv01', days = 30): Array<{ date: string; value: number }> {
+  const rnd = seeded(hash(`${p.tradeId}:${column}`));
+  const dates = businessDays(p.asOf, days);
+  const today = p[column];
+  const scale = Math.max(1, Math.abs(today)) * (column === 'mtm' ? 0.08 : 0.03);
+  const drift = (rnd() - 0.5) * scale * 0.6;
+  const values = new Array<number>(days);
+  values[days - 1] = today;
+  for (let i = days - 2; i >= 0; i--) values[i] = Math.round(values[i + 1] - drift - (rnd() - 0.5) * scale);
+  return dates.map((date, i) => ({ date, value: values[i] }));
+}

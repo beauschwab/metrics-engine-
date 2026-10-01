@@ -10,7 +10,7 @@ import { headlessTable } from '../src/agent/headless';
 import { generatePositions, type Position } from '../src/data/mock';
 import { COLUMN_META, allowedFormatKeys, buildColumns, effectiveMeta } from '../src/grid/columns';
 import { cellText } from '../src/grid/copy';
-import { formatValue, matchRule } from '../src/grid/meta';
+import { formatValue, matchRule, showsNegative } from '../src/grid/meta';
 import { parseView } from '../src/grid/viewState';
 
 describe('formatValue with a reader\'s format', () => {
@@ -89,3 +89,18 @@ describe('the column carries the view\'s format', () => {
     expect(buildColumns()[9]!.meta).toBe(COLUMN_META.notional);
   });
 });
+
+describe('a loss the digits cannot show', () => {
+  it('reads as zero, unsigned and uncoloured, at the precision the reader chose', () => {
+    const mtm = COLUMN_META.mtm;
+    expect(formatValue(-1_000, mtm)).toBe('$0.00M');
+    expect(showsNegative(-1_000, mtm)).toBe(false);
+    expect(formatValue(-1_000, { ...mtm, negatives: 'parens' })).toBe('$0.00M');
+    // One more decimal place and the loss is there to see.
+    expect(formatValue(-10_000, { ...mtm, dp: 3 })).toBe('-$0.010M');
+    expect(showsNegative(-10_000, { ...mtm, dp: 3 })).toBe(true);
+    expect(formatValue(-0.4, COLUMN_META.dv01)).toBe('$0');
+    expect(formatValue(-2, COLUMN_META.dv01)).toBe('-$2');
+  });
+});
+

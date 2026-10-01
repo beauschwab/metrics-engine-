@@ -17,8 +17,7 @@ import type { ColumnMeta } from '../grid/meta';
 import { parseSearchNumber } from '../grid/search';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-
-const SELECT = 'h-7 min-w-0 flex-1 rounded-sm border border-input bg-transparent px-1.5 text-xs text-foreground';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 export function ComputedColumnEditor({
   existing, onAdd, onClose,
@@ -49,28 +48,38 @@ export function ComputedColumnEditor({
       className="flex flex-col gap-1.5"
       data-slot="computed-editor"
       onSubmit={(e) => { e.preventDefault(); if (issues.length === 0) { onAdd(draft); onClose(); } }}
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      // Escape in an open list closes the list, not the editor: its events bubble here through the portal.
+      onKeyDown={(e) => { if (e.key === 'Escape' && !(e.target as HTMLElement).closest('[data-slot="select-content"]')) onClose(); }}
     >
       <div className="flex items-center justify-between">
         <span className="text-[10px] tracking-[0.06em] uppercase text-faint">Add calculated column</span>
         <Button variant="ghost" size="icon-xs" aria-label="Close calculated column editor" onClick={onClose} type="button"><X /></Button>
       </div>
       <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Name, e.g. MTM share" aria-label="Calculated column name" className="h-7 text-xs" maxLength={40} />
-      <select aria-label="Operation" className={SELECT} value={op} onChange={(e) => setOp(e.target.value as ComputedOp)}>
-        {COMPUTED_OPS.map((o) => <option key={o} value={o}>{COMPUTED_OP_LABELS[o]}</option>)}
-      </select>
+      <Select value={op} onValueChange={(v) => setOp(v as ComputedOp)}>
+        <SelectTrigger aria-label="Operation" className="w-full"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {COMPUTED_OPS.map((o) => <SelectItem key={o} value={o}>{COMPUTED_OP_LABELS[o]}</SelectItem>)}
+        </SelectContent>
+      </Select>
       <div className="flex items-center gap-1">
         <span className="w-4 text-faint">A</span>
-        <select aria-label="Operand A" className={SELECT} value={a} onChange={(e) => setA(e.target.value)}>
-          {MEASURES.map((id) => <option key={id} value={id}>{schema.columns[id]!.label}</option>)}
-        </select>
+        <Select value={a} onValueChange={setA}>
+          <SelectTrigger aria-label="Operand A" className="flex-1"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {MEASURES.map((id) => <SelectItem key={id} value={id}>{schema.columns[id]!.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
       {arity === 2 ? (
         <div className="flex items-center gap-1">
           <span className="w-4 text-faint">B</span>
-          <select aria-label="Operand B" className={SELECT} value={b} onChange={(e) => setB(e.target.value)}>
-            {MEASURES.map((id) => <option key={id} value={id}>{schema.columns[id]!.label}</option>)}
-          </select>
+          <Select value={b} onValueChange={setB}>
+            <SelectTrigger aria-label="Operand B" className="flex-1"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {MEASURES.map((id) => <SelectItem key={id} value={id}>{schema.columns[id]!.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
       ) : (
         <div className="flex items-center gap-1">

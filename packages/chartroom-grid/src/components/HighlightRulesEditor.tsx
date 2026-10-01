@@ -12,8 +12,7 @@ import { formatValue, type ColumnMeta, type Emphasis, type HighlightRule, type R
 import { parseSearchNumber } from '../grid/search';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-
-const SELECT = 'h-7 rounded-sm border border-input bg-transparent px-1.5 text-xs text-foreground';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 export function HighlightRulesEditor({
   label, meta, rules, onChange, onClose,
@@ -35,7 +34,11 @@ export function HighlightRulesEditor({
     setText('');
   };
   return (
-    <div className="flex flex-col gap-1.5" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
+    <div
+      className="flex flex-col gap-1.5"
+      // Escape in an open list closes the list, not the editor: its events bubble here through the portal.
+      onKeyDown={(e) => { if (e.key === 'Escape' && !(e.target as HTMLElement).closest('[data-slot="select-content"]')) onClose(); }}
+    >
       <div className="flex items-center justify-between">
         <span className="text-[10px] tracking-[0.06em] uppercase text-faint">Highlight {label} where</span>
         <Button variant="ghost" size="icon-xs" aria-label="Close highlight rules" onClick={onClose}><X /></Button>
@@ -62,9 +65,12 @@ export function HighlightRulesEditor({
         className="flex items-center gap-1"
         onSubmit={(e) => { e.preventDefault(); add(); }}
       >
-        <select aria-label="Comparison" className={SELECT} value={op} onChange={(e) => setOp(e.target.value as RuleOp)}>
-          {RULE_OPS.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
+        <Select value={op} onValueChange={(v) => setOp(v as RuleOp)}>
+          <SelectTrigger aria-label="Comparison" className="w-12 tabular-nums"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {RULE_OPS.map((o) => <SelectItem key={o} value={o} className="tabular-nums">{o}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -73,9 +79,12 @@ export function HighlightRulesEditor({
           inputMode="decimal"
           className="h-7 w-20 text-xs"
         />
-        <select aria-label="Emphasis" className={SELECT} value={emphasis} onChange={(e) => setEmphasis(e.target.value as Emphasis)}>
-          {EMPHASES.map((em) => <option key={em} value={em}>{EMPHASIS_LABELS[em]}</option>)}
-        </select>
+        <Select value={emphasis} onValueChange={(v) => setEmphasis(v as Emphasis)}>
+          <SelectTrigger aria-label="Emphasis" className="w-24"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {EMPHASES.map((em) => <SelectItem key={em} value={em}>{EMPHASIS_LABELS[em]}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <Button type="submit" size="xs" disabled={value === undefined || full}>Add</Button>
       </form>
       <div className="flex items-center justify-between text-faint">

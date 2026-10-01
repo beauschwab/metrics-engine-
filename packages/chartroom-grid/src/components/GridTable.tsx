@@ -21,7 +21,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, FunnelX } from 'lucide-react';
 import type { Cell, Column, Header } from '@tanstack/react-table';
 import type { GridRecord } from '../grid/schema';
 import type { Features } from '../grid/features';
@@ -36,11 +36,15 @@ import { hasBands, headerBands } from '../grid/bands';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { cn } from '../lib/utils';
 import { ValueCell } from './CellRenderers';
+import { TrendCell } from './TrendCell';
+import { useHistory } from './HistoryContext';
+import { trendOf } from '../grid/trend';
 import { DetailPanel } from './DetailPanel';
 import { FilterPopover } from './FilterPopover';
 import { isGroupNode } from '../data/sqlSource';
 import { GroupCell, INDENT_PX, ServerGroupCell, type GridRow } from './GroupCell';
 import { HeaderMenu } from './HeaderMenu';
+import { Button } from './ui/button';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from './ui/table';
 
 export const ROW_HEIGHTS = { compact: 22, comfortable: 28 } as const;
@@ -376,7 +380,14 @@ export function GridTable({
             a reader who filtered to nothing needs the filter to undo it. */}
         {items.length === 0 && (
           <TableRow className="absolute flex w-full border-0 hover:bg-transparent" style={{ height: ROW_HEIGHTS[density] }}>
-            <TableCell className="flex items-center p-3 text-xs text-faint" data-slot="empty" colSpan={visible.length}>no positions match</TableCell>
+            <TableCell className="sticky left-0 flex items-center gap-3 p-3 text-xs text-muted-foreground" data-slot="empty" colSpan={visible.length}>
+              <span>No rows match the filters.</span>
+              {(table.store.state.columnFilters.length > 0 || !!table.store.state.globalFilter) && (
+                <Button variant="outline" size="xs" onClick={() => { table.resetColumnFilters(true); table.setGlobalFilter(''); }}>
+                  <FunnelX /> Clear filters
+                </Button>
+              )}
+            </TableCell>
           </TableRow>
         )}
         {virtualItems.map((item) => {
@@ -447,13 +458,14 @@ export function GridTable({
                 data-column={column.id}
                 data-align={align}
                 style={{ width: column.getSize(), ...pinnedStyle(column) }}
-                className="flex h-[26px] items-center bg-inherit px-2.5 py-0 data-[align=right]:justify-end"
+                // The label overflows into the empty dimension cells beside it rather than clip to "50,000 r".
+                className={cn('flex h-[26px] items-center bg-inherit px-2.5 py-0 data-[align=right]:justify-end', column.id === firstDataId && 'z-[1] overflow-visible')}
               >
                 {column.id === firstDataId ? (
                   <span className="whitespace-nowrap text-faint">
                     Total · <span className="tabular-nums text-foreground">{filtered.toLocaleString('en-US')}</span> rows
                   </span>
-                ) : total !== undefined && meta ? (
+                ) : total !== undefined && meta && filtered > 0 ? (
                   <ValueCell value={total} meta={aggregateMeta(meta, column.columnDef.aggregationFn)} />
                 ) : null}
               </TableCell>
@@ -575,6 +587,7 @@ function HeaderCell({
             // `aria-disabled` — the sort click is live.
             {...(canDrag ? { ...attributes, ...listeners } : { role: 'button', tabIndex: 0 })}
             data-slot="column-header"
+            title={meta?.label}
             onClick={column.getToggleSortingHandler()}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -602,27 +615,32 @@ function HeaderCell({
               {sortCount > 1 && <span className="text-[9px] tabular-nums">{column.getSortIndex() + 1}</span>}
             </span>
           )}
-          {/* The controls sit in the flow, never over the label: the menu
-              reserves 16px and is invisible until hover; the filter button is
-              not displayed at all until hover or while its filter is active,
-              so nothing unseen can catch a click meant for the label. A
-              right-aligned header keeps its figures' edge and takes them on
-              the left. */}
+          {/* The controls take no room from the label (a 60px column used to
+              read "C" for Ccy): at rest they are out of the layout, and on
+              hover or focus they sit over the label's far end on the
+              header's own surface. Transparent and click-through at rest,
+              never hidden: a screen reader and the Tab key still reach the
+              menu, and a trigger keeps its box, so an open popover stays
+              anchored to it. While
+              a filter or a pin is active the controls are the column's
+              state, and they join the flow, always shown. A right-aligned
+              header keeps its figures' edge and takes them on the left. */}
           <span
             data-slot="header-actions"
             data-keep={(column.getIsFiltered() || pinned) || undefined}
             className={cn(
-              'flex shrink-0 items-center',
-              meta && alignOf(meta) === 'right' ? 'order-first mr-0.5' : 'ml-auto',
+              'flex shrink-0 items-center bg-card',
+              'pointer-events-none absolute inset-y-0 opacity-0',
+              'group-hover/th:pointer-events-auto group-hover/th:opacity-100 group-focus-within/th:pointer-events-auto group-focus-within/th:opacity-100',
+              'has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100',
+              'data-[keep]:pointer-events-auto data-[keep]:static data-[keep]:opacity-100',
+              meta && alignOf(meta) === 'right' ? 'left-1 order-first pr-0.5 data-[keep]:mr-0.5' : 'right-1 pl-0.5 data-[keep]:ml-auto',
             )}
           >
             {column.getCanFilter() && (
               <FilterPopover
                 column={column}
-                // Opacity, not display: a trigger that leaves the layout when the
-                // pointer moves into the popover leaves the popover anchored to
-                // nothing, and it snaps to the viewport's corner.
-                className="size-4 opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100 data-[active]:opacity-100 data-[state=open]:opacity-100"
+                className="size-4"
               />
             )}
             <HeaderMenu
@@ -631,7 +649,7 @@ function HeaderCell({
               onFormatChange={onFormatChange}
               onRemoveComputed={onRemoveComputed}
               onPivot={onPivot}
-              className="size-4 opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+              className="size-4"
             />
           </span>
           {column.getCanResize() && (
@@ -688,6 +706,7 @@ function BodyCell({
   const column = cell.column;
   const meta = column.columnDef.meta;
   const row = cell.row;
+  const history = useHistory();
   const node = isGroupNode(row.original) ? row.original : null;
   const grouped = row.getIsGrouped() || node !== null;
 
@@ -768,6 +787,12 @@ function BodyCell({
   } else {
     const value = cell.getValue();
     content = meta ? <ValueCell value={value} meta={meta} /> : <table.FlexRender cell={cell} />;
+    // A leaf row's history beside its number, where the reader asked for one and the host has it (ADR-89).
+    const trend = trendOf(meta);
+    const points = trend && history ? history(row.id, column.id) : undefined;
+    if (trend && meta && points?.length) {
+      content = <TrendCell points={points} style={trend} meta={meta} label={`${meta.label}, ${row.id}`}>{content}</TrendCell>;
+    }
     if (meta?.heatmap) background = heatBackground(heatIntensity(value, heat.get(column.id)));
   }
   // Editing (ADR-87): the cell under edit draws its input; an edited one wears a corner mark.

@@ -11,13 +11,14 @@
  * `arrHas` list, and an empty list means none.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Funnel, FunnelX } from 'lucide-react';
 import type { Column } from '@tanstack/react-table';
 import type { GridRecord } from '../grid/schema';
 import type { Features } from '../grid/features';
 import { formatValue } from '../grid/meta';
 import { compareByOrder } from '../grid/ordinal';
+import { useFacets } from './FacetContext';
 import { cn } from '../lib/utils';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -53,12 +54,26 @@ export function FilterPopover({ column, className }: { column: GridColumn; class
 function SetFilter({ column }: { column: GridColumn }) {
   const [search, setSearch] = useState('');
   const facets = column.getFacetedUniqueValues();
+  // Over a served answer the rows the grid holds are a window or engine-made
+  // groups, so the list comes from the source, under the other filters,
+  // without counts; otherwise it is the client's facets, with them.
+  const { values: served } = useFacets();
+  const [remote, setRemote] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!served) return;
+    let live = true;
+    void served(column.id).then((v) => { if (live) setRemote(v); });
+    return () => { live = false; };
+  }, [served, column.id]);
   // The list reads in the dimension's own order where it has one (ADR-84), else alphabetically.
   const order = column.columnDef.meta?.order;
   const values = useMemo(() => {
     const cmp = order ? compareByOrder(order) : (a: string, b: string) => a.localeCompare(b);
-    return [...facets.entries()].map(([v, n]) => ({ value: String(v), count: n })).sort((a, b) => cmp(a.value, b.value));
-  }, [facets, order]);
+    const listed: Array<{ value: string; count?: number }> = served
+      ? (remote ?? []).map((v) => ({ value: v }))
+      : [...facets.entries()].map(([v, n]) => ({ value: String(v), count: n as number }));
+    return listed.sort((a, b) => cmp(a.value, b.value));
+  }, [facets, order, served, remote]);
   const selected = column.getFilterValue() as string[] | undefined;
   const isOn = (v: string) => !selected || selected.includes(v);
   const shown = search ? values.filter((x) => x.value.toLowerCase().includes(search.toLowerCase())) : values;
@@ -82,8 +97,8 @@ function SetFilter({ column }: { column: GridColumn }) {
         aria-label={`Search ${column.columnDef.meta?.label} values`}
         className="h-7 text-xs"
       />
-      <div className="flex items-center justify-between text-faint">
-        <span>{current.length === all.length ? `${values.length.toLocaleString('en-US')} values` : `${current.length.toLocaleString('en-US')} of ${values.length.toLocaleString('en-US')}`}</span>
+      <div className="flex items-center justify-between gap-2 text-faint">
+        <span className="whitespace-nowrap tabular-nums">{current.length === all.length ? `${values.length.toLocaleString('en-US')} values` : `${current.length.toLocaleString('en-US')} of ${values.length.toLocaleString('en-US')}`}</span>
         <div className="flex gap-0.5" data-slot="set-filter-actions">
           {/* Never disabled: a button that disables under the pointer drops
               focus to the body, and the popover reads that as a dismissal. */}
@@ -110,7 +125,7 @@ function SetFilter({ column }: { column: GridColumn }) {
               <button type="button" className="rounded-sm px-1 text-faint hover:bg-muted hover:text-foreground" aria-label={`Only ${value}`} onClick={() => only(value)}>only</button>
               <button type="button" className="rounded-sm px-1 text-faint hover:bg-muted hover:text-foreground" aria-label={`Exclude ${value}`} onClick={() => exclude(value)}>exclude</button>
             </span>
-            <span className="tabular-nums text-faint">{count.toLocaleString('en-US')}</span>
+            {count !== undefined && <span className="tabular-nums text-faint">{count.toLocaleString('en-US')}</span>}
           </li>
         ))}
       </ul>
@@ -123,16 +138,23 @@ function RangeFilter({ column }: { column: GridColumn }) {
   const current = (column.getFilterValue() as [number | null, number | null] | undefined) ?? [null, null];
   const [min, setMin] = useState(current[0] === null ? '' : String(current[0]));
   const [max, setMax] = useState(current[1] === null ? '' : String(current[1]));
-  const range = column.getFacetedMinMaxValues();
+  // The range hint is the rows the grid holds; over a served answer that is a window, not the answer, so it is not shown.
+  const { served } = useFacets();
+  const range = served ? undefined : column.getFacetedMinMaxValues();
+  // An end that does not read as a finite number is an open end, never NaN in the view.
+  const end = (text: string): number | null => {
+    const n = text.trim() === '' ? Number.NaN : Number(text);
+    return Number.isFinite(n) ? n : null;
+  };
   const apply = () => {
-    const lo = min.trim() === '' ? null : Number(min);
-    const hi = max.trim() === '' ? null : Number(max);
+    const lo = end(min);
+    const hi = end(max);
     column.setFilterValue(lo === null && hi === null ? undefined : [lo, hi]);
   };
   return (
     <div className="flex flex-col gap-1.5">
       <div className="text-faint">
-        {range ? `${formatValue(range[0], meta)} to ${formatValue(range[1], meta)}` : 'no range'}
+        {range ? `${formatValue(range[0], meta)} to ${formatValue(range[1], meta)}` : served ? 'the source holds the range' : 'no range'}
       </div>
       <div className="flex items-center gap-1.5">
         <Input value={min} onChange={(e) => setMin(e.target.value)} inputMode="decimal" placeholder="min" aria-label={`${meta.label} minimum`} className="h-7 text-xs" />

@@ -377,9 +377,28 @@ export function compileSql(view: ViewState, opts: CompileOptions, dialect: SqlDi
     if (!isComputedId(s.id)) return orderTerms(columnId(schema, s.id), s.desc, dialect, params, schema);
     return [`${leafExpr(s.id, dialect, view, params, schema)} ${s.desc ? 'DESC' : 'ASC'}`];
   });
-  order.push(`${dialect.quote('tradeId')} ASC`);
+  // The schema's own row id breaks ties, so a window is the same rows every time it is asked for.
+  order.push(`${dialect.quote(columnId(schema, schema.rowId))} ASC`);
   let sql = `SELECT ${select} FROM ${from}${whereSql} ORDER BY ${order.join(', ')}`;
   if (opts.limit !== undefined) sql += ` LIMIT ${Math.max(0, Math.floor(opts.limit))}`;
   if (opts.offset) sql += ` OFFSET ${Math.max(0, Math.floor(opts.offset))}`;
   return { sql, params: params.values, shape: 'leaf' };
+}
+
+/**
+ * The distinct values of one column under a view's other filters: what a
+ * set filter lists when the rows it holds are a window or engine-made
+ * groups, not the whole answer. The column's own filter is not applied, so
+ * a value the reader unticked stays in the list to be ticked again.
+ */
+export function compileDistinct(view: ViewState, column: string, opts: CompileOptions, dialect: SqlDialect = DUCKDB, schema: GridSchema = TREASURY_SCHEMA): CompiledSql {
+  const params = new Params(dialect);
+  const col = dialect.quote(columnId(schema, column));
+  const scoped: ViewState = { ...view, columnFilters: view.columnFilters.filter((f) => f.id !== column) };
+  const clauses = [...where(scoped, { ...opts, groupPath: [] }, dialect, params, schema), `${col} IS NOT NULL`];
+  return {
+    sql: `SELECT DISTINCT ${col} AS ${dialect.quote('v')} FROM ${tableRef(dialect, opts.table)} WHERE ${clauses.join(' AND ')} ORDER BY ${col}`,
+    params: params.values,
+    shape: 'leaf',
+  };
 }

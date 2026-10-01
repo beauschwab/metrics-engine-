@@ -23,14 +23,18 @@
 import type { Rule } from '../context';
 import { widgetsOf } from '../context';
 
+/** The widgets whose whole claim is "this number against its limit". */
+const LIMIT_WIDGETS: ReadonlySet<string> = new Set(['bullet', 'spark-band']);
+
 export const GAUGE_01: Rule = (spec, ctx) =>
   widgetsOf(spec, ctx).flatMap(({ w, path, widgetContract }) => {
-    if (widgetContract?.widget !== 'bullet') return [];
+    if (!widgetContract || !LIMIT_WIDGETS.has(widgetContract.widget)) return [];
+    const what = widgetContract.widget === 'bullet' ? 'a bullet' : 'a limit band';
 
     if (!w.bind.compare) {
       return [{
         rule: 'GAUGE-01', severity: 'BLOCK' as const, path: `${path}/bind`, widget: w.id,
-        message: 'a bullet draws a value against its limit, but this one binds no '
+        message: `${what} draws a value against its limit, but this one binds no `
           + 'comparison — bind `compare.vs` to the registry metric that carries the '
           + 'threshold (a limit with an owner and a revision, not a number typed here)',
       }];
@@ -39,7 +43,7 @@ export const GAUGE_01: Rule = (spec, ctx) =>
     if (w.bind.compare.vs === 'prior_period') {
       return [{
         rule: 'GAUGE-01', severity: 'BLOCK' as const, path: `${path}/bind/compare/vs`, widget: w.id,
-        message: 'a bullet compared to `prior_period` shows movement, not a limit — a '
+        message: `${what} compared to \`prior_period\` shows movement, not a limit — a `
           + 'measure that drifts daily never breaches its own prior. Bind the registry '
           + 'metric that carries the governed threshold.',
       }];
@@ -51,7 +55,7 @@ export const GAUGE_01: Rule = (spec, ctx) =>
       return [{
         rule: 'GAUGE-01', severity: 'BLOCK' as const,
         path: `${path}/bind/compare/style`, widget: w.id,
-        message: 'a bullet compares against a limit, so its compare style must be '
+        message: `${what} compares against a limit, so its compare style must be `
           + '`threshold` — as `delta` the reference renders as a movement marker and '
           + 'the gauge can never show a breach.',
         fix: [{ op: 'replace' as const, path: `${path}/bind/compare/style`, value: 'threshold' }],

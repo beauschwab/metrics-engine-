@@ -2709,6 +2709,282 @@ block, and finds the same book read-only once the grant is off. The
 studio e2e double-clicks a value in the seeded grid widget and finds no
 editor.
 
+## ADR-88 — a served answer owes every reader the whole answer, and a view says only what it can mean
+
+**Pinned:** the post-merge review of ADR-82 to ADR-87. Twelve findings,
+all confirmed against the code; one rule covers most of them. When the
+source serves a stage, the rows the grid holds are a window or
+engine-made groups, not the answer, and anything that reads those rows
+as the answer is wrong.
+
+**Decision.**
+
+- *Totals.* The shell asks the source for grand totals whenever the rows
+  it holds are not the answer: a window (ADR-85) or engine-made groups.
+  The footer reads them. A mean of desk means and a count of desks were
+  both on screen before this.
+- *The sheet.* An export over a served source asks for the whole leaf
+  answer and builds the workbook from it, grouped and totalled by the
+  same view, so a sheet never presents a window as the book.
+- *A set filter's list.* Over a served answer it comes from the source:
+  `distinct(column, view)` lists a dimension's values under the view's
+  other filters, never its own, without counts. The range hint, which
+  would describe only the window, is not shown.
+- *The agent's query.* `query_view` over a source that grouped reads the
+  engine's nodes as groups rather than grouping them again, expands them
+  by asking for each node's children by its path, and reports the
+  engine's counts and totals.
+- *A generic schema over SQL.* A leaf answer breaks ties by the schema's
+  row id, and `describe` reads an as-of only where the schema has a date
+  column.
+- *A view says only what it can mean.* A column filter's value is
+  checked against its column's kind: a list of strings on a dimension, a
+  two-ended range of finite numbers or null on a measure. The range
+  filter writes an unreadable end as open, never as NaN.
+- *Saved views belong to a schema.* A store lists the views that parse
+  against the grid's schema, and its writes keep every other entry, so
+  one grid never discards another grid's saved views.
+- *Basis points, once.* The catalog's `bps` format holds a percent and
+  multiplies as it renders; a grid `bps` column holds basis points. A
+  `bps` metric's rows are scaled on the way into the grid, and a chart
+  drawn from the block is handed the percent back, so every surface
+  shows the same number. The format wins over the stored unit.
+- *One query per widget.* A host-rendered widget runs its binding's
+  query itself, so the frame does not run it too; the widget reports its
+  status and as-of to the frame.
+- *Writes build on each other.* The grid widget applies a view update to
+  the latest view it wrote, not the one the render read, so "Clear all
+  filters" clears the column filters and the quick filter both.
+- *A source can be let go.* `DataSource.close` releases what a source
+  holds; the DuckDB source closes its worker, and the harness closes a
+  source when it stops using it.
+
+**What now fails if this regresses.** `followups.test.ts` compiles a
+generic schema's tiebreak, describes a table with no as-of, refuses each
+malformed filter value, keeps a second schema's saved view through
+another grid's writes, scales a `bps` metric and charts it back, lists a
+dimension's values under the other filters, and checks the agent's
+grouped query against brute force, totals included. The DuckDB-WASM e2e
+exports the whole book from a windowed grid, lists all five desks under
+a CDS filter, and keeps the footer's total when the engine groups. The
+studio e2e reads the grid widget's status and as-of off its frame and
+clears a column filter and the quick filter with one click.
+
+## ADR-89 — a trend is read at a glance and said in words: four sparklines, as cards and in the grid
+
+**Pinned:** "what sparklines can I add that look really good with
+tooltips", then "implement grid and card versions for all". Four styles,
+each answering one question about a number's recent days, drawn both as
+a dashboard card and inside a grid row.
+
+**Decision.**
+
+- *Four styles, four questions.* `line` — where is it heading? The line,
+  today accented. `band` — is it on the right side of its limit? The line
+  against a governed limit, the breach side shaded, each breaching day
+  marked in the status colour and named in words. `column` — how big was
+  each day? Columns from zero, so a daily move reads as a length and its
+  sign as a side of the line. `range` — where does today sit in its own
+  history? Every day as a tick between the window's low and high, today
+  the long accented tick.
+- *One geometry, two renderers.* `chartroom-widgets/spark` is a
+  React-free subpath: the scene (every mark in pixels), the crosshair's
+  snap and step, and the words (tooltip, judgment, summary). The cards
+  and the grid's trend cell draw the same scene, so a row's trend and a
+  card's trend over the same days cannot disagree. The grid and the
+  server may import `/spark` as they import `/format`; the boundaries
+  test now also checks that those subpaths stay React-free.
+- *The tooltip says the day.* The crosshair snaps to the nearest real
+  day and never interpolates. The tip leads with the date, then the
+  value, then one line of meaning per style: the move since the window
+  opened, the side of the limit, the move from the day before, the place
+  in the range. The keyboard reads the same days: focus lands on today,
+  the arrows step a day, Home and End jump to the ends, Escape closes.
+  The chart's accessible name is the whole window in one sentence, low
+  and high with their dates.
+- *Cards are widget types.* `spark-line@1`, `spark-band@1`,
+  `spark-column@1`, `spark-range@1`, family `timeseries`, one series, no
+  categorical dims, a time dim required (TS-01, TS-02). The style is the
+  type because the spec has no options field and should not grow one:
+  a rule can only hold a widget to its question if the question is in
+  the type. The card says the latest value, then the window in words,
+  then draws it; the words come first because they are the reading.
+- *The band's limit is governed.* GAUGE-01 now covers `spark-band` as it
+  covers `bullet`: a threshold `compare` bound to a registry metric, with
+  a declared safe side, or the spec is blocked. The card draws nothing
+  rather than a guess when either is missing. In the grid, the limit is
+  column meta (`limit: { value, side, label }`) that whoever declares the
+  column declares; a reader can choose the band only where it exists.
+- *A far limit is not drawn.* A limit more than one and a half of the
+  window's own spans from the nearest day is left off the chart, so a
+  trade a hundred times inside its limit keeps its shape instead of
+  lying flat against one edge. The words still say the side of the limit
+  and every breach.
+- *In the grid a trend is a format.* `columnFormats[id].trend` takes one
+  of the four styles, offered only on a measure whose meta declares
+  `history: true`. The view version does not move: the key is optional
+  within `columnFormats`, as highlight rules were (ADR-78). The host
+  supplies the series through `TreasuryGrid`'s `history` prop, a function
+  of row id and column; without it a chosen trend reads as its plain
+  number. A trend draws on leaf rows only: a group, a subtotal and a
+  pivot bucket have no history of their own. The column widens by the
+  sparkline, and the trend's words go through the column's meta, so the
+  tip's number is the cell's number. The tooltip is portalled to the
+  page, because the table body is a scroll box that would clip it.
+- *Hosts.* The harness declares histories on MTM and DV01 (DV01 against
+  a $250,000 per-trade limit) and supplies a seeded walk of thirty
+  business days that ends on the booked value. The dashboard's
+  `grid@1` now accepts `window` and `compare`: a windowed binding also
+  asks for each group's series over the window and declares the value's
+  history, and a threshold compare with a side becomes the value's
+  limit. The seeded outflow table opens with its value drawn as a line,
+  and the limit board gains four cards. The band card is not seeded:
+  the registry has no governed floor measure yet, and GAUGE-01 would
+  block a band drawn against anything less.
+
+**What now fails if this regresses.** `spark.test.ts` places every mark
+of each style, lifts the pen at a missing day, shades the right side of
+a floor and a ceiling, leaves a far limit off, snaps and steps the
+crosshair, and checks each style's words, in catalog formats and in a
+host's own readings. `trend.test.ts` offers the trend only where a
+history is declared, refuses a band without a limit, widens the column,
+reads moves in the column's unit, and checks the harness history lands
+on the cell's value. GAUGE-01's tests hold the band card to a governed
+limit. The studio e2e drives each card's crosshair by pointer and
+keyboard, reads the four seeded cards off the limit board and the
+dashboard grid's trend off its first row, and drives all four styles
+from the grid's format menu, a near limit and a far one included.
+
+## ADR-90 — a grid the reader can read: themed choices, whole headers, honest zeros
+
+**Pinned:** a reader could not read the calculated-column editor's operand
+list — light text on a white popup — and asked for a critique of the whole
+grid. The critique walked every surface (headers, menus, filters, editors,
+grouping, pivot, selection, empty state, the dashboard card) from
+screenshots and fixed what a reader could not read or would misread.
+
+**Decision.**
+
+- *No native choices.* A native `<select>` is drawn by the browser in its
+  own scheme; on a dark host that never declares one, its list is white.
+  The grid's choices (operation, operands, rule comparison, emphasis) are a
+  themed Radix select on the grid's own popover surface, whatever the host
+  declares, and Escape in an open list closes the list, not its editor. The
+  studio also declares `color-scheme: dark`, which fixes every remaining
+  native control it draws (the analyst bar's choices, scrollbars, dates).
+- *Whole headers.* A column's filter and menu buttons used to reserve their
+  room in the header at rest, so a 60px column read "C" for Ccy. At rest
+  they are now out of the layout; on hover or focus they overlay the
+  label's far end on the header's surface. At rest they are transparent and
+  click-through, never hidden — a screen reader and the Tab key still reach
+  the menu (an earlier `visibility: hidden` took it out of the accessibility
+  tree; the MCP pressure run's e2e caught it), and an open popover keeps its
+  anchor; while a filter or pin is active they
+  join the flow as the column's state. A truncated label carries its name
+  as a title.
+- *Honest zeros.* A negative that shows no digit at the column's precision
+  reads as zero, unsigned and uncoloured: `-$0.00M` in the breach colour is
+  a loss the reader hunts for and never finds. One more decimal and it is
+  there to see.
+- *Heat is data, not accent.* The heatmap mixes a data hue (`--cr-s1`), not
+  the accent, which is selection, focus and the brand: a selected block
+  over amber heat read as amber on amber.
+- *The toolbar reads its own width.* It is a container: in a dashboard card
+  the drop zones keep their names and drop their hints (the hint moves to
+  a title), the search shrinks, the labelled buttons keep their icons, and
+  the controls wrap rather than overlap.
+- *Smaller readings.* The footer's "Total · N rows" overflows into the empty
+  cells beside it instead of clipping; totals over no rows say nothing
+  rather than `$0.0M`; the empty body says why and offers to clear the
+  filters; the format menu shows which decimals are chosen; the set filter's
+  count stays on one line; a pivot column in the columns panel leads with
+  its bucket.
+
+**Left as found, for a decision.** The engine formats millions without
+thousands separators (`$29041575.8M`), and the deck and widgets restate it
+on purpose (ADR-29), so separators are a change to all three or none. The
+studio sets `body { min-width: 1600px }`, so below that width every page,
+the grid harness included, scrolls sideways.
+
+**What now fails if this regresses.** `format.test.ts` reads a hidden loss
+as zero and a visible one as a loss; the heat test pins the data hue. The
+e2e picks every editor choice from the themed list, checks the list is not
+the browser's white popup and that Escape keeps the editor open, reads the
+short headers whole at their default widths, checks a hidden loss reads
+`$0.00M` uncoloured, and checks the dashboard card's search box never sits
+on its undo button.
+
+## ADR-91 — the grid's MCP server holds an agent to what it meant
+
+**Pinned:** "pressure test the MCP server's ability to correctly configure
+the grid for various user use cases". Two layers. A stdio battery drove the
+real server (`npm run mcp`) through twenty user use cases, graded against
+brute force over the same seeded book, and through thirty adversarial
+patches. Blind agents were handed only what an MCP client sees (the
+instructions, the tools, the `describe_view` answer) and eighteen analyst
+requests in plain words, and their final plans were re-run and graded
+independently.
+
+**What held.** Every number was right: sums, notional-weighted averages,
+medians, ratio-of-sums calculated columns, pivot cells and their totals,
+range and set filters, the quick filter's tokens and label aliases,
+ordinal sorts, group order under a measure sort, paging, and query
+overrides that leave the session alone. Every malformed patch was refused
+with a reason and left the view as it was. The blind agents configured 32
+of 34 graded views right and answered all four questions exactly; the two
+misses were one agent answering through a query override, by choice.
+
+**What did not, and the decision.**
+
+- *Columns in screen order.* `query_view` listed columns in declared order,
+  ignoring pinning, so "keep desk on the left" never showed in the answer.
+  It now lists pinned-to-start, centre, pinned-to-end.
+- *A view says one thing.* Grouping or sorting a column twice, two filters on
+  one column (the table silently kept one), a column twice in the order, a
+  column pinned at both ends — all were accepted. The view contract now
+  refuses each, for every reader; none is something the screen produces.
+- *An agent is held to what it meant.* The screen tolerates a half-typed
+  search token and a stale expanded key; an agent wrote them on purpose. On
+  the agent's path a token that cannot mean anything (`notional>abc`, a
+  comparison on a column that does not exist) and an expanded key that does
+  not follow the grouping are refused with the reason. The view contract
+  itself stays lenient, so a saved view still opens.
+- *Values the data does not have are said, not swallowed.* A blind agent
+  filtered `book!=WF-US` — WF-US is an entity — and the server kept every
+  row without a word; only the agent's own sanity check caught it. A filter,
+  an expanded key or a pivot bucket naming a value its column does not have
+  is now accepted with a warning that names the column that has it, or the
+  right spelling (set values match exactly). Accepted, because data changes
+  and a view may be written ahead of it; warned on `set_view` and on every
+  `query_view` while the view stands, because it is almost always a slip.
+- *A pivot a reader can read.* Pivoting by a 320-value dimension spread 335
+  columns. A pivot with no named buckets over more than 50 values is refused
+  with advice to name buckets or group instead.
+- *An agent should not have to guess.* `describe_view` lists each
+  dimension's values up to 50 (and the count past it), so "Rates", "WF-US"
+  and which column owns them are read, not probed. The contract now says
+  what the agents had to guess: that a patch replaces a slice whole and an
+  empty `replace` is the default view, that `query_view`'s view is whole,
+  what `total`, `modelRows`, `truncated` and `applied` mean (every agent read
+  `applied: false` as "your filter did not apply"), that `expanded: true`
+  reaches the leaves, what a slug is, that a rule's value is in stored units
+  and `strong` is bold, that `group.count` counts rows, that groups sort by
+  their aggregate. And `query_view` reports the emphasis a rule gives each
+  cell, so a highlight can be checked, not trusted.
+
+**Left as found.** Millions without separators (`$29041575.8M`) is the
+engine's format (ADR-90's open decision). "Top N" has no slice — pagination
+is carried, not driven — so a view cannot hold a top-twenty; the agent's
+query limit does.
+
+**What now fails if this regresses.** `agentPressure.test.ts`, over an
+in-memory transport: screen-order columns, every duplicate refused, the
+search and expanded refusals, the slug message, the emphasis report, the
+listed values, the `book!=WF-US` warning naming Entity on both tools, the
+exact-match hint, and the pivot bound on `set_view` and on a query's own
+view. `.pressure/scenarios.mts` (111 checks over stdio, 50,000 rows timed)
+and `.pressure/grade.mts` stay beside it for the slow layer.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

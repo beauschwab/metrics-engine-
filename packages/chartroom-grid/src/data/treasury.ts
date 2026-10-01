@@ -8,7 +8,7 @@
 
 import type { ColumnMeta } from '../grid/meta';
 import type { GridSchema } from '../grid/schema';
-import { TENORS, type Position } from './mock';
+import { DV01_LIMIT, TENORS, type Position } from './mock';
 
 export const TREASURY_META: Record<keyof Position, ColumnMeta> = {
   tradeId: { label: 'Trade', kind: 'dimension', band: 'Trade', width: 84 },
@@ -21,8 +21,13 @@ export const TREASURY_META: Record<keyof Position, ColumnMeta> = {
   counterparty: { label: 'Counterparty', kind: 'dimension', groupable: true, band: 'Instrument', width: 104 },
   book: { label: 'Book', kind: 'dimension', groupable: true, band: 'Book', width: 68 },
   notional: { label: 'Notional', kind: 'measure', unit: 'mm', agg: 'sum', heatmap: true, band: 'Exposure', width: 104 },
-  mtm: { label: 'MTM', kind: 'measure', unit: 'mm', dp: 2, agg: 'sum', negativeRed: true, band: 'Exposure', width: 96 },
-  dv01: { label: 'DV01', kind: 'measure', unit: 'ccy', agg: 'sum', negativeRed: true, band: 'Risk', width: 104 },
+  // MTM and DV01 carry a history the harness supplies (ADR-89); DV01's trend
+  // can be read against the per-trade sensitivity limit the book governs.
+  mtm: { label: 'MTM', kind: 'measure', unit: 'mm', dp: 2, agg: 'sum', negativeRed: true, band: 'Exposure', width: 96, history: true },
+  dv01: {
+    label: 'DV01', kind: 'measure', unit: 'ccy', agg: 'sum', negativeRed: true, band: 'Risk', width: 104,
+    history: true, limit: { value: DV01_LIMIT, side: 'ceiling', label: 'trade DV01 limit' },
+  },
   cs01: { label: 'CS01', kind: 'measure', unit: 'ccy', agg: 'sum', negativeRed: true, band: 'Risk', width: 104 },
   yield: { label: 'Yield', kind: 'measure', unit: 'pct', dp: 2, agg: 'wavg', weightBy: 'notional', band: 'Return', width: 76 },
   wal: { label: 'WAL', kind: 'measure', unit: 'years', agg: 'wavg', weightBy: 'notional', band: 'Return', width: 72 },

@@ -25,6 +25,8 @@ export function useWidgetData(
   extraFilters: FilterExpr[] = [],
   /** As-of, basis and context selections from the analyst bar. */
   env: AnalystEnv = DEFAULT_ENV,
+  /** False for a host-rendered widget (ADR-83), which runs its own query: nothing is fetched twice. */
+  enabled = true,
 ): WidgetQueryState {
   const [state, setState] = useState<WidgetQueryState>({ data: null, status: 'loading' });
 
@@ -38,6 +40,7 @@ export function useWidgetData(
   ]);
 
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     setState((s) => (s.data ? s : { data: null, status: 'loading' }));
 
@@ -65,7 +68,7 @@ export function useWidgetData(
       if (alive) setState({ data: null, status: 'error', error: e.message });
     });
     return () => { alive = false; };
-  }, [requests, contracts]);
+  }, [requests, contracts, enabled]);
 
   return state;
 }

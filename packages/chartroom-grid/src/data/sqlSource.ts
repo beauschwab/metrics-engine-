@@ -17,7 +17,7 @@ import { isPivotId } from '../grid/pivot';
 import { effectiveAgg } from '../grid/columns';
 import type { ViewState } from '../grid/viewState';
 import type { CellEdit } from '../grid/edit';
-import { compileSql, DUCKDB, sqlLiteral, tableRef, type SqlDialect } from './compileSql';
+import { compileDistinct, compileSql, DUCKDB, sqlLiteral, tableRef, type SqlDialect } from './compileSql';
 import type { GridRecord, GridSchema } from '../grid/schema';
 import { TREASURY_SCHEMA } from './treasury';
 import type { DataSource, QueryOptions, QueryResult, SourceDescription } from './source';
@@ -65,13 +65,18 @@ function blankRecord(schema: GridSchema): GridRecord {
   return p;
 }
 
+/** A view that filters nothing, for a question asked of the whole table. */
+const EMPTY_VIEW = { columnFilters: [], globalFilter: '', grouping: [], sorting: [] } as unknown as ViewState;
+
 export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${dialect.name})`, schema = TREASURY_SCHEMA }: SqlSourceOptions): DataSource<GridRecord> {
   const serves = { filter: true, sort: true, group: true, groupPath: true, window: true };
   return {
     async describe(): Promise<SourceDescription> {
       const q = dialect.quote;
+      // The as-of is the schema's `asOf`, else its first date column; a schema with neither has none.
+      const asOfColumn = schema.columns.asOf ? 'asOf' : schema.order.find((id) => schema.columns[id]?.unit === 'date');
       const [row] = await executor.run(
-        `SELECT COUNT(*) AS ${q('__count')}, MAX(${q('asOf')}) AS ${q('asOf')} FROM ${table.split('.').map(q).join('.')}`,
+        `SELECT COUNT(*) AS ${q('__count')}${asOfColumn ? `, MAX(${q(asOfColumn)}) AS ${q('asOf')}` : ''} FROM ${tableRef(dialect, table)}`,
         [],
       );
       return {
@@ -83,12 +88,12 @@ export function sqlSource({ executor, table, dialect = DUCKDB, name = `sql (${di
         serves,
       };
     },
-    async distinct(column: string): Promise<string[]> {
-      const q = dialect.quote;
+    async distinct(column: string, view?: ViewState): Promise<string[]> {
       if (!schema.columns[column]) throw new RangeError(`sqlSource: unknown column ${JSON.stringify(column)}`);
-      const col = q(column);
-      const raw = await executor.run(`SELECT DISTINCT ${col} AS ${q('v')} FROM ${table.split('.').map(q).join('.')} WHERE ${col} IS NOT NULL ORDER BY ${col}`, []);
-      return raw.map((r) => String(r.v ?? '')).filter((v) => v !== '');
+      // Without a view: every value the table holds. With one: the values its other filters leave.
+      const c = compileDistinct(view ?? EMPTY_VIEW, column, { table }, dialect, schema);
+      const raw = await executor.run(c.sql, c.params);
+      return raw.map((r) => cellText(schema, column, r.v)).filter((v) => v !== '');
     },
     // A committed batch (ADR-87) is one UPDATE per edit by the row id, in one
     // transaction where the engine has them, so a batch lands whole or not at

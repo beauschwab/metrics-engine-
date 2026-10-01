@@ -8,7 +8,8 @@
 import type { WidgetInstance } from 'chartroom-spec';
 import {
   Annotation, Bar, Bullet, DeltaTable, Distribution, Heatmap, KpiTile,
-  PerspectiveGrid, SmallMultiples, StackedArea, Timeseries, Waterfall,
+  PerspectiveGrid, SmallMultiples, SparkBandCard, SparkColumnCard, SparkLineCard, SparkRangeCard,
+  StackedArea, Timeseries, Waterfall,
   type WidgetData, type WidgetProps, type WidgetStatus,
 } from 'chartroom-widgets';
 
@@ -93,6 +94,29 @@ const spreadData: WidgetData = {
   })),
 };
 
+// The sparklines (ADR-89) read one series each. The coverage ratio dips
+// through its floor for four days late in the window, so the band has
+// breaches to mark and the line has a story to point at.
+const lcrDays = DATES.map((date, i) => ({
+  date, value: Number((106 + 4 * Math.sin(i / 3.5) - (i >= 20 && i <= 23 ? 9 : 0)).toFixed(2)),
+}));
+const sparkData: WidgetData = {
+  unit: 'percent', format: 'percent_1dp', asOf: DATES.at(-1)!,
+  series: [{ key: {}, points: lcrDays }],
+  compare: { label: 'lcr_floor', value: 100, style: 'threshold' },
+};
+const moveData: WidgetData = {
+  unit: 'percent', format: 'percent_1dp', asOf: DATES.at(-1)!,
+  series: [{ key: {}, points: lcrDays.slice(1).map((p, i) => ({ date: p.date, value: Number((p.value - lcrDays[i].value).toFixed(2)) })) }],
+};
+const hqlaData: WidgetData = {
+  unit: 'USD', format: 'currency_usd', asOf: DATES.at(-1)!,
+  series: [{ key: {}, points: wave(4.2e10, 1.3e9) }],
+};
+const spark = (metric: string): Partial<WidgetInstance['bind']> => ({
+  metric, dims: ['as_of_date'], window: { trailing: '30d' },
+});
+
 const WIDGETS: Array<{
   name: string;
   component: React.FC<WidgetProps>;
@@ -116,6 +140,16 @@ const WIDGETS: Array<{
     // without it the widget draws the gap and declines to judge (GAUGE-01).
     bind: { compare: { vs: 'keel://liquidity_pit.lcr_floor@1', style: 'threshold', limit: 'floor' } },
   },
+  { name: 'spark-line@1', component: SparkLineCard, data: sparkData, bind: spark('keel://liquidity_pit.lcr_pct@1') },
+  {
+    name: 'spark-band@1', component: SparkBandCard, data: sparkData,
+    bind: {
+      ...spark('keel://liquidity_pit.lcr_pct@1'),
+      compare: { vs: 'keel://liquidity_pit.lcr_floor@1', style: 'threshold', limit: 'floor' },
+    },
+  },
+  { name: 'spark-column@1', component: SparkColumnCard, data: moveData, bind: spark('keel://liquidity_pit.lcr_dod_change@1') },
+  { name: 'spark-range@1', component: SparkRangeCard, data: hqlaData, bind: spark('keel://liquidity_pit.hqla_total@1') },
   {
     name: 'annotation@1', component: Annotation, data: kpiData,
     note: 'Coverage dipped below the floor on the 28th as quarter-end funding '

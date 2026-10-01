@@ -49,11 +49,14 @@ export function GridToolbar({
 
   const grouping = view.grouping.length > 0;
 
+  // A container, so the toolbar reads its own width and not the page's: in a
+  // dashboard card the drop zones drop their hints and the controls wrap,
+  // instead of five-line boxes eating the rows.
   return (
-    <div data-slot="grid-toolbar" className="flex items-center gap-2 border-b border-border bg-card px-2 py-1.5">
+    <div data-slot="grid-toolbar" className="@container/toolbar flex min-w-0 flex-wrap items-center gap-2 border-b border-border bg-card px-2 py-1.5">
       <GroupByDropZone table={table} grouping={view.grouping} />
       {onPivot && <PivotDropZone table={table} pivot={view.pivot.column} onPivot={onPivot} values={pivotValues} buckets={view.pivot.buckets} onBuckets={onPivotBuckets} />}
-      <div className="relative">
+      <div className="relative min-w-40 flex-1 @3xl/toolbar:flex-none">
         <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-faint" />
         <Input
           value={quick}
@@ -62,7 +65,7 @@ export function GridToolbar({
           aria-label="Quick filter"
           title="Words match any column. desk:Credit, ccy=EUR, entity!=WF-US on a dimension; notional>1bn, yield<=3.5 on a measure; quotes keep spaces."
           data-slot="quick-filter"
-          className="h-7 w-60 pl-7 text-xs"
+          className="h-7 w-full pl-7 text-xs @3xl/toolbar:w-60"
         />
       </div>
       {grouping && (
@@ -89,7 +92,7 @@ export function GridToolbar({
       </Button>
       <ViewsMenu store={viewStore} view={view} onLoad={onLoadView} />
       <Button variant="ghost" size="xs" aria-label="Export to Excel" onClick={onExport} disabled={exporting}>
-        <Download /> {exporting ? 'Exporting…' : 'Excel'}
+        <Download /> <span className="hidden @2xl/toolbar:inline">{exporting ? 'Exporting…' : 'Excel'}</span>
       </Button>
       <Button
         variant={sidebarOpen ? 'secondary' : 'ghost'}
@@ -99,7 +102,7 @@ export function GridToolbar({
         onClick={onToggleSidebar}
       >
         <PanelRight />
-        Columns
+        <span className="hidden @2xl/toolbar:inline">Columns</span>
       </Button>
     </div>
   );

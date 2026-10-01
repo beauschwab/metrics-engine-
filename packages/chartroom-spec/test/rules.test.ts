@@ -471,6 +471,40 @@ describe('GAUGE-01 — a limit nobody governs is not a limit', () => {
     expect(f.message).toContain('never breaches its own prior');
   });
 
+  it('holds the limit-band sparkline to the same governed limit (ADR-89)', () => {
+    const band = (compare?: DashboardSpec['widgets'][number]['bind']['compare']): DashboardSpec => {
+      const s = baseSpec();
+      s.widgets[0] = {
+        id: 'lcr-band', type: 'spark-band@1', pos: { x: 0, y: 0, w: 3, h: 2 },
+        bind: {
+          metric: 'keel://liquidity_pit.lcr_pct@4', dims: ['as_of_date'], window: { trailing: '30d' },
+          ...(compare ? { compare } : {}),
+        },
+      };
+      return s;
+    };
+    expect(findingsFor(band({ vs: 'keel://liquidity_pit.lcr_floor@4', style: 'threshold', limit: 'floor' }), 'GAUGE-01')).toEqual([]);
+    const [none] = findingsFor(band(), 'GAUGE-01');
+    expect(none.severity).toBe('BLOCK');
+    expect(none.message).toContain('a limit band draws a value against its limit');
+    const [prior] = findingsFor(band({ vs: 'prior_period', style: 'threshold' }), 'GAUGE-01');
+    expect(prior.message).toContain('never breaches its own prior');
+    const [side] = findingsFor(band({ vs: 'keel://liquidity_pit.lcr_floor@4', style: 'threshold' }), 'GAUGE-01');
+    expect(side.message).toContain('which side of the limit is safe');
+    roundTrip(band({ vs: 'keel://liquidity_pit.lcr_floor@4', style: 'delta', limit: 'floor' }), 'GAUGE-01');
+  });
+
+  it('leaves the other sparklines alone — a line has no limit to govern', () => {
+    const s = baseSpec();
+    s.widgets[0] = {
+      id: 'lcr-line', type: 'spark-line@1', pos: { x: 0, y: 0, w: 3, h: 2 },
+      bind: { metric: 'keel://liquidity_pit.lcr_pct@4', dims: ['as_of_date'], window: { trailing: '30d' } },
+    };
+    expect(findingsFor(s, 'GAUGE-01')).toEqual([]);
+    expect(findingsFor(s, 'TS-01')).toEqual([]);
+    expect(findingsFor(s, 'KPI-02')).toEqual([]);
+  });
+
   it('does not reach a kpi-tile, which KPI-02 judges more softly', () => {
     const s = baseSpec();
     delete s.widgets[0].bind.compare;

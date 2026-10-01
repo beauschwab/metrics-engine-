@@ -19,6 +19,7 @@
  */
 
 import { formatValue as catalogFormat } from 'chartroom-widgets/format';
+import type { SparkLimit, SparkStyle } from 'chartroom-widgets/spark';
 
 export type Unit = 'ccy' | 'mm' | 'bps' | 'pct' | 'years' | 'date';
 /** How a dollar amount is scaled for reading; the stored value stays dollars (NUM-01). */
@@ -82,8 +83,10 @@ export interface ColumnFormat {
   heatmap?: boolean;
   /** Highlight rules, first match wins (ADR-78). */
   rules?: HighlightRule[];
+  /** The column's history drawn beside each value, in one of four styles (ADR-89). */
+  trend?: SparkStyle;
 }
-export const FORMAT_KEYS: readonly (keyof ColumnFormat)[] = ['dp', 'scale', 'negatives', 'negativeRed', 'heatmap', 'rules'];
+export const FORMAT_KEYS: readonly (keyof ColumnFormat)[] = ['dp', 'scale', 'negatives', 'negativeRed', 'heatmap', 'rules', 'trend'];
 export type Agg = 'sum' | 'wavg' | 'mean' | 'median' | 'min' | 'max' | 'count' | 'uniqueCount';
 export const AGGS: readonly Agg[] = ['sum', 'wavg', 'mean', 'median', 'min', 'max', 'count', 'uniqueCount'];
 export const AGG_LABELS: Record<Agg, string> = {
@@ -136,6 +139,21 @@ export interface ColumnMeta {
   negativeRed?: boolean;
   /** Initial column width in px; the reader may resize (Phase 3), the view state remembers. */
   width?: number;
+  /**
+   * Measures only: the host can supply this column's recent history, one
+   * series per row (ADR-89), so a reader may draw it as a trend. A column
+   * without one has no trend to offer, and the format menu does not offer it.
+   */
+  history?: boolean;
+  /**
+   * Measures with a history only: the governed limit the `band` trend draws
+   * against, with its safe side. Declared by whoever declares the column —
+   * never typed by a reader — because a limit nobody owns is not a limit
+   * (GAUGE-01's reasoning, held at the schema).
+   */
+  limit?: SparkLimit;
+  /** The trend a reader chose for the view (ADR-89), drawn on leaf rows where the host has a history. */
+  trend?: SparkStyle;
 }
 
 /** The dash every widget renders for a value it does not have. */
@@ -155,6 +173,11 @@ export function formatValue(value: unknown, meta: ColumnMeta): string {
   if (meta.unit === 'date') return typeof value === 'string' ? value : MISSING;
   if (typeof value === 'string') return value;
   if (typeof value !== 'number' || Number.isNaN(value)) return MISSING;
+
+  // A loss too small to show at this precision reads as zero, not as
+  // "-$0.00M" in the breach colour: a sign the digits cannot back up is a
+  // loss the reader goes looking for and never finds.
+  if (value < 0 && !showsNegative(value, meta)) return formatValue(0, meta);
 
   // Accounting negatives wrap the whole reading, sign removed, so "($1.2M)"
   // and "(3.46%)" read the same way a ledger does.
@@ -182,6 +205,11 @@ export function formatValue(value: unknown, meta: ColumnMeta): string {
     default:
       return fixed(value, meta.dp ?? 0);
   }
+}
+
+/** Whether a number reads as negative at its column's precision: below zero, and some digit says so. */
+export function showsNegative(value: unknown, meta: ColumnMeta): boolean {
+  return typeof value === 'number' && value < 0 && /[1-9]/.test(formatValue(-value, meta));
 }
 
 /** Whether a measure's unit is read at a scale — dollars are, a percent is not. */
