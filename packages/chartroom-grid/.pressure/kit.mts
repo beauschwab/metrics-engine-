@@ -1,0 +1,12 @@
+import { writeFileSync } from 'node:fs';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+const PKG = '/home/user/metrics-engine-/packages/chartroom-grid';
+const t = new StdioClientTransport({ command: `${PKG}/../../node_modules/.bin/tsx`, args: ['mcp.ts'], cwd: PKG, env: { ...process.env, GRID_ROWS: '5000' } as Record<string, string> });
+const c = new Client({ name: 'kit', version: '0' });
+await c.connect(t);
+const tools = await c.listTools();
+const instructions = c.getInstructions();
+const d = await c.callTool({ name: 'describe_view', arguments: {} });
+writeFileSync(process.argv[2], JSON.stringify({ serverInstructions: instructions, tools: tools.tools, describe_view_output: JSON.parse((d.content as any)[0].text) }, null, 2));
+await c.close();
