@@ -36,6 +36,9 @@ import { hasBands, headerBands } from '../grid/bands';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { cn } from '../lib/utils';
 import { ValueCell } from './CellRenderers';
+import { TrendCell } from './TrendCell';
+import { useHistory } from './HistoryContext';
+import { trendOf } from '../grid/trend';
 import { DetailPanel } from './DetailPanel';
 import { FilterPopover } from './FilterPopover';
 import { isGroupNode } from '../data/sqlSource';
@@ -688,6 +691,7 @@ function BodyCell({
   const column = cell.column;
   const meta = column.columnDef.meta;
   const row = cell.row;
+  const history = useHistory();
   const node = isGroupNode(row.original) ? row.original : null;
   const grouped = row.getIsGrouped() || node !== null;
 
@@ -768,6 +772,12 @@ function BodyCell({
   } else {
     const value = cell.getValue();
     content = meta ? <ValueCell value={value} meta={meta} /> : <table.FlexRender cell={cell} />;
+    // A leaf row's history beside its number, where the reader asked for one and the host has it (ADR-89).
+    const trend = trendOf(meta);
+    const points = trend && history ? history(row.id, column.id) : undefined;
+    if (trend && meta && points?.length) {
+      content = <TrendCell points={points} style={trend} meta={meta} label={`${meta.label}, ${row.id}`}>{content}</TrendCell>;
+    }
     if (meta?.heatmap) background = heatBackground(heatIntensity(value, heat.get(column.id)));
   }
   // Editing (ADR-87): the cell under edit draws its input; an edited one wears a corner mark.

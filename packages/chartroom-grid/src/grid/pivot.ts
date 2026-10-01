@@ -65,7 +65,8 @@ export function distinctValues(rows: readonly GridRecord[], column: string): str
 
 /** The meta a pivot column carries: the measure's, banded by the bucket's value. */
 export function pivotMeta(measureMeta: ColumnMeta, value: string): ColumnMeta {
-  return { ...measureMeta, band: value, pivot: true };
+  // A bucket's cell has no history of its own (ADR-89): the trend stays on the measure's Total.
+  return { ...measureMeta, band: value, pivot: true, trend: undefined };
 }
 
 /**

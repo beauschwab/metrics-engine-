@@ -13,6 +13,7 @@ import { AGGS, FORMAT_KEYS, isScalable, type Agg, type ColumnFormat, type Column
 import { computedAggregation, computedMeta, computedValue, isComputedId, type ComputedColumn } from './computed';
 import { pivotAggregation, pivotBuckets, pivotId, pivotMeta, pivotValue, type PivotState } from './pivot';
 import { TREASURY_META, TREASURY_ORDER, TREASURY_SCHEMA } from '../data/treasury';
+import { TREND_SIZE } from './trend';
 import { idsOf, measuresOf, type GridRecord, type GridSchema } from './schema';
 
 const helper = createColumnHelper<Features, GridRecord>();
@@ -71,11 +72,18 @@ export function metaFor(id: string, computed: readonly ComputedColumn[] = [], sc
   return spec ? computedMeta(spec, (op) => schema.columns[op]) : undefined;
 }
 
-/** The format keys a meta can take: a measure's readings, a dollar column's scale (ADR-74). */
+/** The format keys a meta can take: a measure's readings, a dollar column's scale (ADR-74), a trend where there is a history (ADR-89). */
 export function allowedFormatKeysFor(meta: ColumnMeta | undefined): readonly (keyof ColumnFormat)[] {
   if (!meta || meta.kind !== 'measure') return [];
-  return FORMAT_KEYS.filter((k) => k !== 'scale' || isScalable(meta));
+  return FORMAT_KEYS.filter((k) => (k !== 'scale' || isScalable(meta)) && (k !== 'trend' || !!meta.history));
 }
+
+/** The width a trend adds to its column: the sparkline and the gap before the number (ADR-89). */
+export const TREND_EXTRA = TREND_SIZE.width + 10;
+
+/** A column's starting width: the meta's, plus room for the trend when the view draws one. */
+const sizeOf = (meta: ColumnMeta): number | undefined =>
+  meta.trend && meta.history ? (meta.width ?? 100) + TREND_EXTRA : meta.width;
 
 /** The format keys a column can take, by id; a calculated column's need its definition. */
 export function allowedFormatKeys(id: string, computed: readonly ComputedColumn[] = [], schema: GridSchema = TREASURY_SCHEMA): readonly (keyof ColumnFormat)[] {
@@ -168,7 +176,7 @@ export function buildColumns(aggs: ColumnAggs = {}, formats: ColumnFormats = {},
         id,
         header: meta.label,
         meta,
-        size: meta.width,
+        size: sizeOf(meta),
         enableGrouping: meta.kind === 'dimension' && !!meta.groupable,
         // Every aggregation the meta or the view names is registered (`wavg`
         // since Phase 2, ADR-67); a measure without one leaves a subtotal

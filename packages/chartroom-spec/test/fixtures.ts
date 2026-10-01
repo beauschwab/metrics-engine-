@@ -141,6 +141,17 @@ export const WIDGETS: WidgetContract[] = [
     widget: 'annotation', version: 1, family: 'annotation',
     accepts: { supports: ['filters'] }, guide_rules: ['NUM-01'],
   },
+  // ADR-89: the sparkline cards. The band is the one a rule reaches into.
+  ...(['spark-line', 'spark-band', 'spark-column', 'spark-range'] as const).map((widget) => ({
+    widget, version: 1, family: 'timeseries' as const,
+    accepts: {
+      requires_time_dim: true, max_series: 1, categorical_dims: { min: 0, max: 0 },
+      supports: widget === 'spark-band'
+        ? ['compare' as const, 'window' as const, 'filters' as const]
+        : ['window' as const, 'filters' as const],
+    },
+    guide_rules: widget === 'spark-band' ? ['GAUGE-01', 'TS-01', 'TS-02'] : ['TS-01', 'TS-02'],
+  })),
 ];
 
 export function ctx(): LintContext {

@@ -34,6 +34,12 @@ test.describe('the interpreter renders real data', () => {
     const table = page.getByTestId('widget-outflow-table').getByTestId('treasury-grid');
     await expect(table.locator('tbody tr').first()).toBeVisible();
     await expect(table.locator('tbody tr').first().locator('td[data-column="value"]')).toHaveText(/^-?\$[\d,]+$/);
+    // The window gives each group its history, and the seeded state draws it (ADR-89).
+    const trend = table.locator('tbody tr').first().locator('td[data-column="value"] [data-slot="trend-spark"]');
+    await expect(trend.locator('[data-mark="line"]')).toHaveCount(1);
+    await trend.focus();
+    await expect(page.locator('[data-slot="trend-tip"]')).toContainText(/\d{4}-\d{2}-\d{2}/);
+    await trend.blur();
     // The dashboard grants no editing (ADR-87): a double-click on a value opens nothing.
     await table.locator('tbody tr').first().locator('td[data-column="value"]').dblclick();
     await expect(table.locator('[data-slot="cell-editor"]')).toHaveCount(0);
@@ -101,6 +107,20 @@ test.describe('the interpreter renders real data', () => {
     await expect(page.getByTestId('widget-shortfall-tile')).toBeVisible();
     await expect(page.getByTestId('widget-entity-table').locator('tbody tr').first())
       .toBeVisible();
+  });
+
+  test('the limit board\'s sparkline cards read thirty real days (ADR-89)', async ({ page }) => {
+    await page.getByTestId('dash-limit-board').click();
+    const line = page.getByTestId('widget-lcr-spark');
+    await expect(line.locator('.cr-sparkcard-value')).toHaveText(/^\d+\.\d%$/);
+    await expect(line.locator('.cr-sparkcard-judgment')).toHaveText(/^[+-]?[\d.]+pp since \d{2}-\d{2}$/);
+    await expect(line.locator('.cr-spark-line')).toHaveCount(1);
+    await expect(page.getByTestId('widget-dod-spark').locator('.cr-spark-col')).toHaveCount(30);
+    await expect(page.getByTestId('widget-hqla-spark').locator('.cr-spark-tick')).toHaveCount(30);
+    await expect(page.getByTestId('widget-headroom-spark').locator('.cr-sparkcard-value')).toHaveText(/^-?\$[\d,]+$/);
+    // The day under the keyboard, from the engine's own dates.
+    await line.locator('[data-slot="sparkline"]').focus();
+    await expect(line.locator('.cr-spark-tip-date')).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
 
@@ -197,6 +217,8 @@ test.describe('the widget-states harness (ADR-7)', () => {
       // Phase 9 (E9.1)
       'stacked-area', 'waterfall', 'small-multiples', 'heatmap', 'distribution',
       'bullet', 'annotation',
+      // ADR-89
+      'spark-line', 'spark-band', 'spark-column', 'spark-range',
     ]) {
       const row = page.getByTestId(`harness-${widget}`);
       await expect(row).toBeVisible();
@@ -236,5 +258,70 @@ test.describe('the widget-states harness (ADR-7)', () => {
     // The annotation shows its prose, not just the anchor number.
     const note = page.getByTestId('harness-annotation').locator('.cr-frame').first();
     await expect(note.locator('.cr-annotation-note')).toContainText('quarter-end funding');
+  });
+
+  test('the sparkline cards draw their style, and the crosshair says the day (ADR-89)', async ({ page }) => {
+    await page.goto('/#/widgets');
+    const fresh = (w: string) => page.getByTestId(`harness-${w}`).locator('.cr-frame').first();
+
+    // Line: the latest value large, the window in words, one path, the current day accented.
+    const line = fresh('spark-line');
+    await expect(line.locator('.cr-sparkcard-value')).toHaveText('109.6%');
+    await expect(line.locator('.cr-sparkcard-judgment')).toHaveText('+3.6pp since 07-01');
+    await expect(line.locator('.cr-spark-line')).toHaveCount(1);
+    await expect(line.locator('.cr-spark-dot')).toHaveCount(1);
+
+    // Pointing snaps to a real day: the tooltip leads with the date, then the value.
+    const svg = line.locator('[data-slot="sparkline"]');
+    await svg.scrollIntoViewIfNeeded();
+    const box = (await svg.boundingBox())!;
+    await page.mouse.move(box.x + 2, box.y + box.height / 2);
+    const tip = line.locator('[data-slot="spark-tip"]');
+    await expect(tip).toBeVisible();
+    await expect(tip.locator('.cr-spark-tip-date')).toHaveText('2025-07-01');
+    await expect(line.locator('.cr-spark-crosshair')).toHaveCount(1);
+    await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2);
+    await expect(tip.locator('.cr-spark-tip-date')).toHaveText('2025-07-30');
+    await expect(tip.locator('.cr-spark-tip-note')).toContainText('since 07-01');
+    await page.mouse.move(0, 0);
+    await expect(tip).toHaveCount(0);
+
+    // The keyboard reads the same: focus lands on today, the arrows step a day.
+    await svg.focus();
+    await expect(tip.locator('.cr-spark-tip-date')).toHaveText('2025-07-30');
+    await page.keyboard.press('ArrowLeft');
+    await expect(tip.locator('.cr-spark-tip-date')).toHaveText('2025-07-29');
+    await page.keyboard.press('Home');
+    await expect(tip.locator('.cr-spark-tip-date')).toHaveText('2025-07-01');
+    await page.keyboard.press('Escape');
+    await expect(tip).toHaveCount(0);
+    await expect(svg).toHaveAttribute('aria-label', /latest 109\.6%, low 94\.8% on 07-21, high 110\.0% on 07-0\d/);
+
+    // Band: the limit, the breach side shaded, each breaching day marked — and named in words.
+    const band = fresh('spark-band');
+    await expect(band.locator('.cr-spark-limit')).toHaveCount(1);
+    await expect(band.locator('.cr-spark-zone')).toHaveCount(1);
+    await expect(band.locator('.cr-spark-breach')).toHaveCount(4);
+    await expect(band.locator('.cr-sparkcard-judgment')).toHaveText('above floor 100.0% · 4 breaches since 07-01');
+    const bandSvg = band.locator('[data-slot="sparkline"]');
+    await bandSvg.focus();
+    for (let i = 0; i < 7; i++) await page.keyboard.press('ArrowLeft'); // 07-23, the last breaching day
+    await expect(band.locator('.cr-spark-tip-note')).toHaveAttribute('data-state', 'breach');
+    await expect(band.locator('.cr-spark-tip-note')).toContainText('below floor lcr_floor 100.0% — breach');
+
+    // Columns: one per day from zero, today accented; the tooltip gives the day's move.
+    const columns = fresh('spark-column');
+    await expect(columns.locator('.cr-spark-col')).toHaveCount(29);
+    await expect(columns.locator('.cr-spark-col[data-current]')).toHaveCount(1);
+    await expect(columns.locator('.cr-spark-col[data-negative]').first()).toBeVisible();
+    await columns.locator('[data-slot="sparkline"]').focus();
+    await expect(columns.locator('.cr-spark-tip-note')).toContainText('vs 07-29');
+
+    // Range: every day a tick between the window's low and high, today the long one.
+    const range = fresh('spark-range');
+    await expect(range.locator('.cr-spark-track')).toHaveCount(1);
+    await expect(range.locator('.cr-spark-tick')).toHaveCount(30);
+    await expect(range.locator('.cr-spark-tick[data-current]')).toHaveCount(1);
+    await expect(range.locator('.cr-sparkcard-judgment')).toContainText('of its range since 07-01');
   });
 });

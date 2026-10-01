@@ -20,17 +20,21 @@ import { Heatmap } from './Heatmap';
 import { Distribution } from './Distribution';
 import { Bullet } from './Bullet';
 import { Annotation } from './Annotation';
+import { SparkBandCard, SparkColumnCard, SparkLineCard, SparkRangeCard } from './SparkCard';
 
 export { CATALOG, CATALOG_BY_REF } from './contracts';
 export { formatDate, formatDelta, formatTick, formatValue } from './format';
 export { barOrder, linePath, ticks, xPos, xPositions, yExtent, yPos } from './scale';
 export type { Extent } from './scale';
+export { Sparkline, type SparklineProps } from './SparkCard';
+export * from './spark';
 export type {
   GroupRow, SeriesLine, SeriesPoint, WidgetData, WidgetProps, WidgetStatus,
 } from './types';
 export {
   KpiTile, Timeseries, Bar, DeltaTable, PerspectiveGrid,
   StackedArea, Waterfall, SmallMultiples, Heatmap, Distribution, Bullet, Annotation,
+  SparkLineCard, SparkBandCard, SparkColumnCard, SparkRangeCard,
 };
 
 export const COMPONENTS: Record<string, ComponentType<WidgetProps>> = {
@@ -46,4 +50,8 @@ export const COMPONENTS: Record<string, ComponentType<WidgetProps>> = {
   'distribution@1': Distribution,
   'bullet@1': Bullet,
   'annotation@1': Annotation,
+  'spark-line@1': SparkLineCard,
+  'spark-band@1': SparkBandCard,
+  'spark-column@1': SparkColumnCard,
+  'spark-range@1': SparkRangeCard,
 };

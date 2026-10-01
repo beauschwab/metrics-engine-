@@ -49,12 +49,14 @@ export const CATALOG: WidgetContract[] = [
     // Host-rendered (ADR-83): the treasury grid draws this one in the
     // studio; the widgets package carries the contract, never the renderer.
     widget: 'grid', version: 1, family: 'grid', renderer: 'host',
-    accepts: { categorical_dims: { min: 1, max: 4 }, supports: ['max_cells', 'filters', 'sort'] },
+    // `window` gives the value a history to draw as a trend, and a threshold
+    // `compare` the limit its band draws against (ADR-89).
+    accepts: { categorical_dims: { min: 1, max: 4 }, supports: ['max_cells', 'filters', 'sort', 'window', 'compare'] },
     guide_rules: ['GRID-01', 'AGG-01', 'NUM-01'],
     description: 'The metric’s groups as a working table: group, sort, filter, '
-      + 'pivot and format the rows, calculate a column, copy a block — the '
-      + 'reader’s arrangement kept in the widget’s state. Totals sum, so '
-      + 'AGG-01 keeps a ratio out of it.',
+      + 'pivot and format the rows, calculate a column, copy a block, draw '
+      + 'each group’s trend over the window — the reader’s arrangement kept '
+      + 'in the widget’s state. Totals sum, so AGG-01 keeps a ratio out of it.',
   },
   {
     widget: 'perspective-grid', version: 1, family: 'grid',
@@ -131,6 +133,59 @@ export const CATALOG: WidgetContract[] = [
     description: 'Author commentary beside the number it is about. The note '
       + 'binds a metric, so when that metric’s revision moves the upgrade '
       + 'notice names the stale commentary too.',
+  },
+
+  // ---- Sparklines (ADR-89) -------------------------------------------------
+  // One number and its window, four questions. `timeseries` because they are
+  // lines (or columns) over days: TS-01 holds the time dim and TS-02 the one
+  // series a card can carry. The style is the type, so a rule can hold each
+  // card to its question — GAUGE-01 to the band's limit.
+
+  {
+    widget: 'spark-line', version: 1, family: 'timeseries',
+    accepts: {
+      requires_time_dim: true, max_series: 1,
+      categorical_dims: { min: 0, max: 0 },
+      supports: ['window', 'filters'],
+    },
+    guide_rules: ['TS-01', 'TS-02', 'NUM-01'],
+    description: 'The latest value with the line that led to it: where the '
+      + 'number is heading, the move since the window opened said in words, '
+      + 'and any day read off the line by pointer or arrow key.',
+  },
+  {
+    widget: 'spark-band', version: 1, family: 'timeseries',
+    accepts: {
+      requires_time_dim: true, max_series: 1,
+      categorical_dims: { min: 0, max: 0 },
+      supports: ['compare', 'window', 'filters'],
+    },
+    guide_rules: ['GAUGE-01', 'TS-01', 'TS-02', 'NUM-01'],
+    description: 'The line against its limit: the breach side shaded, each '
+      + 'breaching day marked and named. GAUGE-01 holds the limit to a governed '
+      + 'registry metric with a declared safe side.',
+  },
+  {
+    widget: 'spark-column', version: 1, family: 'timeseries',
+    accepts: {
+      requires_time_dim: true, max_series: 1,
+      categorical_dims: { min: 0, max: 0 },
+      supports: ['window', 'filters'],
+    },
+    guide_rules: ['TS-01', 'TS-02', 'NUM-01'],
+    description: 'One column per day from zero, so each day reads as a length '
+      + '— the right shape for a daily move, where the sign is the story.',
+  },
+  {
+    widget: 'spark-range', version: 1, family: 'timeseries',
+    accepts: {
+      requires_time_dim: true, max_series: 1,
+      categorical_dims: { min: 0, max: 0 },
+      supports: ['window', 'filters'],
+    },
+    guide_rules: ['TS-01', 'TS-02', 'NUM-01'],
+    description: 'Where today sits in its own history: every day of the window '
+      + 'as a tick from its low to its high, today emphasised and placed in words.',
   },
 ];
 

@@ -22,6 +22,7 @@ import { TREASURY_SCHEMA } from '../data/treasury';
 import { idsOf, type GridSchema } from './schema';
 import { COMPUTED_OPS, MAX_COMPUTED, computedIssues, isComputedId, type ComputedColumn, type ComputedOp } from './computed';
 import { isPivotId } from './pivot';
+import { SPARK_STYLES, type SparkStyle } from 'chartroom-widgets/spark';
 import {
   AGGS, DECIMALS, EMPHASES, MAX_RULES, NEGATIVES, RULE_OPS, SCALES, type Agg, type ColumnFormat, type Emphasis, type Negatives, type RuleOp, type Scale,
 } from './meta';
@@ -186,6 +187,8 @@ return z
             value: z.number().finite(),
             emphasis: z.enum(EMPHASES as [Emphasis, ...Emphasis[]]),
           })).max(MAX_RULES, `at most ${MAX_RULES} rules; a threshold belongs in the registry`).optional(),
+          // The column's history as a sparkline (ADR-89): only where the schema declares one.
+          trend: z.enum(SPARK_STYLES as [SparkStyle, ...SparkStyle[]]).optional(),
         })
         .strict())
       .superRefine((rec, ctx) => {
@@ -197,7 +200,11 @@ return z
           for (const key of Object.keys(format) as (keyof ColumnFormat)[]) {
             if (format[key] === undefined) continue;
             if (allowed.length === 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${k} is a dimension and has no format`, path: [k, key] });
-            else if (!allowed.includes(key)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${key} is not a format ${k} can take`, path: [k, key] });
+            else if (!allowed.includes(key)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: key === 'trend' ? `${k} has no history to draw` : `${key} is not a format ${k} can take`, path: [k, key] });
+          }
+          // A band draws against a limit the schema governs; a reader cannot supply one.
+          if (format.trend === 'band' && !schema.columns[k]?.limit) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${k} declares no limit to draw a band against`, path: [k, 'trend'] });
           }
         }
       })

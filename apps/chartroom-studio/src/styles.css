@@ -675,6 +675,56 @@ button:not([data-slot], [data-slot] *) { font: inherit; color: inherit; backgrou
 .cr-bullet[data-breached] .cr-bullet-foot { color: var(--cr-breach-text); }
 .cr-bullet-nolimit { color: var(--cr-warn); }
 
+/* sparklines (ADR-89): the number and its window. The line is the series
+   colour, the current day the accent; status colour appears only on a
+   breaching day of a band, and the words beside it say "breach" too. */
+/* The headline scales with the card: a three-column card still says a
+   twelve-digit dollar figure whole rather than clipping its last digits. */
+.cr-sparkcard { display: flex; flex-direction: column; gap: 6px; justify-content: center; height: 100%; min-width: 0; container-type: inline-size; }
+.cr-sparkcard-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cr-sparkcard-value {
+  font-size: clamp(14px, 11cqi, 26px); font-weight: 700; letter-spacing: -0.01em; line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cr-sparkcard-judgment { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-sparkcard[data-emphasis='semantic'] .cr-kpi-judgment[data-state='breach'] { color: var(--cr-breach-text); font-weight: 600; }
+.cr-sparkcard[data-emphasis='semantic'] .cr-kpi-judgment[data-state='ok'] { color: var(--cr-up); }
+/* Basis 0 and an absolute svg: the chart takes the card's room without its own height feeding back into it. */
+.cr-spark { position: relative; width: 100%; min-width: 0; flex: 1 1 0; min-height: 28px; max-height: 64px; }
+.cr-spark[data-style='range'] { max-height: 30px; }
+.cr-spark[data-fixed] { flex: none; }
+.cr-spark svg { position: absolute; left: 0; top: 0; display: block; overflow: visible; cursor: crosshair; border-radius: var(--radius-xs); }
+.cr-spark svg:focus-visible { outline: 2px solid var(--cr-accent); outline-offset: 2px; }
+/* History reads grey, today reads in the accent: one colour, one meaning. */
+.cr-spark-line { fill: none; stroke: color-mix(in srgb, var(--cr-text) 50%, transparent); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.cr-spark-dot { fill: var(--cr-accent); stroke: var(--cr-panel); stroke-width: 1.5; }
+.cr-spark-active { fill: var(--cr-panel); stroke: var(--cr-accent); stroke-width: 2; }
+.cr-spark-dot[data-breach], .cr-spark-active[data-breach] { stroke: var(--cr-breach); }
+.cr-spark-dot[data-breach] { fill: var(--cr-breach); }
+.cr-spark-crosshair { stroke: var(--cr-text-faint); stroke-width: 1; stroke-dasharray: 2 2; pointer-events: none; }
+.cr-spark-zone { fill: color-mix(in srgb, var(--cr-breach) 10%, transparent); }
+.cr-spark-limit { stroke: var(--cr-text-muted); stroke-width: 1; stroke-dasharray: 4 3; }
+.cr-spark-breach { fill: var(--cr-breach); }
+.cr-spark-zero { stroke: var(--cr-border); stroke-width: 1; }
+.cr-spark-col { fill: color-mix(in srgb, var(--cr-text) 42%, transparent); }
+.cr-spark-col[data-negative] { fill: color-mix(in srgb, var(--cr-text) 24%, transparent); }
+.cr-spark-col[data-current] { fill: var(--cr-accent); }
+.cr-spark-col[data-active] { fill: var(--cr-text); }
+.cr-spark-track { stroke: var(--cr-border); stroke-width: 4; stroke-linecap: round; }
+.cr-spark-tick { stroke: color-mix(in srgb, var(--cr-text) 38%, transparent); stroke-width: 1.5; }
+.cr-spark-tick[data-current] { stroke: var(--cr-accent); stroke-width: 2.5; }
+.cr-spark-tick[data-active] { stroke: var(--cr-text); stroke-width: 2.5; }
+.cr-spark-tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  display: flex; flex-direction: column; gap: 1px; width: max-content; max-width: 100%; box-sizing: border-box;
+  background: var(--cr-panel-2); border: 1px solid var(--cr-border); border-radius: var(--radius-sm);
+  padding: 5px 8px; font-size: 11px; box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+}
+.cr-spark-tip-date { color: var(--cr-text-faint); font-size: 10px; white-space: nowrap; }
+.cr-spark-tip-value { color: var(--cr-text); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+.cr-spark-tip-note { color: var(--cr-text-muted); }
+.cr-spark-tip-note[data-state='breach'] { color: var(--cr-breach-text); font-weight: 600; }
+
 /* annotation: prose first, the number as its anchor. */
 .cr-annotation { display: flex; flex-direction: column; gap: 8px; height: 100%; }
 .cr-annotation-note { font-size: 12.5px; line-height: 1.5; color: var(--cr-text); overflow: auto; }

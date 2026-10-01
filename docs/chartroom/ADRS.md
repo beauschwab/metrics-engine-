@@ -2770,6 +2770,91 @@ a CDS filter, and keeps the footer's total when the engine groups. The
 studio e2e reads the grid widget's status and as-of off its frame and
 clears a column filter and the quick filter with one click.
 
+## ADR-89 — a trend is read at a glance and said in words: four sparklines, as cards and in the grid
+
+**Pinned:** "what sparklines can I add that look really good with
+tooltips", then "implement grid and card versions for all". Four styles,
+each answering one question about a number's recent days, drawn both as
+a dashboard card and inside a grid row.
+
+**Decision.**
+
+- *Four styles, four questions.* `line` — where is it heading? The line,
+  today accented. `band` — is it on the right side of its limit? The line
+  against a governed limit, the breach side shaded, each breaching day
+  marked in the status colour and named in words. `column` — how big was
+  each day? Columns from zero, so a daily move reads as a length and its
+  sign as a side of the line. `range` — where does today sit in its own
+  history? Every day as a tick between the window's low and high, today
+  the long accented tick.
+- *One geometry, two renderers.* `chartroom-widgets/spark` is a
+  React-free subpath: the scene (every mark in pixels), the crosshair's
+  snap and step, and the words (tooltip, judgment, summary). The cards
+  and the grid's trend cell draw the same scene, so a row's trend and a
+  card's trend over the same days cannot disagree. The grid and the
+  server may import `/spark` as they import `/format`; the boundaries
+  test now also checks that those subpaths stay React-free.
+- *The tooltip says the day.* The crosshair snaps to the nearest real
+  day and never interpolates. The tip leads with the date, then the
+  value, then one line of meaning per style: the move since the window
+  opened, the side of the limit, the move from the day before, the place
+  in the range. The keyboard reads the same days: focus lands on today,
+  the arrows step a day, Home and End jump to the ends, Escape closes.
+  The chart's accessible name is the whole window in one sentence, low
+  and high with their dates.
+- *Cards are widget types.* `spark-line@1`, `spark-band@1`,
+  `spark-column@1`, `spark-range@1`, family `timeseries`, one series, no
+  categorical dims, a time dim required (TS-01, TS-02). The style is the
+  type because the spec has no options field and should not grow one:
+  a rule can only hold a widget to its question if the question is in
+  the type. The card says the latest value, then the window in words,
+  then draws it; the words come first because they are the reading.
+- *The band's limit is governed.* GAUGE-01 now covers `spark-band` as it
+  covers `bullet`: a threshold `compare` bound to a registry metric, with
+  a declared safe side, or the spec is blocked. The card draws nothing
+  rather than a guess when either is missing. In the grid, the limit is
+  column meta (`limit: { value, side, label }`) that whoever declares the
+  column declares; a reader can choose the band only where it exists.
+- *A far limit is not drawn.* A limit more than one and a half of the
+  window's own spans from the nearest day is left off the chart, so a
+  trade a hundred times inside its limit keeps its shape instead of
+  lying flat against one edge. The words still say the side of the limit
+  and every breach.
+- *In the grid a trend is a format.* `columnFormats[id].trend` takes one
+  of the four styles, offered only on a measure whose meta declares
+  `history: true`. The view version does not move: the key is optional
+  within `columnFormats`, as highlight rules were (ADR-78). The host
+  supplies the series through `TreasuryGrid`'s `history` prop, a function
+  of row id and column; without it a chosen trend reads as its plain
+  number. A trend draws on leaf rows only: a group, a subtotal and a
+  pivot bucket have no history of their own. The column widens by the
+  sparkline, and the trend's words go through the column's meta, so the
+  tip's number is the cell's number. The tooltip is portalled to the
+  page, because the table body is a scroll box that would clip it.
+- *Hosts.* The harness declares histories on MTM and DV01 (DV01 against
+  a $250,000 per-trade limit) and supplies a seeded walk of thirty
+  business days that ends on the booked value. The dashboard's
+  `grid@1` now accepts `window` and `compare`: a windowed binding also
+  asks for each group's series over the window and declares the value's
+  history, and a threshold compare with a side becomes the value's
+  limit. The seeded outflow table opens with its value drawn as a line,
+  and the limit board gains four cards. The band card is not seeded:
+  the registry has no governed floor measure yet, and GAUGE-01 would
+  block a band drawn against anything less.
+
+**What now fails if this regresses.** `spark.test.ts` places every mark
+of each style, lifts the pen at a missing day, shades the right side of
+a floor and a ceiling, leaves a far limit off, snaps and steps the
+crosshair, and checks each style's words, in catalog formats and in a
+host's own readings. `trend.test.ts` offers the trend only where a
+history is declared, refuses a band without a limit, widens the column,
+reads moves in the column's unit, and checks the harness history lands
+on the cell's value. GAUGE-01's tests hold the band card to a governed
+limit. The studio e2e drives each card's crosshair by pointer and
+keyboard, reads the four seeded cards off the limit board and the
+dashboard grid's trend off its first row, and drives all four styles
+from the grid's format menu, a near limit and a far one included.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

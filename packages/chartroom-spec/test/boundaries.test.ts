@@ -102,14 +102,25 @@ describe('package boundaries', () => {
 
   it('grid imports spec and the widgets’ React-free subpaths, never components, server or studio', () => {
     // `spec ← grid ← studio`. The grid reads `chartroom-widgets/format` so a
-    // number in a cell is the number in a tile (ADR-64); it never reaches the
-    // widget *components* — two catalogs of renderers importing each other is
-    // how one ends up rendering the other's empty state.
+    // number in a cell is the number in a tile (ADR-64), and
+    // `chartroom-widgets/spark` so a trend in a row is the trend on a card
+    // (ADR-89); it never reaches the widget *components* — two catalogs of
+    // renderers importing each other is how one ends up rendering the
+    // other's empty state.
     expect(offenders(join(PKG.grid, 'src'), (s) =>
       s.includes('chartroom-api') || s.includes('chartroom-studio')
       || s.includes('chartroom-mcp') || s.startsWith('node:')
       || (s.includes('chartroom-widgets')
-        && !s.endsWith('/contracts') && !s.endsWith('/format')))).toEqual([]);
+        && !s.endsWith('/contracts') && !s.endsWith('/format') && !s.endsWith('/spark')))).toEqual([]);
+  });
+
+  it('the widgets’ subpaths the grid and server may read stay React-free', () => {
+    // The grid and the server import these without React in the room: a
+    // component sneaking into one would drag a renderer across the boundary.
+    for (const f of ['contracts.ts', 'format.ts', 'spark.ts']) {
+      const imports = importsOf(join(PKG.widgets, 'src', f));
+      expect(imports.filter((s) => s === 'react' || s.endsWith('.tsx') || /^\.\/[A-Z]/.test(s)), f).toEqual([]);
+    }
   });
 
   it('the grid’s table and components never fetch — only its data seam may', () => {

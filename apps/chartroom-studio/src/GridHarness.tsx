@@ -24,8 +24,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RangeChart } from './RangeChart';
 import {
-  TreasuryGrid, defaultView, duckdbSource, generatePositions, inMemorySource, localStorageViewStore,
-  readViewFromHash, writeViewToHash, type ChartOutcome, type EditPolicy, type SourceDescription, type ViewState, type ViewUpdate,
+  TreasuryGrid, defaultView, duckdbSource, generatePositions, inMemorySource, localStorageViewStore, positionHistory,
+  readViewFromHash, writeViewToHash, type ChartOutcome, type EditPolicy, type GridHistory, type Position, type SourceDescription, type ViewState, type ViewUpdate,
 } from 'chartroom-grid';
 
 const ROWS = 50_000;
@@ -67,6 +67,26 @@ export function GridHarness() {
     () => (kind === 'duckdb' ? duckdbSource(book, 'DuckDB-WASM') : inMemorySource(book, 'seeded book')),
     [book, kind],
   );
+  // MTM and DV01 histories (ADR-89): the booked position's last thirty
+  // business days, made on first read and kept, so a row's trend is the same
+  // array on every render and a hovered day survives a re-render. Either
+  // source reads them — the history is the harness's, keyed by trade.
+  const trends = useMemo<GridHistory>(() => {
+    const byId = new Map<string, Position>(book.map((p) => [p.tradeId, p]));
+    const made = new Map<string, ReturnType<typeof positionHistory>>();
+    return (rowId, columnId) => {
+      if (columnId !== 'mtm' && columnId !== 'dv01') return undefined;
+      const key = `${rowId}:${columnId}`;
+      let h = made.get(key);
+      if (!h) {
+        const p = byId.get(rowId);
+        if (!p) return undefined;
+        h = positionHistory(p, columnId);
+        made.set(key, h);
+      }
+      return h;
+    };
+  }, [book]);
   // A source the harness lets go is closed: DuckDB's worker goes with it.
   useEffect(() => () => { void source.close?.(); }, [source]);
   const store = useMemo(() => localStorageViewStore(), []);
@@ -137,7 +157,7 @@ export function GridHarness() {
       <div className="min-h-0 flex-1 px-5 pt-3 pb-5">
         <div className="flex h-full border border-border bg-card">
           <div className="min-w-0 flex-1">
-            <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={store} defaultSidebarOpen onChart={setChart} edit={edit} />
+            <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={store} defaultSidebarOpen onChart={setChart} edit={edit} history={trends} />
           </div>
           {chart && <RangeChart outcome={chart} onClose={() => setChart(null)} />}
         </div>

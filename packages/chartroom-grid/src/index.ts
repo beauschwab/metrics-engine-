@@ -92,7 +92,8 @@ export {
   RULE_OPS, EMPHASES, EMPHASIS_LABELS, MAX_RULES,
   type ColumnMeta, type ColumnFormat, type Unit, type Agg, type Scale, type Negatives, type HighlightRule, type RuleOp, type Emphasis,
 } from './grid/meta';
+export { TREND_SIZE, trendOf, trendReadings, type GridHistory } from './grid/trend';
 export {
-  generatePositions, seeded, type Position,
+  generatePositions, seeded, positionHistory, businessDays, DV01_LIMIT, type Position,
   DESKS, ENTITIES, CURRENCIES, PRODUCTS, TENORS,
 } from './data/mock';

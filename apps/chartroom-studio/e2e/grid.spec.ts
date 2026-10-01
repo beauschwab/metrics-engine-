@@ -932,6 +932,104 @@ test.describe('the treasury grid harness', () => {
     await expect(status.locator('[data-slot="status-edited"]')).toHaveCount(0);
   });
 
+  test('draws a measure\'s history as a trend in four styles from the format menu; the tip says the day, the keyboard reads it too (ADR-89)', async ({ page }) => {
+    await page.goto('/#/grid');
+    const grid = page.getByTestId('treasury-grid');
+    const first = grid.locator('tbody tr').first();
+    await expect(first).toBeVisible();
+    const trendMenu = async (column: 'mtm' | 'dv01', label: string) => {
+      await grid.locator(`th[data-column="${column}"]`).hover();
+      await page.getByRole('button', { name: `${label} column menu` }).click();
+      await page.locator('[data-slot="format-menu"]').hover();
+      return page.locator(`[data-slot="format-choices"][data-column="${column}"] [data-slot="format-trend"]`);
+    };
+
+    // No trend until a reader asks; a column with no history offers none.
+    await expect(grid.locator('[data-slot="trend"]')).toHaveCount(0);
+    await grid.locator('th[data-column="yield"]').hover();
+    await page.getByRole('button', { name: 'Yield column menu' }).click();
+    await page.locator('[data-slot="format-menu"]').hover();
+    await expect(page.locator('[data-slot="format-choices"][data-column="yield"]')).toBeVisible();
+    await expect(page.locator('[data-slot="format-trend"]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+
+    // MTM as a line — no band offered, since MTM declares no limit.
+    let trend = await trendMenu('mtm', 'MTM');
+    await expect(trend.getByRole('menuitemradio', { name: 'None' })).toHaveAttribute('aria-checked', 'true');
+    await expect(trend.getByRole('menuitemradio', { name: /Against limit/ })).toHaveCount(0);
+    await trend.getByRole('menuitemradio', { name: 'Line' }).click();
+    const cell = first.locator('td[data-column="mtm"]');
+    const spark = cell.locator('[data-slot="trend-spark"]');
+    await expect(spark.locator('[data-mark="line"]')).toHaveCount(1);
+    await expect(spark.locator('[data-mark="current"]')).toHaveCount(1);
+    // The number still reads beside it, exactly as before.
+    await expect(cell).toHaveText(/^-?\$[\d.]+M$/);
+    const number = (await cell.textContent())!;
+
+    // Pointing at the right end lands on the as-of date, and the tip says the cell's number.
+    await spark.hover({ position: { x: 62, y: 9 } });
+    const tip = page.locator('[data-slot="trend-tip"]');
+    await expect(tip).toBeVisible();
+    await expect(tip).toContainText('2026-09-28');
+    await expect(tip).toContainText(number);
+    await spark.hover({ position: { x: 2, y: 9 } });
+    await expect(tip).not.toContainText('2026-09-28');
+    await expect(tip).toContainText('2026-08-18');
+    await page.mouse.move(0, 0);
+    await expect(tip).toHaveCount(0);
+
+    // The keyboard reads the same days: focus lands on today, the left arrow steps back a business day.
+    await spark.focus();
+    await expect(tip).toContainText('2026-09-28');
+    await page.keyboard.press('ArrowLeft');
+    await expect(tip).toContainText('2026-09-25');
+    await expect(tip).toContainText(/since 08-18/);
+    await page.keyboard.press('Escape');
+    await expect(tip).toHaveCount(0);
+    await expect(spark).toHaveAttribute('aria-label', /^MTM, T\d{6}, line: 30 points, 08-18 to 09-28: latest /);
+
+    // Columns: one per day; range: one tick per day on a track.
+    trend = await trendMenu('mtm', 'MTM');
+    await trend.getByRole('menuitemradio', { name: 'Columns' }).click();
+    await expect(spark.locator('[data-mark="column"]')).toHaveCount(30);
+    await expect(spark.locator('[data-mark="zero"]')).toHaveCount(1);
+    trend = await trendMenu('mtm', 'MTM');
+    await trend.getByRole('menuitemradio', { name: 'Range strip' }).click();
+    await expect(spark.locator('[data-mark="tick"]')).toHaveCount(30);
+    await expect(spark.locator('[data-mark="track"]')).toHaveCount(1);
+
+    // DV01 against its governed limit: the limit line, the breach side, the limit named in the menu.
+    // A trade near the limit draws it; one a hundred times inside keeps its own shape and says the side in words.
+    await page.getByLabel('Quick filter').fill('dv01>235k dv01<265k');
+    await expect(first.locator('td[data-column="dv01"]')).toHaveText(/^\$2[3-6]\d,\d{3}$/);
+    trend = await trendMenu('dv01', 'DV01');
+    await trend.getByRole('menuitemradio', { name: 'Against limit · trade DV01 limit' }).click();
+    const dv01 = first.locator('td[data-column="dv01"] [data-slot="trend-spark"]');
+    await expect(dv01.locator('[data-mark="limit"]')).toHaveCount(1);
+    await expect(dv01.locator('[data-mark="zone"]')).toHaveCount(1);
+    await dv01.focus();
+    await expect(tip).toContainText(/(above|below|at) ceiling trade DV01 limit \$250,000/);
+
+    // The link carries the choices; a group row draws no trend, only its subtotal.
+    const hash = await page.evaluate(() => location.hash);
+    const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+    expect(decoded.columnFormats).toEqual({ mtm: { trend: 'range' }, dv01: { trend: 'band' } });
+    await page.getByLabel('Quick filter').fill('dv01<5k');
+    await expect(first.locator('td[data-column="dv01"]')).toHaveText(/^\$[\d,]+$/);
+    await expect(dv01.locator('[data-mark="line"]')).toHaveCount(1);
+    await expect(dv01.locator('[data-mark="limit"]')).toHaveCount(0);
+    await dv01.focus();
+    await expect(tip).toContainText('below ceiling trade DV01 limit $250,000');
+    await dv01.blur();
+    await page.getByLabel('Quick filter').fill('');
+    await grid.locator('th[data-column="desk"]').hover();
+    await page.getByRole('button', { name: 'Desk column menu' }).click();
+    await page.getByRole('menuitem', { name: 'Group by Desk' }).click();
+    await expect(grid.locator('tbody tr[data-grouped]').first()).toBeVisible();
+    await expect(grid.locator('tbody tr[data-grouped] [data-slot="trend"]')).toHaveCount(0);
+  });
+
   test('serves the same book from DuckDB-WASM: filter, sort and grouping compiled to SQL, children fetched on expand', async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto('/#/grid?s=duckdb');

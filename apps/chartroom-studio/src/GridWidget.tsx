@@ -8,15 +8,20 @@
  * columns it actually has, written back into the spec on every change so a
  * saved dashboard opens as it was left. A state the grid refuses falls back
  * to the default view rather than blocking the frame.
+ *
+ * A binding with a `window` also asks for each group's series over it, so the
+ * value column has a history a reader may draw as a trend (ADR-89); a
+ * threshold `compare` with a declared side is the limit a band draws against.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { DashboardSpec, FilterExpr, WidgetInstance } from 'chartroom-spec';
+import { parseMetricRef, type DashboardSpec, type FilterExpr, type WidgetInstance } from 'chartroom-spec';
 import {
   TreasuryGrid, VIEW_VERSION, defaultView, inMemorySource, metricGroupRows, metricGroupsSchema, metricScale, orderFromRows, safeParseView,
-  type ViewUpdate,
+  type GridHistory, type ViewUpdate,
 } from 'chartroom-grid';
-import { DEFAULT_ENV, requestsFor, type AnalystEnv, type GroupResult } from './bindings';
+import type { SeriesPoint, SparkLimit } from 'chartroom-widgets';
+import { DEFAULT_ENV, requestsFor, type AnalystEnv, type GroupResult, type QueryResult } from './bindings';
 import { runQuery, type ContractSummary } from './data';
 
 /** What the frame shows about the answer: its status and the date it was evaluated at. */
@@ -44,18 +49,38 @@ export function GridWidget({
   const requests = useMemo(() => requestsFor(w, spec, extraFilters, env), [
     JSON.stringify(w.bind), JSON.stringify(spec.context), JSON.stringify(extraFilters), w.type, JSON.stringify(env),
   ]);
-  const [answer, setAnswer] = useState<{ result: GroupResult | null; error?: string }>({ result: null });
+  const [answer, setAnswer] = useState<{ result: GroupResult | null; limit?: number; error?: string }>({ result: null });
+  // The limit rides with the rows, not after them: a view that draws a band
+  // is only valid once the schema has the limit, and a view refused for a
+  // moment would flash the default arrangement.
+  const side = w.bind.compare?.style === 'threshold' ? w.bind.compare.limit : undefined;
   useEffect(() => {
     let alive = true;
-    runQuery(requests.main)
-      .then((r) => {
+    Promise.all([runQuery(requests.main), side && requests.compare ? runQuery(requests.compare) : Promise.resolve(null)])
+      .then(([r, c]) => {
         if (!alive) return;
-        if (r.kind === 'groups') setAnswer({ result: r });
+        const limit = c?.kind === 'scalar' && Number.isFinite(c.value) ? c.value : undefined;
+        if (r.kind === 'groups') setAnswer({ result: r, limit });
         else setAnswer({ result: null, error: 'a grid needs at least one dimension to make rows' });
       })
       .catch((e: unknown) => { if (alive) setAnswer({ result: null, error: e instanceof Error ? e.message : String(e) }); });
     return () => { alive = false; };
-  }, [requests]);
+  }, [requests, side]);
+
+  // Each group's series over the window (ADR-89): the same request with the
+  // time dim added. It never holds the rows up — until it lands, or if it
+  // fails, a trend reads as its plain number.
+  const windowed = !!w.bind.window;
+  const [series, setSeries] = useState<QueryResult | null>(null);
+  useEffect(() => {
+    setSeries(null);
+    if (!windowed) return;
+    let alive = true;
+    runQuery({ ...requests.main, dims: [...dims, 'as_of_date'] })
+      .then((r) => { if (alive) setSeries(r); })
+      .catch(() => { /* the cells still say their numbers */ });
+    return () => { alive = false; };
+  }, [requests, windowed, dims]);
 
   // A `bps` metric is scaled to basis points once, on the way in (ADR-74).
   const scale = metricScale(answer.result?.format ?? contract?.format ?? 'number');
@@ -67,6 +92,22 @@ export function GridWidget({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the frame follows the answer
   }, [answer, rows.length]);
+  const history = useMemo<GridHistory | null>(() => {
+    if (series?.kind !== 'series') return null;
+    // Keyed as the rows are (`metricGroupRows`), scaled as they are, so the last point is the cell's number.
+    const s = metricScale(series.format);
+    const byKey = new Map<string, SeriesPoint[]>(series.series.map((line) => [
+      dims.map((d) => line.key[d] ?? '').join(' · '),
+      line.points.map((p) => ({ date: p.date, value: p.value * s })),
+    ]));
+    return (rowId, columnId) => (columnId === 'value' ? byKey.get(rowId) : undefined);
+  }, [series, dims]);
+  const limit = useMemo<SparkLimit | undefined>(
+    () => (side && answer.limit !== undefined && w.bind.compare && w.bind.compare.vs !== 'prior_period'
+      ? { value: answer.limit * scale, side, label: parseMetricRef(w.bind.compare.vs)?.measure ?? w.bind.compare.vs }
+      : undefined),
+    [side, answer.limit, scale, w.bind.compare],
+  );
   const schema = useMemo(
     () => metricGroupsSchema({
       measure: contract?.measure ?? w.bind.metric,
@@ -78,8 +119,8 @@ export function GridWidget({
       dims: (contract?.dims ?? dims.map((name) => ({ name, ordinal: false }))).map((d) =>
         d.ordinal && !d.values?.length ? { ...d, values: orderFromRows(rows, d.name) } : d),
       allowed_aggregations: contract?.allowed_aggregations,
-    }, dims),
-    [contract, answer.result?.unit, answer.result?.format, dims, rows],
+    }, dims, { history: windowed, limit }),
+    [contract, answer.result?.unit, answer.result?.format, dims, rows, windowed, limit],
   );
   const source = useMemo(
     () => inMemorySource(rows, `${contract?.measure ?? w.bind.metric}${answer.result ? ` · as of ${answer.result.asOf}` : ''}`, schema),
@@ -108,7 +149,7 @@ export function GridWidget({
   // is read-only here by the host's choice, not the package's.
   return (
     <div className="h-full min-h-0" data-slot="grid-widget" data-widget={w.id}>
-      <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={null} defaultDensity="compact" />
+      <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={null} defaultDensity="compact" history={history} />
     </div>
   );
 }

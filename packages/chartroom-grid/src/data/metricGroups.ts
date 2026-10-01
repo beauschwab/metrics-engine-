@@ -12,6 +12,7 @@
  * AGG-01 keeps such a metric off a grid in the first place.
  */
 
+import type { SparkLimit } from 'chartroom-widgets/spark';
 import type { ColumnMeta, Unit } from '../grid/meta';
 import { schemaFromColumns, type GridRecord, type GridSchema } from '../grid/schema';
 
@@ -59,8 +60,17 @@ export const dimLabel = (name: string): string => {
 /** The key column that identifies a group row. */
 export const GROUP_KEY = 'key';
 
-/** The grid schema for a metric's groups over the binding's dims. */
-export function metricGroupsSchema(shape: MetricShape, dims: readonly string[]): GridSchema {
+/**
+ * The grid schema for a metric's groups over the binding's dims. With
+ * `history`, the host will supply each group's series over the binding's
+ * window, so the value may be drawn as a trend (ADR-89); `limit` is the
+ * governed threshold the binding compares against, for the band.
+ */
+export function metricGroupsSchema(
+  shape: MetricShape,
+  dims: readonly string[],
+  trend: { history?: boolean; limit?: SparkLimit } = {},
+): GridSchema {
   const { unit, dp } = metricUnit(shape);
   const sums = !shape.allowed_aggregations || shape.allowed_aggregations.includes('sum');
   const measure = (id: string, label: string, extra: Partial<ColumnMeta> = {}): { id: string; meta: ColumnMeta } => ({
@@ -72,7 +82,7 @@ export function metricGroupsSchema(shape: MetricShape, dims: readonly string[]):
       const order = contract?.ordinal && contract.values?.length ? [...contract.values] : undefined;
       return { id: d, meta: { label: dimLabel(d), kind: 'dimension', groupable: true, order, band: 'Group', width: 110 } as ColumnMeta };
     }),
-    measure('value', shape.measure),
+    measure('value', shape.measure, trend.history ? { history: true, ...(trend.limit ? { limit: trend.limit } : {}) } : {}),
     measure('prior', 'Prior'),
     measure('delta', 'Move', { negativeRed: true }),
     { id: GROUP_KEY, meta: { label: 'Group', kind: 'dimension', band: 'Group', width: 160 } as ColumnMeta },

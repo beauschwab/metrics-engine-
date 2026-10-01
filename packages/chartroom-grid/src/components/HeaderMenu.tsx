@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowDownUp, Columns3, EllipsisVertical, EyeOff, Hash, Highlighter, PanelLeft, PanelRight, PinOff, Rows3, Sigma, Trash2 } from 'lucide-react';
+import { SPARK_LABELS, SPARK_STYLES, type SparkStyle } from 'chartroom-widgets/spark';
 import type { Column } from '@tanstack/react-table';
 import type { GridRecord } from '../grid/schema';
 import { allowedAggs, allowedFormatKeysFor } from '../grid/columns';
@@ -53,7 +54,9 @@ export function HeaderMenu({
   const declared = meta?.computed ? meta : schema.columns[column.id];
   const scale = meta?.scale ?? (meta?.unit === 'mm' ? 'm' : 'units');
   const dp = meta?.dp ?? (meta?.unit === 'pct' || meta?.unit === 'years' ? 2 : meta?.unit === 'bps' || scale !== 'units' ? 1 : 0);
-  const formatted = !!declared && (['dp', 'scale', 'negatives', 'negativeRed', 'heatmap'] as const).some((k) => meta?.[k] !== declared[k]);
+  const formatted = !!declared && (['dp', 'scale', 'negatives', 'negativeRed', 'heatmap', 'trend'] as const).some((k) => meta?.[k] !== declared[k]);
+  // A band needs a governed limit (ADR-89): offered only where the column declares one.
+  const trends = formatKeys.includes('trend') ? SPARK_STYLES.filter((t) => t !== 'band' || !!meta?.limit) : [];
   const ruleCount = meta?.rules?.length ?? 0;
   const [rulesOpen, setRulesOpen] = useState(false);
   return (
@@ -169,6 +172,25 @@ export function HeaderMenu({
                 <DropdownMenuCheckboxItem checked={!!meta.heatmap} onCheckedChange={(c) => onFormatChange(column.id, { heatmap: !!c })}>
                   Heatmap
                 </DropdownMenuCheckboxItem>
+                {trends.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-[10px] tracking-[0.06em] uppercase text-faint">Trend</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={meta.trend ?? 'none'}
+                      onValueChange={(v) => onFormatChange(column.id, { trend: v === 'none' ? undefined : (v as SparkStyle) })}
+                    >
+                      <div data-slot="format-trend">
+                        <DropdownMenuRadioItem value="none">None</DropdownMenuRadioItem>
+                        {trends.map((t) => (
+                          <DropdownMenuRadioItem key={t} value={t}>
+                            {SPARK_LABELS[t]}{t === 'band' && meta.limit ? ` · ${meta.limit.label}` : ''}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </div>
+                    </DropdownMenuRadioGroup>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 {/* Opened after the menu has closed: a popover raised while
                     the menu's dismiss is still settling is dismissed with it. */}

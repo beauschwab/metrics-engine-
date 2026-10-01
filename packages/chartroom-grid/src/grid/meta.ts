@@ -19,6 +19,7 @@
  */
 
 import { formatValue as catalogFormat } from 'chartroom-widgets/format';
+import type { SparkLimit, SparkStyle } from 'chartroom-widgets/spark';
 
 export type Unit = 'ccy' | 'mm' | 'bps' | 'pct' | 'years' | 'date';
 /** How a dollar amount is scaled for reading; the stored value stays dollars (NUM-01). */
@@ -82,8 +83,10 @@ export interface ColumnFormat {
   heatmap?: boolean;
   /** Highlight rules, first match wins (ADR-78). */
   rules?: HighlightRule[];
+  /** The column's history drawn beside each value, in one of four styles (ADR-89). */
+  trend?: SparkStyle;
 }
-export const FORMAT_KEYS: readonly (keyof ColumnFormat)[] = ['dp', 'scale', 'negatives', 'negativeRed', 'heatmap', 'rules'];
+export const FORMAT_KEYS: readonly (keyof ColumnFormat)[] = ['dp', 'scale', 'negatives', 'negativeRed', 'heatmap', 'rules', 'trend'];
 export type Agg = 'sum' | 'wavg' | 'mean' | 'median' | 'min' | 'max' | 'count' | 'uniqueCount';
 export const AGGS: readonly Agg[] = ['sum', 'wavg', 'mean', 'median', 'min', 'max', 'count', 'uniqueCount'];
 export const AGG_LABELS: Record<Agg, string> = {
@@ -136,6 +139,21 @@ export interface ColumnMeta {
   negativeRed?: boolean;
   /** Initial column width in px; the reader may resize (Phase 3), the view state remembers. */
   width?: number;
+  /**
+   * Measures only: the host can supply this column's recent history, one
+   * series per row (ADR-89), so a reader may draw it as a trend. A column
+   * without one has no trend to offer, and the format menu does not offer it.
+   */
+  history?: boolean;
+  /**
+   * Measures with a history only: the governed limit the `band` trend draws
+   * against, with its safe side. Declared by whoever declares the column —
+   * never typed by a reader — because a limit nobody owns is not a limit
+   * (GAUGE-01's reasoning, held at the schema).
+   */
+  limit?: SparkLimit;
+  /** The trend a reader chose for the view (ADR-89), drawn on leaf rows where the host has a history. */
+  trend?: SparkStyle;
 }
 
 /** The dash every widget renders for a value it does not have. */

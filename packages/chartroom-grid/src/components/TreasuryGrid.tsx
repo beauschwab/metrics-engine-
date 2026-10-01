@@ -22,6 +22,8 @@ import { schemaFromColumns, type GridRecord, type GridSchema } from '../grid/sch
 import { TREASURY_SCHEMA } from '../data/treasury';
 import { SchemaContext } from './SchemaContext';
 import { FacetContext, type Facets } from './FacetContext';
+import { HistoryContext } from './HistoryContext';
+import type { GridHistory } from '../grid/trend';
 import type { DataSource, SourceDescription } from '../data/source';
 import { groupNodePath, isGroupNode } from '../data/sqlSource';
 import { useTreasuryTable, type Applied, type GridRowData, type ViewUpdate } from '../grid/useTreasuryTable';
@@ -62,6 +64,12 @@ export interface TreasuryGridProps {
    * the dashboard never grants it.
    */
   edit?: EditPolicy | null;
+  /**
+   * Where a row's history comes from (ADR-89): a column the schema declares
+   * with a `history` may then be drawn as a trend. Absent, a trend chosen in
+   * the view reads as its plain number.
+   */
+  history?: GridHistory | null;
 }
 
 const idOf = (dnd: string) => dnd.slice(dnd.indexOf(':') + 1);
@@ -77,7 +85,7 @@ const collision: CollisionDetection = (args) =>
   String(args.active.id).startsWith(COLUMN_PREFIX) ? pointerWithin(args) : closestCenter(args);
 
 export function TreasuryGrid({
-  source, view: controlled, onViewChange, defaultSidebarOpen = false, defaultDensity = 'compact', viewStore = null, onChart, edit = null,
+  source, view: controlled, onViewChange, defaultSidebarOpen = false, defaultDensity = 'compact', viewStore = null, onChart, edit = null, history: rowHistory = null,
 }: TreasuryGridProps) {
   const [ownView, setOwnView] = useState<ViewState>(defaultView);
   const view = controlled ?? ownView;
@@ -452,6 +460,7 @@ export function TreasuryGrid({
   return (
     <SchemaContext.Provider value={schema}>
     <FacetContext.Provider value={facets}>
+    <HistoryContext.Provider value={rowHistory}>
     <DndContext
       sensors={sensors}
       collisionDetection={collision}
@@ -537,6 +546,7 @@ export function TreasuryGrid({
         {dragLabel ? <Badge variant="secondary" className="cursor-grabbing shadow-md">{dragLabel}</Badge> : null}
       </DragOverlay>
     </DndContext>
+    </HistoryContext.Provider>
     </FacetContext.Provider>
     </SchemaContext.Provider>
   );

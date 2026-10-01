@@ -74,10 +74,13 @@ function lcrMonitor(rev: (doc: string) => number): DashboardSpec {
         // group, sort, filter and pivot; the arrangement rides in `state`.
         id: 'outflow-table', type: 'grid@1', title: 'Outflows · working table',
         pos: { x: 0, y: 7, w: 12, h: 4 },
+        // The window gives each group a history; the state opens the value
+        // with its trend drawn (ADR-89) — a reader's format like any other.
         bind: {
           metric: of('weighted_outflows_30d'), dims: ['entity_id', 'maturity_bucket'],
-          max_cells: 50_000,
+          window: { trailing: '30d' }, max_cells: 50_000,
         },
+        state: { version: 6, columnFormats: { value: { trend: 'line' } } },
       },
     ],
     interactions: [],
@@ -132,6 +135,30 @@ function limitBoard(rev: (doc: string) => number): DashboardSpec {
         // Neutral emphasis: COL-03 reserves the semantic palette for widgets
         // with a declared threshold, and this table judges only against prior.
         bind: { metric: lp('hqla_total'), dims: ['entity_id'] },
+      },
+      // The same measures over their last thirty days (ADR-89): where each is
+      // heading, how big each day's move was, where today sits in its range.
+      // The limit band waits for a governed floor measure in the registry —
+      // GAUGE-01 would block one drawn against anything less.
+      {
+        id: 'lcr-spark', type: 'spark-line@1', title: 'LCR, last 30 days',
+        pos: { x: 0, y: 5, w: 3, h: 2 },
+        bind: { metric: lp('lcr_pct'), dims: ['as_of_date'], window: { trailing: '30d' } },
+      },
+      {
+        id: 'dod-spark', type: 'spark-column@1', title: 'Daily moves, 30 days',
+        pos: { x: 3, y: 5, w: 3, h: 2 },
+        bind: { metric: lp('lcr_dod_change'), dims: ['as_of_date'], window: { trailing: '30d' } },
+      },
+      {
+        id: 'hqla-spark', type: 'spark-range@1', title: 'HQLA in its 30-day range',
+        pos: { x: 6, y: 5, w: 3, h: 2 },
+        bind: { metric: lp('hqla_total'), dims: ['as_of_date'], window: { trailing: '30d' } },
+      },
+      {
+        id: 'headroom-spark', type: 'spark-line@1', title: 'Headroom, 30 days',
+        pos: { x: 9, y: 5, w: 3, h: 2 },
+        bind: { metric: lp('lcr_headroom'), dims: ['as_of_date'], window: { trailing: '30d' } },
       },
     ],
     interactions: [],
