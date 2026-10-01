@@ -94,6 +94,9 @@ describe('over MCP, against the data', () => {
     expect(col('counterparty').values).toBeUndefined();
     expect(col('counterparty').distinct).toBe(320);
     expect(col('notional').values).toBeUndefined();
+    // An ordered dimension lists its values in its own order.
+    expect(col('tenorBucket').values).toEqual(['O/N', '1W', '1M', '3M', '6M', '1Y', '5Y', '10Y+']);
+    expect(body.contract.slices.pivot).toMatch(/only up to 50 values/);
   });
 
   it('warns when a filter names a value the column does not have, and says which column has it', async () => {

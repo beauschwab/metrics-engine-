@@ -618,8 +618,10 @@ function HeaderCell({
           {/* The controls take no room from the label (a 60px column used to
               read "C" for Ccy): at rest they are out of the layout, and on
               hover or focus they sit over the label's far end on the
-              header's own surface. Visibility, never display — a trigger
-              keeps its box, so an open popover stays anchored to it. While
+              header's own surface. Transparent and click-through at rest,
+              never hidden: a screen reader and the Tab key still reach the
+              menu, and a trigger keeps its box, so an open popover stays
+              anchored to it. While
               a filter or a pin is active the controls are the column's
               state, and they join the flow, always shown. A right-aligned
               header keeps its figures' edge and takes them on the left. */}
@@ -628,8 +630,10 @@ function HeaderCell({
             data-keep={(column.getIsFiltered() || pinned) || undefined}
             className={cn(
               'flex shrink-0 items-center bg-card',
-              'invisible absolute inset-y-0 group-hover/th:visible group-focus-within/th:visible has-[[data-state=open]]:visible',
-              'data-[keep]:visible data-[keep]:static',
+              'pointer-events-none absolute inset-y-0 opacity-0',
+              'group-hover/th:pointer-events-auto group-hover/th:opacity-100 group-focus-within/th:pointer-events-auto group-focus-within/th:opacity-100',
+              'has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100',
+              'data-[keep]:pointer-events-auto data-[keep]:static data-[keep]:opacity-100',
               meta && alignOf(meta) === 'right' ? 'left-1 order-first pr-0.5 data-[keep]:mr-0.5' : 'right-1 pl-0.5 data-[keep]:ml-auto',
             )}
           >

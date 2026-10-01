@@ -2875,8 +2875,11 @@ screenshots and fixed what a reader could not read or would misread.
 - *Whole headers.* A column's filter and menu buttons used to reserve their
   room in the header at rest, so a 60px column read "C" for Ccy. At rest
   they are now out of the layout; on hover or focus they overlay the
-  label's far end on the header's surface (visibility, never display, so an
-  open popover keeps its anchor); while a filter or pin is active they
+  label's far end on the header's surface. At rest they are transparent and
+  click-through, never hidden — a screen reader and the Tab key still reach
+  the menu (an earlier `visibility: hidden` took it out of the accessibility
+  tree; the MCP pressure run's e2e caught it), and an open popover keeps its
+  anchor; while a filter or pin is active they
   join the flow as the column's state. A truncated label carries its name
   as a title.
 - *Honest zeros.* A negative that shows no digit at the column's precision

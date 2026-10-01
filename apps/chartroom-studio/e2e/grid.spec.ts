@@ -34,6 +34,10 @@ test.describe('the treasury grid harness', () => {
       const label = grid.locator(`th[data-column="${id}"] [data-slot="column-header"]`);
       expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth), id).toBe(true);
     }
+    // The controls are transparent at rest, never hidden: a screen reader and the Tab key reach them without a hover.
+    await page.mouse.move(0, 0);
+    await expect(page.getByRole('button', { name: 'Desk column menu' })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Filter Desk' })).toHaveCount(1);
 
     // Fifty thousand rows in the model, a window of them in the DOM.
     const bodyRows = grid.locator('tbody tr');
@@ -1046,6 +1050,8 @@ test.describe('the treasury grid harness', () => {
     await expect(tip).toContainText('below ceiling trade DV01 limit $250,000');
     await dv01.blur();
     await page.getByLabel('Quick filter').fill('');
+    // The filter bar leaves after the search's debounce and the header moves up: hover where it settles.
+    await expect(page.locator('[data-slot="filter-bar"]')).toHaveCount(0);
     await grid.locator('th[data-column="desk"]').hover();
     await page.getByRole('button', { name: 'Desk column menu' }).click();
     await page.getByRole('menuitem', { name: 'Group by Desk' }).click();

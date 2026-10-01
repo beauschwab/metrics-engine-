@@ -83,10 +83,30 @@ const GRADERS: Record<string, G> = {
       ['CS01 per entity', q.rows.every((g: any) => Math.abs(g.values.cs01 - sum(credit.filter((p) => p.legalEntity === g.group.value), 'cs01')) < 1), q.rows.map((g: any) => g.values.cs01)]];
   },
   C5: () => [],
+  D1: ({ q }) => {
+    const want = BOOK.filter((p) => p.currency === 'EUR' && p.legalEntity !== 'WF-US');
+    return [['EUR not WF-US', q.total === want.length, { total: q.total, want: want.length }], ['notional total', Math.abs(q.totals.values.notional - sum(want, 'notional')) < 1, q.totals.values.notional]];
+  },
+  D2: ({ view, q }) => [['grouped desk then entity', eq(view.grouping, ['desk', 'legalEntity']), view.grouping],
+    ['entity subtotals visible', q.rows.filter((r: any) => r.kind === 'group' && r.depth === 1).length === 20, q.rows.length],
+    ['no trades shown', q.rows.every((r: any) => r.kind === 'group'), q.rows.filter((r: any) => r.kind === 'leaf').length]],
+  D3: ({ view }) => [['a ratio column mtm / notional', view.computedColumns?.some((c: any) => c.op === 'ratio' && eq(c.of, ['mtm', 'notional'])), view.computedColumns]],
+  D4: ({ view }) => [['bold rule notional > 2bn', view.columnFormats?.notional?.rules?.some((r: any) => (r.op === '>' || r.op === '>=') && r.value === 2e9 && r.emphasis === 'strong'), view.columnFormats]],
+  D5: ({ view, q }) => [['grouped by product', eq(view.grouping, ['product']), view.grouping],
+    ['counts right', q.rows.every((g: any) => g.group?.count === BOOK.filter((p) => p.product === g.group?.value).length), q.rows.slice(0, 2)]],
+  D6: ({ view }) => [['desks down the side', eq(view.grouping, ['desk']), view.grouping],
+    ['pivot by counterparty with named buckets (unnamed is refused)', view.pivot?.column === 'counterparty' && view.pivot.buckets.length > 0 && view.pivot.buckets.length <= 50, view.pivot]],
+  D7: ({ view, q }) => {
+    const want = BOOK.filter((p) => p.desk === 'Rates' && p.tenorBucket === '1Y');
+    const leaves = q.rows.filter((r: any) => r.kind === 'leaf');
+    return [['Rates in 1Y', q.total === want.length, { total: q.total, want: want.length }],
+      ['grouped by entity', view.grouping.at(-1) === 'legalEntity', view.grouping],
+      ['only WF-US open', leaves.length === want.filter((p) => p.legalEntity === 'WF-US').length && leaves.every((r: any) => BOOK.find((p) => p.tradeId === r.id)?.legalEntity === 'WF-US'), { leaves: leaves.length, expanded: view.expanded }]];
+  },
   C6: ({ view }) => [['only grouped by currency, everything else default', eq(view.grouping, ['currency']) && view.columnFilters.length === 0 && !view.globalFilter && view.sorting.length === 0 && Object.keys(view.columnFormats).length === 0 && view.computedColumns.length === 0 && !view.pivot.column, view]],
 };
 
-for (const id of Object.keys(GRADERS)) {
+for (const id of Object.keys(GRADERS).filter((k) => !process.argv[3] || k.startsWith(process.argv[3]))) {
   const file = `${DIR}/agent${id[0]}/${id}.json`;
   if (!existsSync(file)) { console.log(`MISSING ${id}`); continue; }
   const r = await run(JSON.parse(readFileSync(file, 'utf8')));

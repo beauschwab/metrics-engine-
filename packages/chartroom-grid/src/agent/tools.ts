@@ -83,7 +83,7 @@ export function viewContract(schema: GridSchema): ViewContract {
     columnPinning: '{ start: string[], end: string[] } — logical start/end (start is the left in a left-to-right layout), each column at one end only; query_view lists columns in screen order, pinned ones first',
     columnSizing: '{ [columnId]: px }',
     columnAggs: '{ [measureId]: one of that column’s aggs } — overrides the meta’s aggregation for subtotals, totals and the SQL the source runs; aggregates are over the leaf rows of each group, never over sub-groups. count and uniqueCount replace the column’s subtotals with row counts under the same header — prefer group.count to count rows',
-    pivot: '{ column: groupable dimension id | null, values: measure ids ([] = every measure), buckets: dimension values ([] = every value the source has) } — the dimension across the top, one column per bucket per measure (ids p:<measure>:<value>), each aggregating as its measure does within the value; the pivoted measures follow under a Total band',
+    pivot: '{ column: groupable dimension id | null, values: measure ids ([] = every measure), buckets: dimension values ([] = every value the source has, allowed only up to 50 values — name buckets for a larger dimension, e.g. the top few by a measure found with a grouped, sorted query) } — the dimension across the top, one column per bucket per measure (ids p:<measure>:<value>), each aggregating as its measure does within the value; the pivoted measures follow under a Total band',
     computedColumns: '[{ id: "c:<slug>" (slug: 1–32 lowercase letters, digits or underscores, e.g. c:mtm_share), label, op: ratio|delta|sum|pct_change|scaled, of: [measureId, measureId?], k? }] — a reader\'s calculated column over registry measures (max 8, no calculated operands); ratio and pct_change read as a percent of the second operand (ratio of [mtm, notional] is 100·mtm/notional), delta and sum keep a shared unit, scaled keeps the first\'s; a group’s value is the operation over the group’s sums (a ratio of sums, never a mean of ratios); a draft, never a metric (GOV-02)',
     columnFormats: '{ [measureId]: { dp?: 0–4, scale?: units|k|m|bn (dollar columns only), negatives?: minus|parens, negativeRed?, heatmap?, rules?: [{ op: >|>=|<|<=|=|!=, value: a number in the column’s stored units (raw dollars for mm/ccy: $2bn is 2000000000; percent units for pct), emphasis: accent (highlight) | strong (bold) | muted (fade) }] (max 4, first match wins; query_view reports the matched emphasis per cell), trend?: line|band|column|range (a sparkline of the row’s history beside each leaf value — only a column the schema declares with a history; band draws against the column’s declared limit, which is per leaf row, so group rows never draw one) } } — how the measure reads, never its unit (NUM-01); a rule emphasises, it never colours red or green',
   },
@@ -118,8 +118,11 @@ export async function describeView(source: DataSource<GridRecord>, view: ViewSta
   // to nothing and is told nothing.
   const columns = await Promise.all(contract.columns.map(async (c) => {
     if (c.kind !== 'dimension') return c;
-    const values = await distinctOf(source, c.id, cache);
-    if (!values) return c;
+    const found = await distinctOf(source, c.id, cache);
+    if (!found) return c;
+    // A dimension with an implied order (ADR-84) lists its values in it: a tenor ladder reads O/N to 10Y+, not alphabetically.
+    const rank = (v: string) => (c.order ? c.order.indexOf(v) : -1);
+    const values = c.order ? [...found].sort((a, b) => (rank(a) < 0 ? 1e9 : rank(a)) - (rank(b) < 0 ? 1e9 : rank(b))) : found;
     return { ...c, distinct: values.length, ...(values.length <= MAX_LISTED ? { values } : {}) };
   }));
   return { source: about, view, contract: { ...contract, columns } };
