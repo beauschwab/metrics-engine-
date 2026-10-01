@@ -113,11 +113,26 @@ const crossCheck = (v: { [k: string]: unknown }, ctx: z.RefinementCtx): void => 
       issue(`a set filter on ${f.id} takes a list of strings`, ['columnFilters', i, 'value']);
     }
   });
+  // A slice that names a column twice says two things at once — group by desk
+  // within desk, sort desk up and down, filter desk to Rates and to FX — and
+  // the table would silently keep one. Refused, so the view means one thing.
+  const once = (ids: string[], path: string, what: string) => {
+    const seen = new Set<string>();
+    ids.forEach((id, i) => {
+      if (seen.has(id)) issue(`${what} names ${id} twice`, [path, i]);
+      seen.add(id);
+    });
+  };
+  once(v.grouping as string[], 'grouping', 'grouping');
+  once((v.sorting as { id: string }[]).map((s) => s.id), 'sorting', 'sorting');
+  once((v.columnFilters as { id: string }[]).map((f) => f.id), 'columnFilters', 'columnFilters (one filter per column; a set filter takes several values)');
+  once(v.columnOrder as string[], 'columnOrder', 'columnOrder');
   for (const k of Object.keys(v.columnVisibility as object)) defined(k, ['columnVisibility', k]);
   for (const k of Object.keys(v.columnSizing as object)) defined(k, ['columnSizing', k]);
   const pinning = v.columnPinning as { start: string[]; end: string[] };
   pinning.start.forEach((id, i) => defined(id, ['columnPinning', 'start', i]));
   pinning.end.forEach((id, i) => defined(id, ['columnPinning', 'end', i]));
+  once([...pinning.start, ...pinning.end], 'columnPinning', 'columnPinning (a column pins to one end)');
   for (const [k, format] of Object.entries(v.columnFormats as Record<string, Record<string, unknown>>)) {
     if (!isComputedId(k)) continue;
     defined(k, ['columnFormats', k]);

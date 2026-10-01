@@ -274,12 +274,31 @@ async function adversarial() {
   check('A offset past the end: empty, not an error', !r.isError && r.body.rows?.length === 0 && r.body.truncated === false, r.body);
 
   // Things an agent gets wrong that are accepted — do they at least do no harm, or say something?
+  // Accepted-but-wrong is the failure: each must be refused, or accepted with a warning that names the slip.
   const soft = async (name: string, patch: unknown, verify: (body: any, q: any) => [boolean, unknown]) => {
     const s = await call('set_view', { patch, replace: true });
     const q = s.isError ? null : await call('query_view', { limit: 50 });
-    const [ok, detail] = s.isError ? [true, 'refused'] : verify(s.body, q?.body);
+    const [ok, detail] = s.isError ? [true, 'refused'] : s.body.warnings?.length ? [true, 'warned'] : verify(s.body, q?.body);
     check(`S ${name}`, ok, detail);
   };
+  let w = await call('set_view', { patch: { columnFilters: [{ id: 'currency', value: ['EUR'] }], globalFilter: 'book!=WF-US' }, replace: true });
+  check('S book!=WF-US warns that WF-US is an entity', !w.isError && /legalEntity/.test(JSON.stringify(w.body.warnings ?? [])), w.body.warnings ?? w.body);
+  w = await call('query_view', { limit: 1 });
+  check('S the warning rides on query_view too', /WF-US/.test(JSON.stringify(w.body.warnings ?? [])), Object.keys(w.body));
+  w = await call('set_view', { patch: { columnFilters: [{ id: 'desk', value: ['rates'] }] }, replace: true });
+  check('S a wrongly-cased set value warns with the real values', /Rates/.test(JSON.stringify(w.body.warnings ?? [])), w.body.warnings);
+  const dsc = await call('describe_view');
+  const deskCol = dsc.body.contract.columns.find((c: any) => c.id === 'desk');
+  const cpCol = dsc.body.contract.columns.find((c: any) => c.id === 'counterparty');
+  check('S describe_view lists a small dimension’s values', JSON.stringify([...deskCol.values].sort()) === JSON.stringify(['Credit', 'FX', 'Funding', 'Mortgages', 'Rates']), deskCol);
+  check('S describe_view gives a large dimension’s count, not its values', cpCol.distinct === 320 && !cpCol.values, cpCol);
+  w = await call('set_view', { patch: { grouping: ['desk'], expanded: { 'legalEntity:WF-US': true } }, replace: true });
+  check('S expanded key off the grouping is refused', w.isError && /level 1 must be/.test(JSON.stringify(w.body)), w.body);
+  w = await call('set_view', { patch: { computedColumns: [{ id: 'c:mtm-pct', label: 'X', op: 'ratio', of: ['mtm', 'notional'] }] }, replace: true });
+  check('S a bad slug says what a slug is', w.isError && /lowercase letters, digits or underscores/.test(JSON.stringify(w.body)), w.body);
+  w = await call('set_view', { patch: { columnFormats: { notional: { rules: [{ op: '>', value: 2e9, emphasis: 'strong' }] } }, sorting: [{ id: 'notional', desc: true }] }, replace: true });
+  w = await call('query_view', { limit: 2 });
+  check('S query_view reports a rule’s emphasis per cell', w.body.rows?.[0]?.emphasis?.notional === 'strong', w.body.rows?.[0]);
   await soft('duplicate grouping column is refused or collapsed', { grouping: ['desk', 'desk'] }, (b) => [JSON.stringify(b.view.grouping) === '["desk"]', b.view.grouping]);
   await soft('duplicate sort keys refused or collapsed', { sorting: [{ id: 'desk', desc: false }, { id: 'desk', desc: true }] }, (b) => [b.view.sorting.length === 1, b.view.sorting]);
   await soft('expanded naming no group is refused', { grouping: ['desk'], expanded: { 'desk:Nonesuch': true } }, (b) => [false, b.view.expanded]);
@@ -307,7 +326,7 @@ async function scale() {
   r = await call('query_view', { limit: 1000 }); t.search_sort_1000 = r.ms;
   check('P 50k rows: grouped expandAll page under 5s', t.group3_expandAll_1000 < 5000, t);
   check('P 50k rows: a 1000-row answer stays under 2MB', bytes < 2_000_000, { bytes });
-  check('P pivot by a 320-value dimension is bounded or refused', pivotCols < 200, { pivotCols, pivotBytes, ms: t.pivot_320_buckets });
+  check('P pivot by a 320-value dimension is bounded or refused', pivotCols === undefined || pivotCols < 200, { pivotCols, pivotBytes, ms: t.pivot_320_buckets });
   console.error('TIMINGS', JSON.stringify({ ...t, bytes, pivotCols, pivotBytes }));
   await close();
 }

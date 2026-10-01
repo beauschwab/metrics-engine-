@@ -98,7 +98,7 @@ export function computedMeta(spec: ComputedColumn, metaOf: (id: string) => Colum
 /** Everything wrong with a computed column, or nothing. */
 export function computedIssues(spec: ComputedColumn, metaOf: (id: string) => ColumnMeta | undefined, registryIds: ReadonlySet<string>): string[] {
   const issues: string[] = [];
-  if (!/^c:[a-z0-9_]{1,32}$/.test(spec.id)) issues.push(`id must be c: followed by a slug: ${spec.id}`);
+  if (!/^c:[a-z0-9_]{1,32}$/.test(spec.id)) issues.push(`id must be c: followed by 1–32 lowercase letters, digits or underscores (e.g. c:mtm_share): ${spec.id}`);
   if (registryIds.has(spec.id.slice(COMPUTED_PREFIX.length))) issues.push(`id shadows a registry column: ${spec.id}`);
   if (spec.label.trim().length === 0 || spec.label.length > 40) issues.push('label must be 1 to 40 characters');
   if (!COMPUTED_OPS.includes(spec.op)) { issues.push(`unknown operation: ${String(spec.op)}`); return issues; }

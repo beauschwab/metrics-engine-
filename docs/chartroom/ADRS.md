@@ -2911,6 +2911,77 @@ short headers whole at their default widths, checks a hidden loss reads
 `$0.00M` uncoloured, and checks the dashboard card's search box never sits
 on its undo button.
 
+## ADR-91 — the grid's MCP server holds an agent to what it meant
+
+**Pinned:** "pressure test the MCP server's ability to correctly configure
+the grid for various user use cases". Two layers. A stdio battery drove the
+real server (`npm run mcp`) through twenty user use cases, graded against
+brute force over the same seeded book, and through thirty adversarial
+patches. Blind agents were handed only what an MCP client sees (the
+instructions, the tools, the `describe_view` answer) and eighteen analyst
+requests in plain words, and their final plans were re-run and graded
+independently.
+
+**What held.** Every number was right: sums, notional-weighted averages,
+medians, ratio-of-sums calculated columns, pivot cells and their totals,
+range and set filters, the quick filter's tokens and label aliases,
+ordinal sorts, group order under a measure sort, paging, and query
+overrides that leave the session alone. Every malformed patch was refused
+with a reason and left the view as it was. The blind agents configured 32
+of 34 graded views right and answered all four questions exactly; the two
+misses were one agent answering through a query override, by choice.
+
+**What did not, and the decision.**
+
+- *Columns in screen order.* `query_view` listed columns in declared order,
+  ignoring pinning, so "keep desk on the left" never showed in the answer.
+  It now lists pinned-to-start, centre, pinned-to-end.
+- *A view says one thing.* Grouping or sorting a column twice, two filters on
+  one column (the table silently kept one), a column twice in the order, a
+  column pinned at both ends — all were accepted. The view contract now
+  refuses each, for every reader; none is something the screen produces.
+- *An agent is held to what it meant.* The screen tolerates a half-typed
+  search token and a stale expanded key; an agent wrote them on purpose. On
+  the agent's path a token that cannot mean anything (`notional>abc`, a
+  comparison on a column that does not exist) and an expanded key that does
+  not follow the grouping are refused with the reason. The view contract
+  itself stays lenient, so a saved view still opens.
+- *Values the data does not have are said, not swallowed.* A blind agent
+  filtered `book!=WF-US` — WF-US is an entity — and the server kept every
+  row without a word; only the agent's own sanity check caught it. A filter,
+  an expanded key or a pivot bucket naming a value its column does not have
+  is now accepted with a warning that names the column that has it, or the
+  right spelling (set values match exactly). Accepted, because data changes
+  and a view may be written ahead of it; warned on `set_view` and on every
+  `query_view` while the view stands, because it is almost always a slip.
+- *A pivot a reader can read.* Pivoting by a 320-value dimension spread 335
+  columns. A pivot with no named buckets over more than 50 values is refused
+  with advice to name buckets or group instead.
+- *An agent should not have to guess.* `describe_view` lists each
+  dimension's values up to 50 (and the count past it), so "Rates", "WF-US"
+  and which column owns them are read, not probed. The contract now says
+  what the agents had to guess: that a patch replaces a slice whole and an
+  empty `replace` is the default view, that `query_view`'s view is whole,
+  what `total`, `modelRows`, `truncated` and `applied` mean (every agent read
+  `applied: false` as "your filter did not apply"), that `expanded: true`
+  reaches the leaves, what a slug is, that a rule's value is in stored units
+  and `strong` is bold, that `group.count` counts rows, that groups sort by
+  their aggregate. And `query_view` reports the emphasis a rule gives each
+  cell, so a highlight can be checked, not trusted.
+
+**Left as found.** Millions without separators (`$29041575.8M`) is the
+engine's format (ADR-90's open decision). "Top N" has no slice — pagination
+is carried, not driven — so a view cannot hold a top-twenty; the agent's
+query limit does.
+
+**What now fails if this regresses.** `agentPressure.test.ts`, over an
+in-memory transport: screen-order columns, every duplicate refused, the
+search and expanded refusals, the slug message, the emphasis report, the
+listed values, the `book!=WF-US` warning naming Entity on both tools, the
+exact-match hint, and the pivot bound on `set_view` and on a query's own
+view. `.pressure/scenarios.mts` (111 checks over stdio, 50,000 rows timed)
+and `.pressure/grade.mts` stay beside it for the slow layer.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the
