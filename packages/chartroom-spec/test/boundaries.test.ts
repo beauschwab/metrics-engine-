@@ -2,6 +2,7 @@
  * The dependency direction, enforced:
  *
  *   spec ← widgets ← studio
+ *   spec ← widgets ← charts ← studio   (Evil Charts landed as source, ADR-92)
  *   spec ← server          (server may also read widgets' *contracts* — data,
  *                           never components)
  *   NOTHING imports studio. spec imports NOTHING internal, and no Node, DOM
@@ -29,6 +30,7 @@ const PKG = {
   spec: join(ROOT, 'packages', 'chartroom-spec'),
   widgets: join(ROOT, 'packages', 'chartroom-widgets'),
   grid: join(ROOT, 'packages', 'chartroom-grid'),
+  charts: join(ROOT, 'packages', 'chartroom-charts'),
   patterns: join(ROOT, 'packages', 'chartroom-patterns'),
   critics: join(ROOT, 'packages', 'chartroom-critics'),
   server: join(ROOT, 'apps', 'chartroom-api'),
@@ -123,6 +125,28 @@ describe('package boundaries', () => {
     }
   });
 
+  it('charts import spec and widgets, never the grid, server, studio or Node', () => {
+    // `spec ← widgets ← charts ← studio` (ADR-92). The Evil Charts widgets
+    // sign the widgets' contract and format through the widgets' formatter;
+    // the grid hands the studio a selection, and the studio hands it here —
+    // the two renderer packages never import each other.
+    expect(offenders(join(PKG.charts, 'src'), (s) =>
+      s.includes('chartroom-grid') || s.includes('chartroom-api') || s.includes('chartroom-studio')
+      || s.includes('chartroom-mcp') || s.startsWith('node:'))).toEqual([]);
+  });
+
+  it('the charts’ planner and option list stay React-free, and nothing in the package fetches', () => {
+    // `./plan` and `./options` are what an agent or a server can read to
+    // offer the same gallery without a renderer in the room.
+    for (const f of ['plan.ts', 'options.ts', 'shape.ts']) {
+      const imports = importsOf(join(PKG.charts, 'src', f));
+      expect(imports.filter((s) => s === 'react' || s.endsWith('.tsx') || /^\.\/[A-Z]/.test(s) || /evilcharts\//.test(s)), f).toEqual([]);
+    }
+    const hits = sources(join(PKG.charts, 'src')).filter((f) =>
+      /\bfetch\s*\(|XMLHttpRequest|WebSocket/.test(readFileSync(f, 'utf8')));
+    expect(hits).toEqual([]);
+  });
+
   it('the grid’s table and components never fetch — only its data seam may', () => {
     // `src/data` is the boundary a DuckDB or Dremio source lands behind
     // (ADR-64); the hook, the columns and every component are as
@@ -146,7 +170,7 @@ describe('package boundaries', () => {
   });
 
   it('nothing imports studio', () => {
-    for (const dir of [PKG.spec, PKG.widgets, PKG.server]) {
+    for (const dir of [PKG.spec, PKG.widgets, PKG.charts, PKG.server]) {
       expect(offenders(dir, (s) => s.includes('chartroom-studio'))).toEqual([]);
     }
   });

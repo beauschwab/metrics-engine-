@@ -80,7 +80,7 @@ describe('the catalogs are data (E10.1)', () => {
       .map((w) => w.widget);
     expect(names).toContain('kpi-tile');
     expect(names).toContain('waterfall');
-    expect(names.length).toBe(17); // the Phase-1 five, the Phase-9 seven, the host-rendered grid, the four sparklines (ADR-89)
+    expect(names.length).toBe(27); // the Phase-1 five, the Phase-9 seven, the host-rendered grid, the four sparklines (ADR-89), the ten Evil Charts (ADR-92)
 
     const patterns = await send(req('GET', '/api/patterns'));
     expect((patterns.body as { patterns: unknown[] }).patterns.length).toBe(6);

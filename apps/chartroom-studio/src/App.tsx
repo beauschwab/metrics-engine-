@@ -592,6 +592,15 @@ function Studio({ mode }: { mode: 'read' | 'author' }) {
                   target.state = state;
                   editSpec(next);
                 }}
+                onAddWidget={(instance) => {
+                  // A chart charted from a grid selection (ADR-92): a new tile,
+                  // an edit like any other — linted, undoable, saved with the board.
+                  const next = structuredClone(spec);
+                  next.widgets.push(instance);
+                  editSpec(next);
+                  setSelected(instance.id);
+                  setTab('widget');
+                }}
               />
             )
             : (

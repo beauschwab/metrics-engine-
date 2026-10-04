@@ -18,11 +18,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseMetricRef, type DashboardSpec, type FilterExpr, type WidgetInstance } from 'chartroom-spec';
 import {
   TreasuryGrid, VIEW_VERSION, defaultView, inMemorySource, metricGroupRows, metricGroupsSchema, metricScale, orderFromRows, safeParseView,
-  type GridHistory, type ViewUpdate,
+  type ChartOutcome, type GridHistory, type ViewUpdate,
 } from 'chartroom-grid';
 import type { SeriesPoint, SparkLimit } from 'chartroom-widgets';
 import { DEFAULT_ENV, requestsFor, type AnalystEnv, type GroupResult, type QueryResult } from './bindings';
 import { runQuery, type ContractSummary } from './data';
+import { ChartGallery } from './ChartGallery';
 
 /** What the frame shows about the answer: its status and the date it was evaluated at. */
 export interface GridFrameState {
@@ -31,7 +32,7 @@ export interface GridFrameState {
 }
 
 export function GridWidget({
-  w, spec, contracts, extraFilters = [], env = DEFAULT_ENV, onState, onFrame,
+  w, spec, contracts, extraFilters = [], env = DEFAULT_ENV, onState, onFrame, onAddWidget,
 }: {
   w: WidgetInstance;
   spec: DashboardSpec;
@@ -42,7 +43,12 @@ export function GridWidget({
   onState?: (id: string, state: Record<string, unknown>) => void;
   /** The grid runs the binding's query itself, so it tells the frame what it got. */
   onFrame?: (state: GridFrameState) => void;
+  /** A chart the reader made from a selection, to add to the board (ADR-92). */
+  onAddWidget?: (instance: WidgetInstance) => void;
 }) {
+  // "Chart selection" opens the gallery over the board (ADR-92), not a panel
+  // inside this frame: the reader is choosing a new tile, not reading this one.
+  const [charting, setCharting] = useState<ChartOutcome | null>(null);
   const contract = contracts.get(w.bind.metric);
   const dims = useMemo(() => (w.bind.dims ?? []).filter((d) => d !== 'as_of_date'), [JSON.stringify(w.bind.dims)]);
   // The dependency is the meaning of the binding — its resolved requests — not identity.
@@ -149,7 +155,19 @@ export function GridWidget({
   // is read-only here by the host's choice, not the package's.
   return (
     <div className="h-full min-h-0" data-slot="grid-widget" data-widget={w.id}>
-      <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={null} defaultDensity="compact" history={history} />
+      <TreasuryGrid source={source} view={view} onViewChange={onViewChange} viewStore={null} defaultDensity="compact" history={history} onChart={setCharting} />
+      {charting && (
+        <ChartGallery
+          selection={charting.selection ?? { dims: [], measures: [] }}
+          refusal={charting.ok ? undefined : charting.reason}
+          source={w}
+          spec={spec}
+          contracts={contracts}
+          env={env}
+          onAdd={onAddWidget}
+          onClose={() => setCharting(null)}
+        />
+      )}
     </div>
   );
 }

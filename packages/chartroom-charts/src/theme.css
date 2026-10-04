@@ -1,0 +1,9 @@
+/*
+ * The Evil Charts widgets' classes (ADR-92), for the host's Tailwind build.
+ * The landed source writes shadcn's vocabulary — `fill-muted-foreground`,
+ * `stroke-border`, `bg-background` — and the host's theme bridge
+ * (`chartroom-grid/theme.css`, ADR-65) binds every one of those names to an
+ * Aperture token, with Tailwind's default palette withdrawn. This file adds
+ * no colour: it only tells the build where these classes live.
+ */
+@source './';

@@ -72,6 +72,28 @@ describe('chartFromRange', () => {
     expect(chartFromRange(t)).toMatchObject({ ok: false, reason: /select a block/ });
   });
 
+  it('reports what the block holds — every dimension with its values, every measure — even when it refuses to draw it (ADR-92)', () => {
+    const t = headlessTable(BOOK, parseView({ version: 5 }));
+    const rows = t.getRowModel().rows;
+    t.selectCellRange({ anchorRowId: rows[0]!.id, anchorColumnId: 'desk', focusRowId: rows[3]!.id, focusColumnId: 'yield' });
+    const mixed = chartFromRange(t);
+    expect(mixed.ok).toBe(false);
+    const sel = mixed.selection!;
+    const ids = t.getVisibleLeafColumns().map((c) => c.id);
+    const block = ids.slice(ids.indexOf('desk'), ids.indexOf('yield') + 1);
+    expect(sel.dims.map((d) => d.id)).toEqual(block.filter((id) => COLUMN_META[id as keyof typeof COLUMN_META]?.kind === 'dimension'));
+    expect(sel.dims[0]!.values).toEqual([...new Set(rows.slice(0, 4).map((r) => r.original.desk))]);
+    expect(sel.measures.map((m) => m.id)).toEqual(block.filter((id) => COLUMN_META[id as keyof typeof COLUMN_META]?.kind === 'measure'));
+    // Group rows name their column's values; a calculated column says it is one.
+    const g = headlessTable(BOOK, parseView({ version: 5, grouping: ['desk'], computedColumns: [{ id: 'c:mtm_pct', label: 'MTM %', op: 'ratio', of: ['mtm', 'notional'] }] }));
+    const groups = g.getRowModel().rows;
+    const cols = g.getVisibleLeafColumns().map((c) => c.id);
+    g.selectCellRange({ anchorRowId: groups[0]!.id, anchorColumnId: 'desk', focusRowId: groups[groups.length - 1]!.id, focusColumnId: cols.at(-1)! });
+    const grouped = chartFromRange(g).selection!;
+    expect(grouped.dims.find((d) => d.id === 'desk')!.values).toEqual(groups.map((x) => String(x.groupingValue)));
+    expect(grouped.measures.find((m) => m.id === 'c:mtm_pct')).toMatchObject({ computed: true });
+  });
+
   it('maps a measure\'s meta to the widget catalog\'s format', () => {
     expect(widgetFormat(COLUMN_META.dv01)).toEqual({ unit: 'USD', format: 'currency_usd' });
     expect(widgetFormat(COLUMN_META.yield)).toEqual({ unit: '%', format: 'percent_2dp' });

@@ -2985,6 +2985,101 @@ exact-match hint, and the pivot bound on `set_view` and on a query's own
 view. `.pressure/scenarios.mts` (111 checks over stdio, 50,000 rows timed)
 and `.pressure/grade.mts` stay beside it for the slow layer.
 
+## ADR-92 — a grid selection becomes a board tile, drawn by Evil Charts (reverses ADR-63's library verdict for these widgets)
+
+**Pinned:** "for the grid range select charting feature I want to add a full
+range of visual options that draw from the Evil Charts library — this will be
+used by users to add additional visuals to their dashboard canvas".
+
+**What ADR-63 said, and what changed.** ADR-63 declined rebasing the catalog
+on Evil Charts for three costs: a Tailwind/shadcn substrate the studio did not
+have, a palette of its own against COL-03, and no governed half — no contracts
+as data, no `family` for the linter to key off. The first was paid by ADR-65,
+for the grid: the studio builds Tailwind, the default palette is withdrawn,
+and shadcn's vocabulary resolves to Aperture tokens. The other two are
+answered below, by construction rather than by care. So this reverses ADR-63's
+verdict *for a new set of widgets*, and only that: the existing catalog keeps
+its hand-drawn marks (ADR-8, ADR-63), and the ECharts provider is not taken.
+
+**Decision.**
+
+- *Landed, not installed.* `packages/chartroom-charts` carries the Recharts
+  half of Evil Charts as source (`src/evilcharts/`, MIT, upstream `ecbd6a5`,
+  its licence beside it): eight charts and six primitives. Four local changes,
+  listed in its README — import paths, unused imports, the tooltip's number
+  format, three palette classes — so a later upstream diffs in.
+  `spec ← widgets ← charts ← studio`; the boundaries test holds it, and the
+  planner, the option list and the shaping are React-free.
+- *Ten widgets, each a contract.* `evil-bar`, `evil-stacked-bar`,
+  `evil-composed` (today as bars, the prior close as a line), `evil-line`,
+  `evil-area`, `evil-stacked-area`, `evil-pie`, `evil-radial`, `evil-radar`,
+  `evil-sankey`, all `@1`, all in the widgets' `CATALOG` as host-rendered
+  (ADR-83) — the linter, the server's catalog and proposals read them like any
+  other. A family is the claim the linter keys off (ADR-42), so each sits
+  where its judgment lives: bars, rings and spokes by a dimension are `bar`
+  (BAR-02 orders them), lines over the window `timeseries` (TS-01, TS-02),
+  and everything that adds parts into a whole — a stack, a pie, a flow — is
+  `part_to_whole`, where AREA-01 holds the measure to sum and PIE-01 the
+  parts to five. A part-to-whole widget's dims lead with its parts, because
+  PIE-01 counts the first categorical one.
+- *Meaning is a type; appearance is state.* Every option a reader can pick —
+  six bar fills, six area fills, curves, strokes, points, glow, layouts,
+  arcs, link colouring, legend shapes, background patterns — is renderer-owned
+  state (`state.chart`, ADR-83). Stacking is not an option: a stack sums, so
+  a stacked chart is its own type in `part_to_whole`. An option the linter
+  cannot see may change how a chart looks, never what it claims.
+- *A binding, not a snapshot.* "Chart selection" on a dashboard grid opens the
+  gallery over the board. The grid now reports what a block holds —
+  `ChartOutcome.selection`: every dimension column with its values, every
+  measure column — and the planner turns it into one instance per kind: the
+  grid widget's metric and filters, the selected dimensions as dims, the
+  selected values as an `in` filter (none when they are every value), a
+  window for lines (the grid's, else 30 days). The preview is that instance,
+  resolved through the same hook and drawn by the same component the canvas
+  uses; "Add to dashboard" appends it below everything on the board — an edit
+  like any other: linted, undoable, saved with the version. A calculated
+  column lives in the grid's view, not the registry, so it cannot be bound;
+  the gallery says so.
+- *Refused before it is added, with the linter's reason.* The planner refuses
+  a stack, pie or flow of a measure that does not sum or can go negative
+  (AREA-01), a part-to-whole over more than five parts (PIE-01) — choosing
+  the side of a two-dimension block that is few enough to read, so six
+  maturity buckets by four entities stacks the entities — a radar under three
+  spokes, more than eight lines. A test lints every instance the planner
+  offers and finds no block, and lints the instances it refuses and finds
+  AREA-01: the courtesy and the gate agree. Renderers refuse what only the
+  data can show — a negative part, a flow with nothing in it — in the frame
+  (ADR-44/45).
+- *The board's colours and numbers.* Every chart gets a `ChartConfig` of the
+  series tokens (`var(--cr-s0)` …), keyed `s0`, `s1`, … because a group's
+  value (`10Y+`, `O/N`) is not a CSS identifier; the library's palette never
+  reaches the page. Axis ticks go through `formatTick`, and the tooltip —
+  which upstream formats with `toLocaleString` — through the board's
+  `formatValue`, by the context the landed tooltip now reads.
+
+**Found on the way.** The studio's unlayered `* { margin: 0 }` beats Tailwind's
+`m-auto`, so a modal `<dialog>` drew at the top-left corner; the centring is
+in the stylesheet. And the dashboard's working table sits low on the board, so
+an e2e drag with raw mouse coordinates selected nothing until it scrolled the
+table into view — the gesture worked; the test had not seen it.
+
+**Left as found.** The grid harness (`#/grid`) keeps ADR-81's bar panel: it
+has no board to add to and no registry metric to bind. The options are state,
+so a hand-edited spec can name any listed option and the linter does not read
+them — by design, since none changes a claim. An agent cannot yet offer the
+gallery; `chartroom-charts/plan` and `/options` are React-free so a tool can.
+
+**What now fails if this regresses.** `chartroom-charts/test/charts.test.ts`:
+the ten kinds are catalog contracts with renderers and listed defaults; every
+stacking kind is `part_to_whole`; options read back with defaults; the
+planner's bindings, filters, sort, window and dim order; each refusal and its
+reason; the planner-against-linter round trip; the shaping — safe keys,
+token colours, BAR-02 order, gaps not zeros, negative parts refused, flowless
+nodes dropped. `chartroom-grid/test/chart.test.ts` holds the selection report,
+refusals included. `e2e/charts.spec.ts` selects a block in the dashboard grid,
+walks all ten kinds (drawn, or refused with a reason), dresses a bar, adds it,
+and finds a fresh governed tile and its `evil-bar@1` binding in the spec.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

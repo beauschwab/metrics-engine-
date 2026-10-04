@@ -7,8 +7,8 @@
 - `packages/chartroom-spec` is pure: no fetch, no fs, no React, no Node APIs. If the
   linter needs data, add it to `LintContext` — contracts are injected, never
   fetched.
-- Dependency direction: `spec ← widgets ← studio`, `spec ← server`. Nothing
-  imports studio. Enforced by `packages/chartroom-spec/test/boundaries.test.ts` — run it
+- Dependency direction: `spec ← widgets ← studio`, `spec ← widgets ← charts ← studio`
+  (ADR-92), `spec ← server`. Nothing imports studio. Enforced by `packages/chartroom-spec/test/boundaries.test.ts` — run it
   before committing.
 - Outward, the registry is a dependency, not a neighbour: import `keel-engine/*`
   and `keel-registry/db|dialect`, never a relative path out of the workspace (ADR-49/50). The
