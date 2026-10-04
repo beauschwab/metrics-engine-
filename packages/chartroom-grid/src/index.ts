@@ -41,7 +41,7 @@ export { Input } from './components/ui/input';
 export { Separator } from './components/ui/separator';
 export { heatIntensity, heatBackground, HEAT_MAX_PERCENT } from './grid/heat';
 export { headerBands, hasBands, type HeaderBand, type BandColumn } from './grid/bands';
-export { chartFromRange, widgetFormat, describeChart, type ChartRequest, type ChartOutcome, type ChartSeries, type ChartData, type ChartRow } from './grid/chart';
+export { chartFromRange, widgetFormat, describeChart, type ChartRequest, type ChartOutcome, type ChartSeries, type ChartData, type ChartRow, type RangeSelection } from './grid/chart';
 export {
   PIVOT_PREFIX, isPivotId, pivotId, parsePivotId, distinctValues, pivotMeta, pivotValue, pivotAggregation, type PivotState,
 } from './grid/pivot';

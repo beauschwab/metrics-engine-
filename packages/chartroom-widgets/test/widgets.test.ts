@@ -49,18 +49,24 @@ describe('the catalog', () => {
     for (const c of CATALOG) expect(() => Contract.parse(c)).not.toThrow();
   });
 
-  it('ships the Phase-1 five, the Phase-9 seven, the host-rendered grid and the four sparklines; every widgets-rendered one has a component, and no strays', () => {
+  it('ships the Phase-1 five, the Phase-9 seven, the host-rendered grid, the four sparklines and the ten Evil Charts; every widgets-rendered one has a component, and no strays', () => {
     const refs = CATALOG.map((c) => `${c.widget}@${c.version}`).sort();
     expect(refs).toEqual([
       'annotation@1', 'bar@1', 'bullet@1', 'delta-table@1', 'distribution@1',
+      'evil-area@1', 'evil-bar@1', 'evil-composed@1', 'evil-line@1', 'evil-pie@1',
+      'evil-radar@1', 'evil-radial@1', 'evil-sankey@1', 'evil-stacked-area@1', 'evil-stacked-bar@1',
       'grid@1', 'heatmap@1', 'kpi-tile@1', 'perspective-grid@1', 'small-multiples@1',
       'spark-band@1', 'spark-column@1', 'spark-line@1', 'spark-range@1',
       'stacked-area@1', 'timeseries@1', 'waterfall@1',
     ]);
     const ours = CATALOG.filter((c) => c.renderer !== 'host').map((c) => `${c.widget}@${c.version}`).sort();
     expect(Object.keys(COMPONENTS).sort()).toEqual(ours);
-    // A host-rendered contract is drawn by the studio, never by this package (ADR-83).
-    expect(CATALOG.filter((c) => c.renderer === 'host').map((c) => c.widget)).toEqual(['grid']);
+    // A host-rendered contract is drawn by the studio, never by this package
+    // (ADR-83): the grid by chartroom-grid, the Evil Charts by chartroom-charts (ADR-92).
+    expect(CATALOG.filter((c) => c.renderer === 'host').map((c) => c.widget).sort()).toEqual([
+      'evil-area', 'evil-bar', 'evil-composed', 'evil-line', 'evil-pie',
+      'evil-radar', 'evil-radial', 'evil-sankey', 'evil-stacked-area', 'evil-stacked-bar', 'grid',
+    ]);
     expect(COMPONENTS['grid@1']).toBeUndefined();
   });
 

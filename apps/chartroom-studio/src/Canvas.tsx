@@ -21,6 +21,7 @@ import { useState } from 'react';
 import type { DashboardSpec, FilterExpr, WidgetInstance } from 'chartroom-spec';
 import { parseMetricRef } from 'chartroom-spec';
 import { COMPONENTS } from 'chartroom-widgets';
+import { CHART_COMPONENTS } from 'chartroom-charts';
 import type { AnalystEnv } from './bindings';
 import type { CrossFilter } from './analyst/ContextBar';
 import type { ContractSummary } from './data';
@@ -52,11 +53,13 @@ interface FrameProps {
   onAsk(id: string): void;
   /** A host-rendered widget arranged by its reader (ADR-83). */
   onWidgetState?: (id: string, state: Record<string, unknown>) => void;
+  /** A chart made from a grid selection, to add to the board (ADR-92). */
+  onAddWidget?: (instance: WidgetInstance) => void;
 }
 
 function Frame({
   w, spec, contracts, selected, onSelect, extraFilters, pickDim, picked, onPick,
-  unrenderable, env, onExplain, attached, onAsk, onWidgetState,
+  unrenderable, env, onExplain, attached, onAsk, onWidgetState, onAddWidget,
 }: FrameProps) {
   // A host-rendered widget runs the binding's query itself (ADR-83), so the
   // frame does not run it a second time; the widget reports what it got.
@@ -66,7 +69,8 @@ function Frame({
   const { data, error } = query;
   const status = host ? hostFrame.status : query.status;
   const asOf = host ? hostFrame.asOf : data?.asOf ?? null;
-  const Component = COMPONENTS[w.type];
+  // The widgets package's renderers, then the Evil Charts the studio lands beside them (ADR-92).
+  const Component = COMPONENTS[w.type] ?? CHART_COMPONENTS[w.type];
   const ref = parseMetricRef(w.bind.metric);
   const contract = contracts.get(w.bind.metric);
 
@@ -94,7 +98,7 @@ function Frame({
       </header>
       <div className="cr-frame-body">
         {host
-          ? <GridWidget w={w} spec={spec} contracts={contracts} extraFilters={extraFilters} env={env} onState={onWidgetState} onFrame={setHostFrame} />
+          ? <GridWidget w={w} spec={spec} contracts={contracts} extraFilters={extraFilters} env={env} onState={onWidgetState} onFrame={setHostFrame} onAddWidget={onAddWidget} />
           : Component
           ? (
             <Component
@@ -190,11 +194,13 @@ interface CanvasProps {
   onAsk?(id: string): void;
   /** A host-rendered widget arranged by its reader (ADR-83). */
   onWidgetState?: (id: string, state: Record<string, unknown>) => void;
+  /** A chart made from a grid selection, to add to the board (ADR-92). */
+  onAddWidget?: (instance: WidgetInstance) => void;
 }
 
 export function Canvas({
   spec, contracts, selected, onSelect, unrenderable = new Set<string>(),
-  env, cross, onCross, onExplain, attached = new Set<string>(), onAsk = () => {}, onWidgetState,
+  env, cross, onCross, onExplain, attached = new Set<string>(), onAsk = () => {}, onWidgetState, onAddWidget,
 }: CanvasProps) {
 
   // The watermark the PRD asks for: draft chrome whenever the dashboard is a
@@ -255,6 +261,7 @@ export function Canvas({
             onPick={pickFor(w)}
             unrenderable={unrenderable}
             onWidgetState={onWidgetState}
+            onAddWidget={onAddWidget}
             env={env}
             onExplain={onExplain}
             attached={attached.has(w.id)}

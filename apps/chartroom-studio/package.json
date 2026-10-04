@@ -16,10 +16,12 @@
     "@codemirror/lint": "^6.8.5",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.1",
+    "chartroom-charts": "*",
     "chartroom-grid": "*",
     "chartroom-spec": "*",
     "chartroom-widgets": "*",
     "keel-design-system": "*",
+    "lucide-react": "^1.48.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

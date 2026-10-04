@@ -31,6 +31,7 @@
 @import 'tailwindcss/theme' layer(theme);
 @import 'tailwindcss/utilities' layer(utilities);
 @import 'chartroom-grid/theme.css';
+@import 'chartroom-charts/theme.css';
 
 :root {
   /* The studio is dark, and says so: without this the browser draws every
@@ -349,6 +350,13 @@ button:not([data-slot], [data-slot] *) { font: inherit; color: inherit; backgrou
 .cr-harness-state { font-size: 10px; color: var(--cr-text-faint); text-transform: uppercase; letter-spacing: 0.08em; }
 .cr-harness-cell .cr-frame { height: 230px; margin-top: 4px; }
 .cr-harness-cell .cr-frame-body { padding: 10px 12px; }
+
+/* The chart gallery's veil (ADR-92): the board dimmed in its own background
+   token, so the dialog reads as above the board rather than as a new page. */
+/* `margin: auto` centres a modal dialog; the reset above (`* { margin: 0 }`)
+   is unlayered and would beat the utility, so the centring is said here. */
+.cr-chart-gallery { margin: auto; }
+.cr-chart-gallery::backdrop { background: color-mix(in srgb, var(--cr-bg) 72%, transparent); }
 
 /* ---- the brief card (Phase 2) --------------------------------------- */
 

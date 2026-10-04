@@ -43,7 +43,22 @@ export interface ChartRequest {
   series: ChartSeries[];
 }
 
-export type ChartOutcome = { ok: true; request: ChartRequest } | { ok: false; reason: string };
+/**
+ * What the block holds, structurally (ADR-92): every dimension column in it
+ * with the values its rows show, in their order, and every measure column. A
+ * host that binds charts to a registry metric reads this — not the drawn
+ * series — because a binding names dimensions and values, not bars. It rides
+ * a refusal too: a block this module will not draw as one bar chart (two
+ * units) may still name a selection a host can bind.
+ */
+export interface RangeSelection {
+  dims: Array<{ id: string; label: string; values: string[] }>;
+  measures: Array<{ id: string; label: string; computed?: boolean }>;
+}
+
+export type ChartOutcome =
+  | { ok: true; request: ChartRequest; selection?: RangeSelection }
+  | { ok: false; reason: string; selection?: RangeSelection };
 
 /** The widget catalog's format id for a measure's meta — the same function the cell formats through (ADR-29). */
 export function widgetFormat(meta: ColumnMeta): { unit: string; format: string } {
@@ -89,13 +104,25 @@ export function chartFromRange(table: CopyTable, asOf = ''): ChartOutcome {
   const first = rows[0];
   if (!first || first.length === 0) return { ok: false, reason: 'select a block of cells first' };
   const columns = first.map((c): ResolvedCell => ({ cell: c, meta: c.column.columnDef.meta }));
+  const isDimension = ({ cell, meta }: ResolvedCell) => (meta && meta.kind === 'dimension') || cell.getIsGrouped() || cell.column.id === (cell.row.original as { __group?: { column: string } })?.__group?.column;
+  // Every dimension column in the block: a column is one if any row reads it as one (a group row names its column).
+  const dimIndexes = columns.map((_, i) => i).filter((i) => rows.some((r) => isDimension({ cell: r[i]!, meta: columns[i]!.meta })));
+  const selection: RangeSelection = {
+    dims: dimIndexes.map((i) => {
+      const column = columns[i]!.cell.column;
+      const values = [...new Set(rows.map((r) => categoryOf(r[i]!)).filter((v): v is string => v !== undefined && v !== ''))];
+      return { id: column.id, label: column.columnDef.meta?.label ?? column.id, values };
+    }),
+    measures: columns.filter(({ meta }, i) => meta?.kind === 'measure' && !dimIndexes.includes(i))
+      .map(({ cell, meta }) => ({ id: cell.column.id, label: meta!.label, ...(meta!.computed ? { computed: true } : {}) })),
+  };
   // The category: the first column that reads as a dimension in this block.
-  const categoryIndex = columns.findIndex(({ cell, meta }) => (meta && meta.kind === 'dimension') || cell.getIsGrouped() || cell.column.id === (cell.row.original as { __group?: { column: string } })?.__group?.column);
-  if (categoryIndex < 0) return { ok: false, reason: 'include a dimension column, or group rows, to name the bars' };
-  const measures = columns.map((c, i) => ({ ...c, i })).filter(({ meta, i }) => i !== categoryIndex && meta?.kind === 'measure');
-  if (measures.length === 0) return { ok: false, reason: 'include a measure column to size the bars' };
+  const categoryIndex = dimIndexes[0] ?? -1;
+  if (categoryIndex < 0) return { ok: false, reason: 'include a dimension column, or group rows, to name the bars', selection };
+  const measures = columns.map((c, i) => ({ ...c, i })).filter(({ meta, i }) => !dimIndexes.includes(i) && meta?.kind === 'measure');
+  if (measures.length === 0) return { ok: false, reason: 'include a measure column to size the bars', selection };
   const units = new Set(measures.map(({ meta }) => widgetFormat(meta!).unit));
-  if (units.size > 1) return { ok: false, reason: `the block mixes units (${[...units].join(', ')}); a bar chart has one axis (NUM-01)` };
+  if (units.size > 1) return { ok: false, reason: `the block mixes units (${[...units].join(', ')}); a bar chart has one axis (NUM-01)`, selection };
 
   const categoryColumn = columns[categoryIndex]!.cell.column;
   const categoryLabel = categoryColumn.columnDef.meta?.label ?? categoryColumn.id;
@@ -123,7 +150,7 @@ export function chartFromRange(table: CopyTable, asOf = ''): ChartOutcome {
     return { columnId: cell.column.id, label, data: { ...widgetFormat(readMeta), asOf, rows: out, ordinalDim: true } };
   });
   const title = `${series.map((s) => s.label).join(', ')} by ${categoryLabel}`;
-  return { ok: true, request: { type: 'bar@1', title, category: { columnId: categoryColumn.id, label: categoryLabel }, series } };
+  return { ok: true, request: { type: 'bar@1', title, category: { columnId: categoryColumn.id, label: categoryLabel }, series }, selection };
 }
 
 /** A one-line reading of a request, for the panel's caption and the tests. */

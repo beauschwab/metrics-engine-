@@ -1,0 +1,38 @@
+{
+  "name": "chartroom-charts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Evil Charts (Recharts, MIT) landed as source and signed to the widget contract: ten governed chart widgets a reader adds to a dashboard from a grid selection. Presentation only — no fetching.",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./theme.css": "./src/theme.css",
+    "./plan": "./src/plan.ts",
+    "./options": "./src/options.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "chartroom-spec": "*",
+    "chartroom-widgets": "*",
+    "clsx": "^2.1.1",
+    "motion": "^12.23.26",
+    "recharts": "^3.8.0",
+    "tailwind-merge": "^3.7.0"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
+  }
+}
