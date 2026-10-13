@@ -15,6 +15,7 @@ import { pivotAggregation, pivotBuckets, pivotId, pivotMeta, pivotValue, type Pi
 import { TREASURY_META, TREASURY_ORDER, TREASURY_SCHEMA } from '../data/treasury';
 import { TREND_SIZE } from './trend';
 import { idsOf, measuresOf, type GridRecord, type GridSchema } from './schema';
+import { TREE_ID, treeWidth } from './tree';
 
 const helper = createColumnHelper<Features, GridRecord>();
 
@@ -29,10 +30,27 @@ export const COLUMN_ORDER = TREASURY_ORDER;
  * it at the start (ADR-68). Its cell is the checkbox `GridTable` renders.
  */
 export const SELECT_ID = 'select';
+export { TREE_ID };
 export const selectColumn = helper.display({
   id: SELECT_ID,
   header: '',
   size: 32,
+  enableSorting: false,
+  enableGrouping: false,
+  enableHiding: false,
+  enableResizing: false,
+  enablePinning: false,
+});
+
+/**
+ * The tree column (ADR-93): every grouped level in one column. Chrome, like
+ * the selection column — no meta, so no filter, format or menu reaches it;
+ * the header sorts the levels together, and the width follows the depth.
+ */
+export const treeColumn = (levels: number) => helper.display({
+  id: TREE_ID,
+  header: 'Group',
+  size: treeWidth(levels),
   enableSorting: false,
   enableGrouping: false,
   enableHiding: false,

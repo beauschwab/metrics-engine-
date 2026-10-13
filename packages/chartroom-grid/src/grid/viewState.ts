@@ -33,7 +33,15 @@ import {
  * empty slice more per step — so every saved view and every link written
  * before it still parses.
  */
-export const VIEW_VERSION = 6 as const;
+export const VIEW_VERSION = 7 as const;
+
+/**
+ * How grouped rows show their hierarchy (ADR-93): each grouped dimension in
+ * its own column (`columns`, the default), or one tree column that carries
+ * every level, indented, with the grouped dimensions taken off the screen.
+ */
+export const GROUP_DISPLAYS = ['columns', 'tree'] as const;
+export type GroupDisplay = (typeof GROUP_DISPLAYS)[number];
 
 export function migrateView(input: unknown): unknown {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) return input;
@@ -47,6 +55,8 @@ export function migrateView(input: unknown): unknown {
     const pivot = (v.pivot ?? { column: null, values: [] }) as Record<string, unknown>;
     v = { ...v, version: 6, pivot: { ...pivot, buckets: pivot.buckets ?? [] } };
   }
+  // Version 7 (ADR-93): grouped rows read as columns, as they always had, unless a view says tree.
+  if (v.version === 6) v = { ...v, version: 7, groupDisplay: v.groupDisplay ?? 'columns' };
   return v;
 }
 
@@ -148,6 +158,8 @@ return z
   .object({
     version: z.literal(VIEW_VERSION),
     grouping: z.array(groupableId).default([]),
+    // Grouped rows as columns or as one tree column (ADR-93).
+    groupDisplay: z.enum(GROUP_DISPLAYS).default('columns'),
     // Pivot mode (ADR-80): a groupable dimension across the top, measures under each value.
     pivot: z.strictObject({
       column: groupableId.nullable(),

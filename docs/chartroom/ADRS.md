@@ -3080,6 +3080,68 @@ refusals included. `e2e/charts.spec.ts` selects a block in the dashboard grid,
 walks all ten kinds (drawn, or refused with a reason), dresses a bar, adds it,
 and finds a fresh governed tile and its `evil-bar@1` binding in the spec.
 
+## ADR-93 — tree mode: a grouping read as one indented column (view v7)
+
+**Pinned:** "I would like to include a tree mode for hierarchies so the grouped
+columns don't continue to have a standalone column".
+
+**What was there.** A grouping drew each level in its own column (ADR-67):
+desk's groups in the desk column, currency's in the currency column, the
+grouped columns moved to the front. It reads well one level deep. Two or
+three deep, every level costs a column of width that holds one label per
+group row and nothing on any other row, and a leaf row repeats as blanks
+what its parents already said.
+
+**Decision.**
+
+- *A display, in the view.* `groupDisplay: 'columns' | 'tree'` joins the view
+  contract, which becomes version 7; a version-6 document migrates to
+  `columns`, so every saved view and link opens as it did. It is display
+  only: the rows, the subtotals, the SQL and an agent's `query_view` answer
+  are the same either way, and the contract tells an agent so.
+- *One column, every level.* In tree mode the table adds a tree column,
+  pinned after the selection column. It is chrome, like the selection
+  column: no meta, so filters, formats, aggregations and the header menu,
+  which all key off meta, pass it by, and the view never names it in its
+  order, pinning or sizing. A group at any depth draws in it with its toggle
+  and its count, indented by depth; a group the source served (ADR-70) draws
+  the same way; a leaf's cell is blank, because its place in the tree is its
+  parents'. Its width follows the depth, and a long label truncates with its
+  full text as a title rather than spilling over the measure next door.
+- *The grouped columns leave the screen, not the view.* Their hiding is
+  layered over the view's visibility when the table reads it and taken out
+  again when the table writes it, so leaving tree mode brings every column
+  back as the reader had it. In the columns sidebar a grouped column says it
+  is shown in the tree, and offers no second checkbox.
+- *The header sorts the tree.* The hidden headers were where a dimension
+  sorted; the tree header now sorts every level by its own values together —
+  ascending, descending, off — ahead of any measure sort, which keeps its
+  place after them.
+- *What reads a cell reads the tree.* `treeKey(row)` says which dimension a
+  row groups by and its value, for client and served groups alike. Copy
+  copies it; the xlsx export leads with a Group column, each group indented
+  by its depth; "Copy row" includes it; chart-from-range reports each level
+  the tree holds as its own dimension, with its own label and values — so
+  ADR-92's planner binds a desk and a currency, not a "tree".
+- *A toggle where the grouping is.* The row-groups bar shows a pressed or
+  unpressed **Tree** toggle once there is a grouping to nest.
+
+**Left as found.** The tree column is not resizable (sizing is view state,
+and the view never names chrome); its width is set by the depth. The agent
+headless table stays the data's; a test or an export that wants the
+screen's columns asks for `display: true`.
+
+**What now fails if this regresses.** `chartroom-grid/test/tree.test.ts`:
+the v7 default and the v6 migration, the tree only when there is a
+grouping, hiding layered and never written back, the tree column first and
+the grouped columns gone (and an agent's table unchanged), the header's sort
+cycle, `treeKey` for client, served and leaf rows, copy, the chart's
+per-level dimensions, and the export's indented Group column.
+`e2e/tree.spec.ts` groups by desk and currency, switches to the tree, opens
+a desk to its indented currencies beside their subtotals, reads the
+sidebar's note, sorts from the tree header, finds `groupDisplay: "tree"` in
+the link, and switches back to find both columns restored.
+
 # Proposed — recorded gaps, not yet accepted
 
 The entries below are **stubs with status: proposed**. They record the

@@ -69,8 +69,9 @@ export { useTreasuryTable, type TreasuryTable, type TreasuryTableOptions, type V
 export {
   ViewStateSchema, VIEW_VERSION, defaultView, parseView, safeParseView, toTableState, migrateView,
   type ViewState, type ViewSlice,
-  viewSchemaFor,
+  viewSchemaFor, GROUP_DISPLAYS, type GroupDisplay,
 } from './grid/viewState';
+export { TREE_ID, treeKey, treeShown } from './grid/tree';
 export type { DataSource, SourceDescription, SourceColumn, QueryOptions, QueryResult } from './data/source';
 export { inMemorySource } from './data/inMemorySource';
 export { compileSql, DUCKDB, SQLITE, DREMIO, type SqlDialect, type CompiledSql, type CompileOptions } from './data/compileSql';

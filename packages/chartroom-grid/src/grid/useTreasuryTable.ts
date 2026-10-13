@@ -14,7 +14,8 @@
 import { useMemo } from 'react';
 import { functionalUpdate, useTable, type OnChangeFn, type ReactTable, type Updater } from '@tanstack/react-table';
 import { features, type Features } from './features';
-import { SELECT_ID, buildColumns, selectColumn } from './columns';
+import { SELECT_ID, buildColumns, selectColumn, treeColumn } from './columns';
+import { TREE_ID, treeShown, treeVisibility, untreeVisibility } from './tree';
 import { toTableState, type ViewSlice, type ViewState } from './viewState';
 import type { GridRecord, GridSchema } from './schema';
 import { TREASURY_SCHEMA } from '../data/treasury';
@@ -56,7 +57,8 @@ export interface TreasuryTableOptions {
 const NO_ROWS: GridRowData[] = [];
 
 
-const withoutSelect = (ids: string[]) => ids.filter((id) => id !== SELECT_ID);
+/** The chrome columns the hook places itself — selection and tree — never written into the view. */
+const withoutSelect = (ids: string[]) => ids.filter((id) => id !== SELECT_ID && id !== TREE_ID);
 
 export function useTreasuryTable({ data, view, onViewChange, applied, pivotValues, schema = TREASURY_SCHEMA }: TreasuryTableOptions): TreasuryTable {
   const handlers = useMemo(() => {
@@ -73,7 +75,9 @@ export function useTreasuryTable({ data, view, onViewChange, applied, pivotValue
         onViewChange((prev) => ({ ...prev, globalFilter: functionalUpdate(updater, prev.globalFilter) ?? '' })),
       onSortingChange: slice('sorting'),
       onExpandedChange: slice('expanded'),
-      onColumnVisibilityChange: slice('columnVisibility'),
+      // The tree's hiding of grouped columns is layered on, never saved (ADR-93).
+      onColumnVisibilityChange: (updater: Updater<ViewState['columnVisibility']>) =>
+        onViewChange((prev) => ({ ...prev, columnVisibility: untreeVisibility(functionalUpdate(updater, treeVisibility(prev)), prev) })),
       // The selection column is pinned at the start by the hook, never by
       // the view: strip it before a pinning or order update reaches the view,
       // so a saved view never names a column it cannot validate.
@@ -93,9 +97,18 @@ export function useTreasuryTable({ data, view, onViewChange, applied, pivotValue
   // aggregations (ADR-72) and formats (ADR-74) — one array per distinct
   // choice, not per render.
   const pivot = view.pivot.column ? { ...view.pivot, distinct: pivotValues ?? [] } : undefined;
-  const columnsKey = JSON.stringify([view.columnAggs, view.columnFormats, view.computedColumns, pivot, schema.order]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the serialized choice
-  const allColumns = useMemo(() => [selectColumn, ...buildColumns(view.columnAggs, view.columnFormats, view.computedColumns, pivot, schema)], [columnsKey, schema]);
+  // Tree mode (ADR-93): one column for every grouped level, after the selection column.
+  const tree = treeShown(view);
+  // One object per distinct reading, so the table's visible-column memos hold across renders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on what the reading depends on
+  const visibility = useMemo(() => treeVisibility(view), [view.columnVisibility, tree, tree && view.grouping.join('\u0000')]);
+  const levels = tree ? view.grouping.length : 0;
+  const columnsKey = JSON.stringify([view.columnAggs, view.columnFormats, view.computedColumns, pivot, schema.order, levels]);
+  const allColumns = useMemo(
+    () => [selectColumn, ...(levels ? [treeColumn(levels)] : []), ...buildColumns(view.columnAggs, view.columnFormats, view.computedColumns, pivot, schema)],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the serialized choice
+    [columnsKey, schema],
+  );
   return useTable({
     features,
     columns: allColumns,
@@ -136,7 +149,8 @@ export function useTreasuryTable({ data, view, onViewChange, applied, pivotValue
     getRowCanExpand: (row) => isGroupNode(row.original) || row.subRows.length > 0,
     state: {
       ...base,
-      columnPinning: { start: [SELECT_ID, ...base.columnPinning.start], end: base.columnPinning.end },
+      columnVisibility: visibility,
+      columnPinning: { start: [SELECT_ID, ...(tree ? [TREE_ID] : []), ...base.columnPinning.start], end: base.columnPinning.end },
     },
     ...handlers,
   });

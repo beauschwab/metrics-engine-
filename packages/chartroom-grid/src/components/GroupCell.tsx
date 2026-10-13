@@ -20,14 +20,15 @@ export function leafCount(row: GridRow): number {
 
 export const INDENT_PX = 14;
 
-export function GroupCell({ row }: { row: GridRow }) {
+export function GroupCell({ row, fit = false }: { row: GridRow; fit?: boolean }) {
   const label = String(row.groupingValue ?? '—');
   const open = row.getIsExpanded();
   return (
-    // Not truncated: a group's label spills over the empty placeholder cells
-    // to its right, the way AG Grid's group column reads, rather than
-    // shrinking to its count inside a 92px dimension column.
-    <span className="flex items-center gap-1 whitespace-nowrap" style={{ paddingLeft: row.depth * INDENT_PX }}>
+    // Not truncated in a dimension column: a group's label spills over the
+    // empty placeholder cells to its right, the way AG Grid's group column
+    // reads, rather than shrinking to its count inside a 92px column. In the
+    // tree column (ADR-93) a measure sits next door, so the label fits its own cell.
+    <span className={fit ? 'flex min-w-0 items-center gap-1 whitespace-nowrap' : 'flex items-center gap-1 whitespace-nowrap'} title={fit ? label : undefined} style={{ paddingLeft: row.depth * INDENT_PX }}>
       <button
         type="button"
         data-slot="group-toggle"
@@ -38,8 +39,8 @@ export function GroupCell({ row }: { row: GridRow }) {
       >
         {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
       </button>
-      <span className="font-medium">{label}</span>
-      <span className="text-faint tabular-nums">({leafCount(row).toLocaleString('en-US')})</span>
+      <span className={fit ? 'min-w-0 truncate font-medium' : 'font-medium'}>{label}</span>
+      <span className="shrink-0 text-faint tabular-nums">({leafCount(row).toLocaleString('en-US')})</span>
     </span>
   );
 }
@@ -49,10 +50,10 @@ export function GroupCell({ row }: { row: GridRow }) {
  * count come from the node, and the toggle asks the shell to fetch the
  * children before it expands.
  */
-export function ServerGroupCell({ row, node, onToggle }: { row: GridRow; node: GroupNode; onToggle: (row: GridRow) => void }) {
+export function ServerGroupCell({ row, node, onToggle, fit = false }: { row: GridRow; node: GroupNode; onToggle: (row: GridRow) => void; fit?: boolean }) {
   const open = row.getIsExpanded();
   return (
-    <span className="flex items-center gap-1 whitespace-nowrap" style={{ paddingLeft: row.depth * INDENT_PX }}>
+    <span className={fit ? 'flex min-w-0 items-center gap-1 whitespace-nowrap' : 'flex items-center gap-1 whitespace-nowrap'} title={fit ? node.__group.value : undefined} style={{ paddingLeft: row.depth * INDENT_PX }}>
       <button
         type="button"
         data-slot="group-toggle"
@@ -63,8 +64,8 @@ export function ServerGroupCell({ row, node, onToggle }: { row: GridRow; node: G
       >
         {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
       </button>
-      <span className="font-medium">{node.__group.value}</span>
-      <span className="text-faint tabular-nums">({node.__group.count.toLocaleString('en-US')})</span>
+      <span className={fit ? 'min-w-0 truncate font-medium' : 'font-medium'}>{node.__group.value}</span>
+      <span className="shrink-0 text-faint tabular-nums">({node.__group.count.toLocaleString('en-US')})</span>
     </span>
   );
 }

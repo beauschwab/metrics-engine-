@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronsDownUp, ChevronsUpDown, Download, PanelRight, Redo2, Rows2, Rows4, Search, Undo2 } from 'lucide-react';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
-import type { ViewState } from '../grid/viewState';
+import type { GroupDisplay, ViewState } from '../grid/viewState';
 import type { ViewStore } from '../views/store';
 import type { Density } from './GridTable';
 import { GroupByDropZone, PivotDropZone } from './GroupByDropZone';
@@ -18,7 +18,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 
 export function GridToolbar({
-  table, view, viewStore, onLoadView, sidebarOpen, onToggleSidebar, density, onToggleDensity, onExport, exporting, history, onPivot, pivotValues, onPivotBuckets,
+  table, view, viewStore, onLoadView, sidebarOpen, onToggleSidebar, density, onToggleDensity, onExport, exporting, history, onPivot, pivotValues, onPivotBuckets, onGroupDisplay,
 }: {
   table: TreasuryTable;
   view: ViewState;
@@ -37,6 +37,8 @@ export function GridToolbar({
   /** The pivot dimension's values from the source, and the write that picks which become columns (ADR-86). */
   pivotValues?: readonly string[];
   onPivotBuckets?: (buckets: string[]) => void;
+  /** Grouped rows as one tree column or a column per level (ADR-93). */
+  onGroupDisplay?: (display: GroupDisplay) => void;
 }) {
   const [quick, setQuick] = useState(view.globalFilter);
   useEffect(() => {
@@ -54,7 +56,7 @@ export function GridToolbar({
   // instead of five-line boxes eating the rows.
   return (
     <div data-slot="grid-toolbar" className="@container/toolbar flex min-w-0 flex-wrap items-center gap-2 border-b border-border bg-card px-2 py-1.5">
-      <GroupByDropZone table={table} grouping={view.grouping} />
+      <GroupByDropZone table={table} grouping={view.grouping} display={view.groupDisplay} onDisplay={onGroupDisplay} />
       {onPivot && <PivotDropZone table={table} pivot={view.pivot.column} onPivot={onPivot} values={pivotValues} buckets={view.pivot.buckets} onBuckets={onPivotBuckets} />}
       <div className="relative min-w-40 flex-1 @3xl/toolbar:flex-none">
         <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-faint" />

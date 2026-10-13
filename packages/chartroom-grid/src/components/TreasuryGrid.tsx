@@ -33,7 +33,8 @@ import type { Agg, ColumnFormat, ColumnMeta } from '../grid/meta';
 import type { ComputedColumn } from '../grid/computed';
 import type { ChartOutcome } from '../grid/chart';
 import { applyEdits, canEditColumn, editKey, type CellEdit, type EditPolicy } from '../grid/edit';
-import { defaultView, type ViewState } from '../grid/viewState';
+import { defaultView, type GroupDisplay, type ViewState } from '../grid/viewState';
+import { treeShown } from '../grid/tree';
 import type { ViewStore } from '../views/store';
 import { canRedo, canUndo, createHistory, pushHistory, redoHistory, undoHistory } from '../views/history';
 import { ColumnsSidebar, SIDE_PREFIX, orderedLeafColumns } from './ColumnsSidebar';
@@ -290,6 +291,10 @@ export function TreasuryGrid({
   const onPivotBuckets = useCallback((buckets: string[]) => {
     change((prev) => ({ ...prev, pivot: { ...prev.pivot, buckets } }));
   }, [change]);
+  // Tree mode (ADR-93): the grouping as one indented column, or a column per level.
+  const onGroupDisplay = useCallback((groupDisplay: GroupDisplay) => {
+    change((prev) => ({ ...prev, groupDisplay }));
+  }, [change]);
   const pivotColumn = view.pivot.column;
   const [pivotValues, setPivotValues] = useState<{ column: string; values: string[] } | null>(null);
   useEffect(() => {
@@ -504,6 +509,7 @@ export function TreasuryGrid({
           onPivot={onPivot}
           pivotValues={pivotValues && pivotValues.column === view.pivot.column ? pivotValues.values : undefined}
           onPivotBuckets={onPivotBuckets}
+          onGroupDisplay={onGroupDisplay}
         />
         <FilterBar table={table} view={view} />
         <div className="flex min-h-0 flex-1">
@@ -539,6 +545,7 @@ export function TreasuryGrid({
               table={table}
               grouping={view.grouping}
               columnOrder={view.columnOrder}
+              tree={treeShown(view)}
               computed={view.computedColumns}
               onAddComputed={onAddComputed}
               onRemoveComputed={onRemoveComputed}
