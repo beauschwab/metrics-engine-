@@ -1,8 +1,9 @@
 /**
- * Tree mode (ADR-93): a grouping read as one indented column. The grouped
- * dimensions leave the screen while the tree holds them, every level draws in
- * the tree with its toggle and count, the header sorts the levels together,
- * the link carries the choice, and switching back restores the columns.
+ * Tree mode (ADR-93), the default display of a grouping: one indented column.
+ * The grouped dimensions leave the screen while the tree holds them, every
+ * level draws in the tree with its toggle and count, the header sorts the
+ * levels together, and switching to columns brings them back — and the link
+ * carries that choice.
  */
 
 import { expect, test } from '@playwright/test';
@@ -10,7 +11,7 @@ import { expect, test } from '@playwright/test';
 const SHOTS = process.env.CHART_SHOTS;
 const TREE = '__tree';
 
-test('groups read as one tree column, and switching back restores the grouped columns', async ({ page }) => {
+test('groups read as one tree column by default, and switching to columns restores the grouped columns', async ({ page }) => {
   await page.goto('/#/grid');
   const grid = page.getByTestId('treasury-grid');
   await expect(grid.locator('tbody tr').first()).toBeVisible();
@@ -19,11 +20,8 @@ test('groups read as one tree column, and switching back restores the grouped co
   await expect(page.locator('[data-slot="tree-toggle"]')).toHaveCount(0);
   await sidebar.getByRole('button', { name: 'Group by Desk' }).click();
   await sidebar.getByRole('button', { name: 'Group by Ccy' }).click();
+  // The tree is the default: grouping alone draws it.
   const toggle = page.locator('[data-slot="tree-toggle"]');
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  await expect(grid.locator('th[data-column="desk"]')).toHaveCount(1);
-
-  await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   // One column holds the hierarchy; the grouped dimensions are off the screen.
   const header = grid.locator(`th[data-column="${TREE}"]`);
@@ -53,17 +51,20 @@ test('groups read as one tree column, and switching back restores the grouped co
   await header.locator('[data-slot="tree-header"]').click();
   await expect(header.locator('[data-slot="sort-indicator"]')).toBeVisible();
 
-  // The link carries the display.
-  const hash = await page.evaluate(() => location.hash);
-  const decoded = JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
-  expect(decoded.groupDisplay).toBe('tree');
-  expect(decoded.columnVisibility ?? {}).not.toHaveProperty('desk');
+  // The tree's hiding is never written into the view.
+  const readView = async () => {
+    const hash = await page.evaluate(() => location.hash);
+    return JSON.parse(Buffer.from(new URL(`http://x/${hash.slice(1)}`).searchParams.get('v')!, 'base64url').toString());
+  };
+  expect((await readView()).columnVisibility ?? {}).not.toHaveProperty('desk');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/tree-mode.png` });
 
-  // Back to columns: the grouped dimensions return, the tree column goes.
+  // Columns: the grouped dimensions return, the tree column goes, and the link carries the choice.
   await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await expect(grid.locator(`th[data-column="${TREE}"]`)).toHaveCount(0);
   await expect(grid.locator('th[data-column="desk"]')).toHaveCount(1);
   await expect(grid.locator('th[data-column="currency"]')).toHaveCount(1);
   await expect(sidebar.locator('[data-column="desk"]').getByRole('checkbox')).toBeEnabled();
+  expect((await readView()).groupDisplay).toBe('columns');
 });

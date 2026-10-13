@@ -3094,10 +3094,12 @@ what its parents already said.
 
 **Decision.**
 
-- *A display, in the view.* `groupDisplay: 'columns' | 'tree'` joins the view
-  contract, which becomes version 7; a version-6 document migrates to
-  `columns`, so every saved view and link opens as it did. It is display
-  only: the rows, the subtotals, the SQL and an agent's `query_view` answer
+- *A display, in the view — the tree by default.* `groupDisplay: 'tree' |
+  'columns'` joins the view contract, which becomes version 7. The tree is
+  the default (pinned: "make tree method default"), and a version-6
+  document, which never chose a display, opens as the tree too; a reader who
+  wants a column per level switches to `columns`, and the view keeps that
+  choice. It is display only: the rows, the subtotals, the SQL and an agent's `query_view` answer
   are the same either way, and the contract tells an agent so.
 - *One column, every level.* In tree mode the table adds a tree column,
   pinned after the selection column. It is chrome, like the selection
@@ -3123,8 +3125,9 @@ what its parents already said.
   by its depth; "Copy row" includes it; chart-from-range reports each level
   the tree holds as its own dimension, with its own label and values — so
   ADR-92's planner binds a desk and a currency, not a "tree".
-- *A toggle where the grouping is.* The row-groups bar shows a pressed or
-  unpressed **Tree** toggle once there is a grouping to nest.
+- *A toggle where the grouping is.* The row-groups bar shows a **Tree**
+  toggle, pressed by default, once there is a grouping to nest; unpressing
+  it is how a reader asks for a column per level.
 
 **Left as found.** The tree column is not resizable (sizing is view state,
 and the view never names chrome); its width is set by the depth. The agent
@@ -3132,15 +3135,17 @@ headless table stays the data's; a test or an export that wants the
 screen's columns asks for `display: true`.
 
 **What now fails if this regresses.** `chartroom-grid/test/tree.test.ts`:
-the v7 default and the v6 migration, the tree only when there is a
-grouping, hiding layered and never written back, the tree column first and
+the tree as the v7 default and as what a v6 view opens to, a chosen
+`columns` kept, the tree only when there is a grouping, hiding layered and never written back, the tree column first and
 the grouped columns gone (and an agent's table unchanged), the header's sort
 cycle, `treeKey` for client, served and leaf rows, copy, the chart's
 per-level dimensions, and the export's indented Group column.
-`e2e/tree.spec.ts` groups by desk and currency, switches to the tree, opens
-a desk to its indented currencies beside their subtotals, reads the
-sidebar's note, sorts from the tree header, finds `groupDisplay: "tree"` in
-the link, and switches back to find both columns restored.
+`e2e/tree.spec.ts` groups by desk and currency and finds the tree drawn
+with no further step, opens a desk to its indented currencies beside their
+subtotals, reads the sidebar's note, sorts from the tree header, then
+switches to columns to find both columns restored and `groupDisplay:
+"columns"` in the link. The suites written for a column per level ask for
+`columns` where the columns are what they test.
 
 # Proposed — recorded gaps, not yet accepted
 

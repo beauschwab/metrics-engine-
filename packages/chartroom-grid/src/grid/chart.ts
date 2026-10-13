@@ -146,7 +146,14 @@ export function chartFromRange(
   if (units.size > 1) return { ok: false, reason: `the block mixes units (${[...units].join(', ')}); a bar chart has one axis (NUM-01)`, selection };
 
   const categoryColumn = columns[categoryIndex]!.cell.column;
-  const categoryLabel = categoryColumn.id === TREE_ID ? 'Group' : categoryColumn.columnDef.meta?.label ?? categoryColumn.id;
+  // The tree column (ADR-93) names the level its rows are at: one level is that
+  // dimension by its own name; rows across levels are the tree's groups.
+  const treeLevels = categoryColumn.id === TREE_ID
+    ? [...new Set(rows.map((r) => treeKey(r[categoryIndex]!.row)?.column).filter((c): c is string => !!c))]
+    : [];
+  const categoryId = categoryColumn.id === TREE_ID && treeLevels.length === 1 ? treeLevels[0]! : categoryColumn.id;
+  const categoryLabel = categoryColumn.id !== TREE_ID ? categoryColumn.columnDef.meta?.label ?? categoryColumn.id
+    : treeLevels.length === 1 ? labelOf(treeLevels[0]!) : 'Group';
   const series: ChartSeries[] = measures.map(({ cell, meta, i }) => {
     const agg = cell.column.columnDef.aggregationFn;
     const out: ChartRow[] = [];
@@ -164,14 +171,14 @@ export function chartFromRange(
       // Two rows with one label (a repeated desk) would draw one bar over another: number them.
       const n = (seen.get(category) ?? 0) + 1;
       seen.set(category, n);
-      out.push({ key: { [categoryColumn.id]: n > 1 ? `${category} (${n})` : category }, value, prior: value });
+      out.push({ key: { [categoryId]: n > 1 ? `${category} (${n})` : category }, value, prior: value });
     }
     const readMeta = rows.some((r) => r[i]!.getIsAggregated()) ? aggregateMeta(meta!, agg) : meta!;
     const label = meta!.computed ? `${meta!.label} (calculated)` : meta!.label;
     return { columnId: cell.column.id, label, data: { ...widgetFormat(readMeta), asOf, rows: out, ordinalDim: true } };
   });
   const title = `${series.map((s) => s.label).join(', ')} by ${categoryLabel}`;
-  return { ok: true, request: { type: 'bar@1', title, category: { columnId: categoryColumn.id, label: categoryLabel }, series }, selection };
+  return { ok: true, request: { type: 'bar@1', title, category: { columnId: categoryId, label: categoryLabel }, series }, selection };
 }
 
 /** A one-line reading of a request, for the panel's caption and the tests. */

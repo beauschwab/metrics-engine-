@@ -21,19 +21,19 @@ const BOOK = generatePositions(400);
 const view = (over: Partial<ViewState> & Record<string, unknown> = {}) => parseView({ version: VIEW_VERSION, ...over });
 
 describe('the view carries the display', () => {
-  it('defaults to columns, migrates a v6 view to columns, and refuses anything but columns or tree', () => {
+  it('defaults to the tree, opens a v6 view as the tree, keeps a chosen columns display, and refuses anything else', () => {
     expect(VIEW_VERSION).toBe(7);
-    expect(view().groupDisplay).toBe('columns');
-    expect(migrateView({ version: 6, grouping: ['desk'] })).toMatchObject({ version: 7, groupDisplay: 'columns' });
-    expect(parseView({ version: 6, grouping: ['desk'] }).groupDisplay).toBe('columns');
-    expect(view({ groupDisplay: 'tree' }).groupDisplay).toBe('tree');
+    expect(view().groupDisplay).toBe('tree');
+    expect(migrateView({ version: 6, grouping: ['desk'] })).toMatchObject({ version: 7 });
+    expect(parseView({ version: 6, grouping: ['desk'] }).groupDisplay).toBe('tree');
+    expect(view({ groupDisplay: 'columns' }).groupDisplay).toBe('columns');
     expect(safeParseView({ version: VIEW_VERSION, groupDisplay: 'nested' }).ok).toBe(false);
   });
 
   it('shows a tree only when there is a grouping to nest', () => {
     expect(treeShown(view({ groupDisplay: 'tree' }))).toBe(false);
-    expect(treeShown(view({ groupDisplay: 'tree', grouping: ['desk'] }))).toBe(true);
-    expect(treeShown(view({ grouping: ['desk'] }))).toBe(false);
+    expect(treeShown(view({ grouping: ['desk'] }))).toBe(true);
+    expect(treeShown(view({ groupDisplay: 'columns', grouping: ['desk'] }))).toBe(false);
   });
 });
 
@@ -45,7 +45,7 @@ describe('the grouped columns leave the screen, and the view keeps how the reade
     const next = untreeVisibility({ ...treeVisibility(v), mtm: false, [TREE_ID]: true }, v);
     expect(next).toEqual({ book: true, yield: false, mtm: false });
     // Columns mode: the view's visibility, untouched.
-    const c = view({ grouping: ['desk'], columnVisibility: { yield: false } });
+    const c = view({ groupDisplay: 'columns', grouping: ['desk'], columnVisibility: { yield: false } });
     expect(treeVisibility(c)).toBe(c.columnVisibility);
   });
 
@@ -116,7 +116,13 @@ describe('what reads a cell reads the tree', () => {
     expect(dims[0]).toMatchObject({ label: 'Desk', values: [String(deskRows[0]!.groupingValue)] });
     expect(dims[1]!.values.length).toBeGreaterThan(0);
     expect(out.ok).toBe(true);
+    // Rows across two levels are the tree's groups.
     if (out.ok) expect(out.request.category.label).toBe('Group');
+    // Rows at one level are that dimension, by its own name and id.
+    t.selectCellRange({ anchorRowId: deskRows[0]!.id, anchorColumnId: TREE_ID, focusRowId: deskRows[0]!.id, focusColumnId: 'notional' });
+    const one = chartFromRange(t);
+    if (one.ok) expect(one.request.category).toEqual({ columnId: 'desk', label: 'Desk' });
+    expect(one.ok).toBe(true);
   });
 
   it('exports the tree as a Group column, each group indented by its depth', () => {
