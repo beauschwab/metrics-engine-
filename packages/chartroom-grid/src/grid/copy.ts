@@ -8,11 +8,12 @@
 
 import { aggregatedNumber } from './aggregations';
 import { formatValue, type ColumnMeta, aggregateMeta } from './meta';
+import { TREE_ID, treeKey } from './tree';
 
 /** What the copier reads of a cell — structural, as the export is. */
 export interface CopyCell {
   column: { id: string; columnDef: { meta?: ColumnMeta; aggregationFn?: unknown } };
-  row: { groupingValue?: unknown; original: unknown };
+  row: { groupingValue?: unknown; groupingColumnId?: string; original: unknown };
   getValue(): unknown;
   getIsGrouped(): boolean;
   getIsAggregated(): boolean;
@@ -37,6 +38,8 @@ const raw = (v: unknown): string => {
 export function cellText(cell: CopyCell, formatted = true): string {
   const meta = cell.column.columnDef.meta;
   const node = cell.row.original as { __group?: { column: string; value: string } } | undefined;
+  // The tree column (ADR-93) copies the group at whatever level the row is; a leaf's cell is blank on screen and here.
+  if (cell.column.id === TREE_ID) return treeKey(cell.row)?.value ?? '';
   if (cell.getIsGrouped()) return String(cell.row.groupingValue ?? '');
   if (node?.__group && node.__group.column === cell.column.id) return node.__group.value;
   if (cell.getIsPlaceholder()) return '';

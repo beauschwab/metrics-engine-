@@ -27,6 +27,7 @@ import type { GridRecord } from '../grid/schema';
 import type { Features } from '../grid/features';
 import { aggregatedNumber } from '../grid/aggregations';
 import { SELECT_ID } from '../grid/columns';
+import { TREE_ID, toggleTreeSort, treeSortDirection } from '../grid/tree';
 import { rangesToTsv, selectedCellRanges } from '../grid/copy';
 import { editKey, editText, parseClipboardBlock, parseEditText, pasteEdits, type CellEdit } from '../grid/edit';
 import { copyText } from './clipboard';
@@ -286,7 +287,7 @@ export function GridTable({
         columnId: c.column.id,
         meta: c.column.columnDef.meta,
         value: c.getValue(),
-        editable: !c.getIsPlaceholder() && !c.getIsAggregated() && c.column.id !== SELECT_ID,
+        editable: !c.getIsPlaceholder() && !c.getIsAggregated() && c.column.id !== SELECT_ID && c.column.id !== TREE_ID,
       })),
     }));
     const { edits } = pasteEdits(pasteRows, { rowIndex: 0, cellIndex }, block, (rowId, columnId, meta) => edit.canEdit(rowId, columnId, meta));
@@ -409,7 +410,7 @@ export function GridTable({
                     style={{ width: column.getSize(), ...pinnedStyle(column) }}
                     className="flex items-center border-b border-border-subtle bg-inherit px-2.5 py-0"
                   >
-                    {column.id !== SELECT_ID && <span className="h-2 w-2/3 animate-pulse rounded-sm bg-muted" />}
+                    {column.id !== SELECT_ID && column.id !== TREE_ID && <span className="h-2 w-2/3 animate-pulse rounded-sm bg-muted" />}
                   </TableCell>
                 ))}
               </TableRow>
@@ -578,6 +579,8 @@ function HeaderCell({
     >
       {isSelect ? (
         <SelectAll table={table} />
+      ) : column.id === TREE_ID ? (
+        <TreeHeader table={table} />
       ) : header.isPlaceholder ? null : (
         <>
           <span
@@ -673,6 +676,38 @@ function HeaderCell({
   );
 }
 
+/**
+ * The tree column's header (ADR-93): the grouped levels it holds, outermost
+ * first, and a click that sorts every level by its own values together —
+ * the one sort the hidden dimension headers would otherwise have offered.
+ */
+function TreeHeader({ table }: { table: TreasuryTable }) {
+  const { grouping, sorting } = table.store.state;
+  const label = grouping.map((id) => table.getColumn(id)?.columnDef.meta?.label ?? id).join(' › ');
+  const sorted = treeSortDirection(sorting, grouping);
+  const toggle = () => table.setSorting((prev) => toggleTreeSort(prev, grouping));
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      data-slot="tree-header"
+      title={`Group: ${label} — sort the groups by their own values`}
+      onClick={toggle}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      }}
+      className="flex min-w-0 cursor-pointer items-center gap-1 hover:text-foreground"
+    >
+      <span className="min-w-0 truncate">{label}</span>
+      {sorted && (
+        <span data-slot="sort-indicator" className="inline-flex shrink-0 items-center text-primary">
+          {sorted === 'asc' ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function SelectAll({ table }: { table: TreasuryTable }) {
   const ref = useRef<HTMLInputElement>(null);
   const all = table.getIsAllRowsSelected();
@@ -757,7 +792,14 @@ function BodyCell({
   let content: ReactNode = null;
   let kind: 'group' | 'aggregated' | 'placeholder' | 'value' = 'value';
   let background: string | undefined;
-  if (cell.getIsGrouped()) {
+  const isTree = column.id === TREE_ID;
+  if (isTree) {
+    // Tree mode (ADR-93): a group at any depth draws here, indented; a leaf's
+    // place in the tree is its parents', so its cell is blank.
+    if (row.getIsGrouped()) { kind = 'group'; content = <GroupCell row={row} fit />; }
+    else if (node) { kind = 'group'; content = <ServerGroupCell row={row} node={node} onToggle={onExpandGroup} fit />; }
+    else kind = 'placeholder';
+  } else if (cell.getIsGrouped()) {
     kind = 'group';
     content = <GroupCell row={row} />;
   } else if (node && column.id === node.__group.column) {
@@ -843,7 +885,7 @@ function BodyCell({
         'relative flex min-w-0 select-none items-center border-b border-border-subtle bg-inherit px-2.5 py-0 data-[align=right]:justify-end',
         edited && "after:pointer-events-none after:absolute after:top-0 after:right-0 after:border-[3px] after:border-transparent after:border-t-primary after:border-r-primary after:content-['']",
         isEditing && 'p-0',
-        kind === 'group' && 'z-[1] overflow-visible',
+        kind === 'group' && !isTree && 'z-[1] overflow-visible',
         column.getIsPinned() === 'start' && 'border-r border-r-border',
         column.getIsPinned() === 'end' && 'border-l border-l-border',
       )}

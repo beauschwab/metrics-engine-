@@ -11,6 +11,7 @@ import type { ColumnMeta } from './meta';
 import { aggregateMeta, formatValue } from './meta';
 import { selectedCellRanges, type CopyCell, type CopyTable } from './copy';
 import { aggregatedNumber } from './aggregations';
+import { TREE_ID, treeKey } from './tree';
 
 /** One bar: the category value and the measure, as the widgets read rows. */
 export interface ChartRow {
@@ -76,6 +77,8 @@ interface ResolvedCell { cell: CopyCell; meta: ColumnMeta | undefined }
 
 /** The category text of a cell: a group row's value, or a dimension's text. */
 function categoryOf(cell: CopyCell): string | undefined {
+  // The tree column (ADR-93) names the group at the row's own level.
+  if (cell.column.id === TREE_ID) return treeKey(cell.row)?.value;
   const node = cell.row.original as { __group?: { column: string; value: string } } | undefined;
   if (cell.getIsGrouped()) return String(cell.row.groupingValue ?? '');
   if (node?.__group && node.__group.column === cell.column.id) return node.__group.value;
@@ -96,7 +99,12 @@ function measureOf(cell: CopyCell): number | undefined {
  * category, every measure column a series, and every measure must share a
  * unit — a bar chart has one axis (NUM-01).
  */
-export function chartFromRange(table: CopyTable, asOf = ''): ChartOutcome {
+export function chartFromRange(
+  table: CopyTable & { getColumn?(id: string): { columnDef: { meta?: ColumnMeta } } | undefined },
+  asOf = '',
+): ChartOutcome {
+  // A dimension the tree holds is off the screen (ADR-93); its label comes from the table's column.
+  const labelOf = (id: string) => table.getColumn?.(id)?.columnDef.meta?.label ?? id;
   const ranges = selectedCellRanges(table);
   if (ranges.length === 0) return { ok: false, reason: 'select a block of cells first' };
   if (ranges.length > 1) return { ok: false, reason: 'chart one block at a time' };
@@ -104,14 +112,27 @@ export function chartFromRange(table: CopyTable, asOf = ''): ChartOutcome {
   const first = rows[0];
   if (!first || first.length === 0) return { ok: false, reason: 'select a block of cells first' };
   const columns = first.map((c): ResolvedCell => ({ cell: c, meta: c.column.columnDef.meta }));
-  const isDimension = ({ cell, meta }: ResolvedCell) => (meta && meta.kind === 'dimension') || cell.getIsGrouped() || cell.column.id === (cell.row.original as { __group?: { column: string } })?.__group?.column;
+  const isDimension = ({ cell, meta }: ResolvedCell) => (meta && meta.kind === 'dimension') || cell.getIsGrouped() || cell.column.id === (cell.row.original as { __group?: { column: string } })?.__group?.column
+    || (cell.column.id === TREE_ID && treeKey(cell.row) !== undefined);
   // Every dimension column in the block: a column is one if any row reads it as one (a group row names its column).
   const dimIndexes = columns.map((_, i) => i).filter((i) => rows.some((r) => isDimension({ cell: r[i]!, meta: columns[i]!.meta })));
   const selection: RangeSelection = {
-    dims: dimIndexes.map((i) => {
+    dims: dimIndexes.flatMap((i) => {
       const column = columns[i]!.cell.column;
+      // The tree column holds several dimensions, one per level: each is reported as itself.
+      if (column.id === TREE_ID) {
+        const byColumn = new Map<string, string[]>();
+        for (const r of rows) {
+          const key = treeKey(r[i]!.row);
+          if (!key || key.value === '') continue;
+          const values = byColumn.get(key.column) ?? [];
+          if (!values.includes(key.value)) values.push(key.value);
+          byColumn.set(key.column, values);
+        }
+        return [...byColumn].map(([id, values]) => ({ id, label: labelOf(id), values }));
+      }
       const values = [...new Set(rows.map((r) => categoryOf(r[i]!)).filter((v): v is string => v !== undefined && v !== ''))];
-      return { id: column.id, label: column.columnDef.meta?.label ?? column.id, values };
+      return [{ id: column.id, label: column.columnDef.meta?.label ?? column.id, values }];
     }),
     measures: columns.filter(({ meta }, i) => meta?.kind === 'measure' && !dimIndexes.includes(i))
       .map(({ cell, meta }) => ({ id: cell.column.id, label: meta!.label, ...(meta!.computed ? { computed: true } : {}) })),
@@ -125,7 +146,14 @@ export function chartFromRange(table: CopyTable, asOf = ''): ChartOutcome {
   if (units.size > 1) return { ok: false, reason: `the block mixes units (${[...units].join(', ')}); a bar chart has one axis (NUM-01)`, selection };
 
   const categoryColumn = columns[categoryIndex]!.cell.column;
-  const categoryLabel = categoryColumn.columnDef.meta?.label ?? categoryColumn.id;
+  // The tree column (ADR-93) names the level its rows are at: one level is that
+  // dimension by its own name; rows across levels are the tree's groups.
+  const treeLevels = categoryColumn.id === TREE_ID
+    ? [...new Set(rows.map((r) => treeKey(r[categoryIndex]!.row)?.column).filter((c): c is string => !!c))]
+    : [];
+  const categoryId = categoryColumn.id === TREE_ID && treeLevels.length === 1 ? treeLevels[0]! : categoryColumn.id;
+  const categoryLabel = categoryColumn.id !== TREE_ID ? categoryColumn.columnDef.meta?.label ?? categoryColumn.id
+    : treeLevels.length === 1 ? labelOf(treeLevels[0]!) : 'Group';
   const series: ChartSeries[] = measures.map(({ cell, meta, i }) => {
     const agg = cell.column.columnDef.aggregationFn;
     const out: ChartRow[] = [];
@@ -143,14 +171,14 @@ export function chartFromRange(table: CopyTable, asOf = ''): ChartOutcome {
       // Two rows with one label (a repeated desk) would draw one bar over another: number them.
       const n = (seen.get(category) ?? 0) + 1;
       seen.set(category, n);
-      out.push({ key: { [categoryColumn.id]: n > 1 ? `${category} (${n})` : category }, value, prior: value });
+      out.push({ key: { [categoryId]: n > 1 ? `${category} (${n})` : category }, value, prior: value });
     }
     const readMeta = rows.some((r) => r[i]!.getIsAggregated()) ? aggregateMeta(meta!, agg) : meta!;
     const label = meta!.computed ? `${meta!.label} (calculated)` : meta!.label;
     return { columnId: cell.column.id, label, data: { ...widgetFormat(readMeta), asOf, rows: out, ordinalDim: true } };
   });
   const title = `${series.map((s) => s.label).join(', ')} by ${categoryLabel}`;
-  return { ok: true, request: { type: 'bar@1', title, category: { columnId: categoryColumn.id, label: categoryLabel }, series }, selection };
+  return { ok: true, request: { type: 'bar@1', title, category: { columnId: categoryId, label: categoryLabel }, series }, selection };
 }
 
 /** A one-line reading of a request, for the panel's caption and the tests. */

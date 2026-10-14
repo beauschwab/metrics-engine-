@@ -10,7 +10,8 @@
 
 import { constructTable, tableFeatures, type ColumnDef, type Table } from '@tanstack/table-core';
 import { storeReactivityBindings } from '@tanstack/table-core/store-reactivity-bindings';
-import { buildColumns } from '../grid/columns';
+import { buildColumns, treeColumn } from '../grid/columns';
+import { TREE_ID, treeShown, treeVisibility } from '../grid/tree';
 import { distinctValues } from '../grid/pivot';
 import { features } from '../grid/features';
 import { toTableState, type ViewState } from '../grid/viewState';
@@ -28,10 +29,20 @@ export type HeadlessTable = Table<HeadlessFeatures, GridRecord>;
  * for them under `__children` — and the table passes them through rather
  * than filtering, sorting or grouping them a second time.
  */
-export function headlessTable(rows: GridRecord[], view: ViewState, schema: GridSchema = TREASURY_SCHEMA, manual?: { filter: boolean; sort: boolean; group: boolean }): HeadlessTable {
+export function headlessTable(
+  rows: GridRecord[], view: ViewState, schema: GridSchema = TREASURY_SCHEMA, manual?: { filter: boolean; sort: boolean; group: boolean },
+  /**
+   * The screen's columns rather than the data's: with `display`, tree mode
+   * (ADR-93) adds its column and hides the grouped ones, as the grid does.
+   * An agent's answer is the data's, the same rows whichever way they show.
+   */
+  options: { display?: boolean } = {},
+): HeadlessTable {
+  const tree = options.display === true && treeShown(view);
+  const data = buildColumns(view.columnAggs, view.columnFormats, view.computedColumns, view.pivot.column ? { ...view.pivot, distinct: distinctValues(rows, view.pivot.column) } : undefined, schema);
   return constructTable<HeadlessFeatures, GridRecord>({
     features: headlessFeatures,
-    columns: buildColumns(view.columnAggs, view.columnFormats, view.computedColumns, view.pivot.column ? { ...view.pivot, distinct: distinctValues(rows, view.pivot.column) } : undefined, schema) as unknown as ColumnDef<HeadlessFeatures, GridRecord, unknown>[],
+    columns: [...(tree ? [treeColumn(view.grouping.length)] : []), ...data] as unknown as ColumnDef<HeadlessFeatures, GridRecord, unknown>[],
     data: rows,
     getRowId: (r) => String(r[schema.rowId]),
     globalFilterFn: 'search',
@@ -42,6 +53,8 @@ export function headlessTable(rows: GridRecord[], view: ViewState, schema: GridS
     manualGrouping: manual?.group ?? false,
     getSubRows: (row) => (row as GridRecord & { __children?: GridRecord[] }).__children,
     getRowCanExpand: (row) => isGroupNode(row.original) || row.subRows.length > 0,
-    state: toTableState(view),
+    state: tree
+      ? { ...toTableState(view), columnVisibility: treeVisibility(view), columnPinning: { ...view.columnPinning, start: [TREE_ID, ...view.columnPinning.start] } }
+      : toTableState(view),
   });
 }

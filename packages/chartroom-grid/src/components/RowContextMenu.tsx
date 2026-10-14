@@ -11,6 +11,7 @@ import { BarChart3, ChevronsDownUp, ChevronsUpDown, Copy, EyeOff, Funnel, Funnel
 import { formatValue } from '../grid/meta';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { SELECT_ID } from '../grid/columns';
+import { TREE_ID, treeKey } from '../grid/tree';
 import { rangesToTsv, selectedCellRanges } from '../grid/copy';
 import { chartFromRange, type ChartOutcome } from '../grid/chart';
 import { copyText as copy } from './clipboard';
@@ -29,12 +30,13 @@ export function RowContextMenu({
   children: ReactNode;
 }) {
   const row = target ? table.getRowModel().rows.find((r) => r.id === target.rowId) : undefined;
-  const column = target && target.columnId !== SELECT_ID ? table.getColumn(target.columnId) : undefined;
+  const column = target && target.columnId !== SELECT_ID && target.columnId !== TREE_ID ? table.getColumn(target.columnId) : undefined;
   const meta = column?.columnDef.meta;
   const grouped = !!row?.getIsGrouped();
   const value = row && column && !grouped ? row.getValue(column.id) : undefined;
   const shown = value !== undefined && meta ? formatValue(value, meta) : undefined;
-  const isGrouping = table.getVisibleLeafColumns().some((c) => c.getIsGrouped());
+  // The grouping, not the visible columns: in tree mode (ADR-93) the grouped columns are off the screen.
+  const isGrouping = table.store.state.grouping.length > 0;
   const selectedCells = table.getSelectedCellCount();
 
   return (
@@ -77,8 +79,8 @@ export function RowContextMenu({
               onSelect={() =>
                 copy(
                   row.getVisibleCells()
-                    .filter((c) => c.column.id !== SELECT_ID && c.column.columnDef.meta)
-                    .map((c) => (c.getIsPlaceholder() ? '' : formatValue(c.getIsGrouped() ? row.groupingValue : c.getValue(), c.column.columnDef.meta!)))
+                    .filter((c) => c.column.id === TREE_ID || (c.column.id !== SELECT_ID && c.column.columnDef.meta))
+                    .map((c) => (c.column.id === TREE_ID ? treeKey(row)?.value ?? '' : c.getIsPlaceholder() ? '' : formatValue(c.getIsGrouped() ? row.groupingValue : c.getValue(), c.column.columnDef.meta!)))
                     .join('\t'),
                 )
               }

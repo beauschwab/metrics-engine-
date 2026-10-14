@@ -11,7 +11,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useState } from 'react';
 import { GripVertical, Plus, Rows3, X } from 'lucide-react';
 import type { Column } from '@tanstack/react-table';
-import { SELECT_ID } from '../grid/columns';
+import { SELECT_ID, TREE_ID } from '../grid/columns';
 import type { Features } from '../grid/features';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import type { GridRecord } from '../grid/schema';
@@ -29,7 +29,7 @@ type GridColumn = Column<Features, GridRecord>;
 
 /** Every data column, hidden ones included, in the view's order; never the selection column. */
 export function orderedLeafColumns(table: TreasuryTable, columnOrder: string[]): GridColumn[] {
-  const all = table.getAllLeafColumns().filter((c) => c.id !== SELECT_ID);
+  const all = table.getAllLeafColumns().filter((c) => c.id !== SELECT_ID && c.id !== TREE_ID);
   const byId = new Map(all.map((c) => [c.id, c]));
   const first = columnOrder.map((id) => byId.get(id)).filter((c): c is GridColumn => !!c);
   const rest = all.filter((c) => !columnOrder.includes(c.id));
@@ -40,6 +40,7 @@ export function ColumnsSidebar({
   table,
   grouping,
   columnOrder,
+  tree = false,
   computed = [],
   onAddComputed,
   onRemoveComputed,
@@ -51,6 +52,8 @@ export function ColumnsSidebar({
   table: TreasuryTable;
   grouping: string[];
   columnOrder: string[];
+  /** Tree mode (ADR-93): the grouped columns are the tree's levels. */
+  tree?: boolean;
 }) {
   const ordered = orderedLeafColumns(table, columnOrder);
   const [adding, setAdding] = useState(false);
@@ -60,7 +63,7 @@ export function ColumnsSidebar({
       <SortableContext items={ordered.map((c) => SIDE_PREFIX + c.id)} strategy={verticalListSortingStrategy}>
         <ul className="min-h-0 flex-1 overflow-auto px-1 pb-2">
           {ordered.map((col) => (
-            <SidebarItem key={col.id} column={col} grouped={grouping.includes(col.id)} onRemoveComputed={onRemoveComputed} />
+            <SidebarItem key={col.id} column={col} grouped={grouping.includes(col.id)} inTree={tree && grouping.includes(col.id)} onRemoveComputed={onRemoveComputed} />
           ))}
         </ul>
       </SortableContext>
@@ -82,7 +85,7 @@ export function ColumnsSidebar({
   );
 }
 
-function SidebarItem({ column, grouped, onRemoveComputed }: { column: GridColumn; grouped: boolean; onRemoveComputed?: (id: string) => void }) {
+function SidebarItem({ column, grouped, inTree = false, onRemoveComputed }: { column: GridColumn; grouped: boolean; inTree?: boolean; onRemoveComputed?: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: SIDE_PREFIX + column.id });
   const meta = column.columnDef.meta;
   // A pivot column is a measure within one bucket (ADR-80): "Notional" six
@@ -100,9 +103,12 @@ function SidebarItem({ column, grouped, onRemoveComputed }: { column: GridColumn
       <span {...attributes} {...listeners} className="cursor-grab text-faint touch-none" aria-label={`Drag ${label}`}>
         <GripVertical className="size-3.5" />
       </span>
+      {/* A grouped column in tree mode (ADR-93) is shown as the tree's level, not as itself: nothing to toggle. */}
       <Checkbox
-        aria-label={`Show ${label}`}
-        checked={column.getIsVisible()}
+        aria-label={inTree ? `${label} is shown in the tree` : `Show ${label}`}
+        title={inTree ? 'Shown as a level of the tree' : undefined}
+        disabled={inTree}
+        checked={inTree || column.getIsVisible()}
         onCheckedChange={(v) => column.toggleVisibility(v === true)}
       />
       <span className="min-w-0 flex-1 truncate" title={label}>{label}</span>

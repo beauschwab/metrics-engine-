@@ -9,7 +9,8 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Columns3, GripVertical, ListChecks, Rows3, X } from 'lucide-react';
+import { Columns3, GripVertical, ListChecks, ListTree, Rows3, X } from 'lucide-react';
+import type { GroupDisplay } from '../grid/viewState';
 import { sortByOrder } from '../grid/ordinal';
 import type { TreasuryTable } from '../grid/useTreasuryTable';
 import { cn } from '../lib/utils';
@@ -118,7 +119,15 @@ export function PivotDropZone({
   );
 }
 
-export function GroupByDropZone({ table, grouping }: { table: TreasuryTable; grouping: string[] }) {
+export function GroupByDropZone({
+  table, grouping, display = 'columns', onDisplay,
+}: {
+  table: TreasuryTable;
+  grouping: string[];
+  /** How the grouping shows (ADR-93), and the write that switches it. */
+  display?: GroupDisplay;
+  onDisplay?: (display: GroupDisplay) => void;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: GROUP_ZONE_ID });
   return (
     <div
@@ -147,6 +156,24 @@ export function GroupByDropZone({ table, grouping }: { table: TreasuryTable; gro
         ))}
       </SortableContext>
       {grouping.length === 0 && <span className="hidden @3xl/toolbar:inline">drag a column here to group</span>}
+      {grouping.length > 0 && onDisplay && (
+        // Tree mode (ADR-93): every level in one indented column, the grouped
+        // dimensions off the screen. A toggle, so its state is announced.
+        <button
+          type="button"
+          data-slot="tree-toggle"
+          aria-pressed={display === 'tree'}
+          title={display === 'tree' ? 'Show each grouped column again' : 'Show the groups as one tree column'}
+          onClick={() => onDisplay(display === 'tree' ? 'columns' : 'tree')}
+          className={cn(
+            'ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-sm border px-1.5 text-[11px] text-muted-foreground hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none',
+            display === 'tree' ? 'border-primary bg-secondary text-foreground' : 'border-border',
+          )}
+        >
+          <ListTree className="size-3.5" />
+          <span className="hidden @2xl/toolbar:inline">Tree</span>
+        </button>
+      )}
     </div>
   );
 }

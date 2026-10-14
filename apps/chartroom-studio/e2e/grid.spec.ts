@@ -91,17 +91,19 @@ test.describe('the treasury grid harness', () => {
     const chip = page.locator('[data-slot="group-chip"][data-column="desk"]');
     await expect(chip).toBeVisible();
 
-    // Five desks, each a group row with a subtotal in every aggregated
-    // measure and nothing in the dimensions it does not group.
+    // Five desks, each a group row in the tree column (the default display,
+    // ADR-93) with a subtotal in every aggregated measure and nothing in the
+    // dimensions it does not group.
     const groups = grid.locator('tbody tr[data-grouped]');
     await expect(groups).toHaveCount(5);
     const first = groups.first();
-    await expect(first.locator('td[data-column="desk"] [data-slot="group-toggle"]')).toBeVisible();
-    await expect(first.locator('td[data-column="desk"]')).toHaveText(/\(\d{1,2},\d{3}\)$/);
+    await expect(first.locator('td[data-column="__tree"] [data-slot="group-toggle"]')).toBeVisible();
+    await expect(first.locator('td[data-column="__tree"]')).toHaveText(/\(\d{1,2},\d{3}\)$/);
+    await expect(grid.locator('th[data-column="desk"]')).toHaveCount(0);
     await expect(first.locator('td[data-column="notional"]')).toHaveText(/^\$[\d,]+\.\dM$/);
     await expect(first.locator('td[data-column="yield"]')).toHaveText(/^\d+\.\d\d%$/);
     await expect(first.locator('td[data-column="counterparty"]')).toHaveText('');
-    await expect(grid.locator('tfoot td[data-column="desk"]')).toHaveText(/Total · 50,000 rows/);
+    await expect(grid.locator('tfoot td[data-column="__tree"]')).toHaveText(/Total · 50,000 rows/);
 
     // Expanding shows leaves under the group, indented one level.
     await first.locator('[data-slot="group-toggle"]').click();
@@ -109,7 +111,7 @@ test.describe('the treasury grid harness', () => {
     const leaf = grid.locator('tbody tr[data-depth="1"]').first();
     await expect(leaf).toBeVisible();
     await expect(leaf.locator('td[data-column="tradeId"]')).toHaveText(/^T\d{6}$/);
-    await expect(leaf.locator('td[data-column="desk"]')).toHaveText('');
+    await expect(leaf.locator('td[data-column="__tree"]')).toHaveText('');
 
     // A second grouping stacks under the first; the chips reflect the order.
     await sidebar.getByRole('button', { name: 'Group by Ccy' }).click();
@@ -143,8 +145,10 @@ test.describe('the treasury grid harness', () => {
 
     await expect(page.locator('[data-slot="group-chip"][data-column="product"]')).toBeVisible();
     await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(6);
-    // The grouped column moved to the front of the header, after the selection column.
-    await expect(grid.locator('thead th[data-column]').nth(1)).toHaveAttribute('data-column', 'product');
+    // The tree column (ADR-93) leads the header after the selection column, and holds the grouped product.
+    await expect(grid.locator('thead th[data-column]').nth(1)).toHaveAttribute('data-column', '__tree');
+    await expect(grid.locator('thead th[data-column="__tree"]')).toHaveText(/Product/i);
+    await expect(grid.locator('thead th[data-column="product"]')).toHaveCount(0);
   });
 
   test('sorts, filters by set and by range, quick-filters, and clears', async ({ page }) => {
@@ -843,9 +847,10 @@ test.describe('the treasury grid harness', () => {
     const rows = grid.locator('tbody tr');
     await expect(rows.first()).toBeVisible();
     // Group by desk so the block is five desks by notional and MTM: five bars per series.
+    // The desks are in the tree column, the default display (ADR-93).
     await page.getByTestId('columns-sidebar').getByRole('button', { name: 'Group by Desk' }).click();
     await expect(grid.locator('tbody tr[data-grouped]')).toHaveCount(5);
-    const from = (await rows.nth(0).locator('td[data-column="desk"]').boundingBox())!;
+    const from = (await rows.nth(0).locator('td[data-column="__tree"]').boundingBox())!;
     const to = (await rows.nth(4).locator('td[data-column="mtm"]').boundingBox())!;
     await page.mouse.move(from.x + from.width - 6, from.y + from.height / 2);
     await page.mouse.down();
@@ -861,7 +866,7 @@ test.describe('the treasury grid harness', () => {
     const bars = series.first().locator('.cr-bar-row');
     await expect(bars).toHaveCount(5);
     // The first bar is the first group, with the cell's own figure.
-    const desk = (await rows.nth(0).locator('td[data-column="desk"]').textContent())!.replace(/\(.*$/, '').trim();
+    const desk = (await rows.nth(0).locator('td[data-column="__tree"]').textContent())!.replace(/\(.*$/, '').trim();
     await expect(bars.first().locator('.cr-bar-label')).toHaveText(desk);
     const cell = (await rows.nth(0).locator('td[data-column="notional"]').textContent())!.trim();
     await expect(bars.first().locator('.cr-bar-value')).toHaveText(cell);
@@ -873,7 +878,7 @@ test.describe('the treasury grid harness', () => {
     await grid.focus();
     await page.keyboard.press('Escape');
     await expect(grid.locator('td[data-selected]')).toHaveCount(0);
-    const from2 = (await rows.nth(0).locator('td[data-column="desk"]').boundingBox())!;
+    const from2 = (await rows.nth(0).locator('td[data-column="__tree"]').boundingBox())!;
     const to2 = (await rows.nth(2).locator('td[data-column="yield"]').boundingBox())!;
     // Start past the group's expander and count, at the cell's right edge.
     await page.mouse.move(from2.x + from2.width - 6, from2.y + from2.height / 2);
@@ -881,7 +886,7 @@ test.describe('the treasury grid harness', () => {
     await page.mouse.move(to2.x + 10, to2.y + to2.height / 2, { steps: 6 });
     await page.mouse.up();
     await expect(grid.locator('td[data-selected]')).toHaveCount(3 * 14);
-    await expect(rows.nth(0).locator('td[data-column="desk"]')).toHaveAttribute('data-selected', 'true');
+    await expect(rows.nth(0).locator('td[data-column="__tree"]')).toHaveAttribute('data-selected', 'true');
     await rows.nth(1).locator('td[data-column="yield"]').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Chart selection' }).click();
     await expect(panel).toHaveAttribute('data-ok', 'false');
@@ -1134,7 +1139,8 @@ test.describe('the treasury grid harness', () => {
     // filtered book — not a re-aggregation of the five desk nodes.
     await expect(footerNotional).toHaveText(cdsTotal!);
     const first = groups.first();
-    await expect(first.locator('td[data-column="desk"]')).toHaveText(/\(\d{1,2},\d{3}\)$|\(\d{3}\)$/);
+    // Served groups draw in the tree column too (ADR-93).
+    await expect(first.locator('td[data-column="__tree"]')).toHaveText(/\(\d{1,2},\d{3}\)$|\(\d{3}\)$/);
     await expect(first.locator('td[data-column="notional"]')).toHaveText(/^\$[\d,]+\.\dM$/);
     await expect(first.locator('td[data-column="yield"]')).toHaveText(/^\d+\.\d\d%$/);
     await expect(first.locator('td[data-column="counterparty"]')).toHaveText('');
@@ -1146,7 +1152,7 @@ test.describe('the treasury grid harness', () => {
     await expect(children.first()).toBeVisible({ timeout: 30_000 });
     expect(await children.count()).toBeGreaterThan(5);
     // The value and the count are two spans; their texts join without a space.
-    await expect(children.first().locator('td[data-column="currency"]')).toHaveText(/^[A-Z]{3}\s?\(\d{1,3}(,\d{3})?\)$/);
+    await expect(children.first().locator('td[data-column="__tree"]')).toHaveText(/^[A-Z]{3}\s?\(\d{1,3}(,\d{3})?\)$/);
     // Expanding a currency reaches the leaves, still filtered to CDS.
     await children.first().locator('[data-slot="group-toggle"]').click();
     const leaf = grid.locator('tbody tr[data-depth="2"]:not([data-grouped])').first();

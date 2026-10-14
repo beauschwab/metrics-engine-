@@ -43,17 +43,18 @@ describe('the view state contract', () => {
     expect(v1.version).toBe(VIEW_VERSION);
     expect(v1.columnAggs).toEqual({});
     expect(v1.grouping).toEqual(['desk']);
-    expect(() => parseView({ version: 7 })).toThrow();
+    expect(() => parseView({ version: 8 })).toThrow();
     expect(() => parseView({ version: 0 })).toThrow();
   });
 
-  it('migrates a version-2 view to 3 with an empty columnFormats, and 1 all the way', () => {
-    expect(parseView({ version: 2, grouping: ['desk'] })).toMatchObject({ version: 6, grouping: ['desk'], columnAggs: {}, columnFormats: {}, computedColumns: [], pivot: { column: null, values: [], buckets: [] } });
-    expect(parseView({ version: 1 })).toMatchObject({ version: 6, columnAggs: {}, columnFormats: {}, computedColumns: [], pivot: { column: null, values: [], buckets: [] } });
-    expect(parseView({ version: 3, columnFormats: { notional: { dp: 1 } } })).toMatchObject({ version: 6, columnFormats: { notional: { dp: 1 } }, computedColumns: [] });
-    expect(parseView({ version: 4, computedColumns: [] })).toMatchObject({ version: 6, pivot: { column: null, values: [], buckets: [] } });
+  it('migrates a version-2 view to 3 with an empty columnFormats, and 1 all the way — to the tree display (ADR-93)', () => {
+    expect(parseView({ version: 2, grouping: ['desk'] })).toMatchObject({ version: 7, grouping: ['desk'], columnAggs: {}, columnFormats: {}, computedColumns: [], pivot: { column: null, values: [], buckets: [] } });
+    expect(parseView({ version: 1 })).toMatchObject({ version: 7, columnAggs: {}, columnFormats: {}, computedColumns: [], pivot: { column: null, values: [], buckets: [] } });
+    expect(parseView({ version: 3, columnFormats: { notional: { dp: 1 } } })).toMatchObject({ version: 7, columnFormats: { notional: { dp: 1 } }, computedColumns: [] });
+    expect(parseView({ version: 4, computedColumns: [] })).toMatchObject({ version: 7, pivot: { column: null, values: [], buckets: [] } });
     // A version-5 pivot keeps its column and measures and gains every value as its buckets (ADR-86).
-    expect(parseView({ version: 5, pivot: { column: 'currency', values: ['notional'] } })).toMatchObject({ version: 6, pivot: { column: 'currency', values: ['notional'], buckets: [] } });
+    expect(parseView({ version: 5, pivot: { column: 'currency', values: ['notional'] } })).toMatchObject({ version: 7, pivot: { column: 'currency', values: ['notional'], buckets: [] } });
+    expect(parseView({ version: 1 }).groupDisplay).toBe('tree');
     expect(safeParseView({ version: 2, columnFormats: { notional: { scale: 'bn' } } })).toMatchObject({ ok: true, view: { columnFormats: { notional: { scale: 'bn' } } } });
   });
 

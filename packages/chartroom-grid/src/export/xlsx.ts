@@ -16,6 +16,7 @@ import ExcelJS from 'exceljs';
 import { aggregatedNumber } from '../grid/aggregations';
 import type { ColumnMeta } from '../grid/meta';
 import { excelFormat, excelRules } from './formats';
+import { TREE_ID, treeKey } from '../grid/tree';
 
 /**
  * What the export reads of a table — structurally, because v9's `Table`
@@ -34,6 +35,7 @@ export interface ExportRow {
   depth: number;
   groupingColumnId?: string;
   groupingValue?: unknown;
+  original?: unknown;
   getIsGrouped(): boolean;
   getAllCells(): ExportCell[];
 }
@@ -63,11 +65,16 @@ export function buildWorkbook(table: ExportTable, options: ExportOptions = {}): 
   const ws = wb.addWorksheet(options.sheetName ?? 'Positions', { views: [{ state: 'frozen', ySplit: 1 }] });
 
   const columns = table.getVisibleLeafColumns().filter((c) => c.columnDef.meta);
-  ws.columns = columns.map((c) => {
-    const meta = c.columnDef.meta as ColumnMeta;
-    // A calculated column is a draft (ADR-79): the sheet says so.
-    return { header: meta.computed ? `${meta.label} (calculated)` : meta.label, key: c.id, width: Math.max(10, Math.round(c.getSize() / 7)) };
-  });
+  // Tree mode (ADR-93): the sheet leads with the tree, each group indented by its depth, as the screen does.
+  const tree = table.getVisibleLeafColumns().find((c) => c.id === TREE_ID);
+  ws.columns = [
+    ...(tree ? [{ header: 'Group', key: TREE_ID, width: Math.max(16, Math.round(tree.getSize() / 7)) }] : []),
+    ...columns.map((c) => {
+      const meta = c.columnDef.meta as ColumnMeta;
+      // A calculated column is a draft (ADR-79): the sheet says so.
+      return { header: meta.computed ? `${meta.label} (calculated)` : meta.label, key: c.id, width: Math.max(10, Math.round(c.getSize() / 7)) };
+    }),
+  ];
   ws.getRow(1).font = { bold: true };
   for (const c of columns) {
     const fmt = excelFormat(c.columnDef.meta as ColumnMeta);
@@ -77,6 +84,8 @@ export function buildWorkbook(table: ExportTable, options: ExportOptions = {}): 
 
   for (const row of table.getRowModel().rows) {
     const values: Record<string, unknown> = {};
+    const node = tree ? treeKey(row) : undefined;
+    if (node) values[TREE_ID] = node.value;
     for (const c of columns) {
       const cell = row.getAllCells().find((x) => x.column.id === c.id);
       if (!cell) continue;
@@ -90,14 +99,14 @@ export function buildWorkbook(table: ExportTable, options: ExportOptions = {}): 
       added.font = { bold: true };
       // A count aggregate is a number of rows: it reads as a plain integer, not in the column's unit.
       for (const c of columns) if (isCount(c)) added.getCell(c.id).numFmt = '#,##0';
-      const groupCell = added.getCell(String(row.groupingColumnId));
+      const groupCell = added.getCell(tree ? TREE_ID : String(row.groupingColumnId));
       groupCell.alignment = { indent: row.depth };
     }
   }
 
   const total: Record<string, unknown> = {};
-  const first = columns[0];
-  if (first) total[first.id] = `Total · ${table.getFilteredRowModel().rows.length.toLocaleString('en-US')} rows`;
+  const firstId = tree ? TREE_ID : columns[0]?.id;
+  if (firstId) total[firstId] = `Total · ${table.getFilteredRowModel().rows.length.toLocaleString('en-US')} rows`;
   for (const c of columns) {
     const meta = c.columnDef.meta as ColumnMeta;
     if (meta.kind === 'measure' && c.columnDef.aggregationFn) total[c.id] = aggregatedNumber(c.getAggregationValue());
